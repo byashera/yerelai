@@ -1,0 +1,15 @@
+{
+  "idle_timeout_minutes": 15.0,
+  "default_model_id": "gemma-4-e2b-4bit",
+  "active_lora_id": "",
+  "lora_scale": 1.0,
+  "gpu_profile": "auto",
+  "generation": {
+    "thinking_effort": "medium",
+    "temperature": 0.7,
+    "top_p": 0.95,
+    "max_new_tokens": 2048,
+    "auto_tts": false
+  },
+  "system_prompt": "Sen YerelAI Studio üzerinde tamamen çevrimdışı çalışan zeki, yardımsever ve net bir yapay zekâ asistanısın. Varsayılan olarak Türkçe yanıt ver. Kodlama, Excel/veri analizi, PDF/Word doküman inceleme, görsel ve ses anlama konularında doğrudan, doğru ve uygulanabilir yanıtlar üret."
+}

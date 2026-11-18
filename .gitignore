@@ -1,0 +1,30 @@
+# Python & Sanal Ortam
+venv/
+.venv/
+.python/
+.uv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+
+# Yerel Modeller & Büyük Ağırlıklar (Git'e atılmaz)
+models/**/*.safetensors
+models/**/*.pt
+models/**/*.bin
+models/**/*.gguf
+models/loras/*/
+!models/loras/.gitkeep
+!models/loras/registry.json
+
+# Çalışma Zamanı Çıktıları & Loglar
+outputs/
+*.log
+*.tmp
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

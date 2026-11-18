@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="tr" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>YerelAI Studio · Gemma 4 Multimodal</title>
+  <meta name="description" content="İnternetsiz yerel GPU VRAM üzerinde çalışan ses, görsel, kod, Excel ve doküman destekli Gemma 4 yapay zekâ stüdyosu." />
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="studio-shell">
+    <!-- Left Sidebar -->
+    <aside class="sidebar" id="sidebar" aria-label="Sohbetler ve Eğitim Merkezi">
+      <div class="sidebar-top">
+        <div class="brand">
+          <img src="favicon.svg" alt="YerelAI" class="brand-logo" width="26" height="26" />
+          <div>
+            <div class="brand-name">YerelAI</div>
+            <div class="brand-sub">Gemma 4 Studio</div>
+          </div>
+        </div>
+        <button type="button" id="btn-theme-toggle" class="icon-btn" title="Tema Değiştir">
+          <svg id="icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+          <svg id="icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" hidden><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        </button>
+      </div>
+
+      <button type="button" id="btn-new-chat" class="btn-solid new-chat-btn">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        <span>Yeni Sohbet</span>
+      </button>
+
+      <div class="sidebar-search-wrap">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input id="session-search" type="search" placeholder="Sohbetlerde ara..." aria-label="Sohbet ara" />
+      </div>
+
+      <div class="sidebar-scroll">
+        <div class="nav-section-label">Sohbet Geçmişi</div>
+        <div id="session-list" class="session-list"></div>
+
+        <div class="nav-section-label">Aktif Dosyalar &amp; Tablolar</div>
+        <div id="session-files-list" class="session-files-list">
+          <div class="muted-empty">Henüz dosya eklenmedi</div>
+        </div>
+      </div>
+
+      <!-- Colab & LoRA Card -->
+      <div class="colab-card">
+        <div class="colab-card-head">
+          <span class="colab-badge">Colab · Unsloth</span>
+          <span id="dataset-count-badge" class="mono dataset-pill">0 örnek</span>
+        </div>
+        <div class="colab-card-desc">Beğendiğiniz yanıtları eğitim setine ekleyin, Colab T4 üzerinde ücretsiz LoRA eğitin.</div>
+        <div class="colab-card-actions">
+          <button type="button" id="btn-export-dataset" class="btn-outline-xs" title="JSONL Eğitim Setini İndir">JSONL İndir</button>
+          <button type="button" id="btn-download-colab" class="btn-outline-xs accent" title="Colab Eğitim Notebook İndir">Colab (.ipynb)</button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Workspace -->
+    <div class="main-area">
+      <!-- Top Bar with Live VRAM Gauge -->
+      <header class="top-bar">
+        <div class="top-left">
+          <button type="button" id="btn-mobile-sidebar" class="icon-btn mobile-only" aria-label="Menü">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+          </button>
+          <div class="active-model-pill" id="active-model-pill">
+            <span class="status-dot" id="top-status-dot"></span>
+            <span id="top-model-name">Gemma 4 E2B (4-Bit)</span>
+            <span class="profile-tag" id="top-profile-badge">Otomatik</span>
+          </div>
+        </div>
+
+        <div class="top-vram-wrap">
+          <div class="vram-meta mono">
+            <span id="vram-device-name">GPU</span>
+            <span id="vram-usage-text">0 / 0 MB</span>
+            <span id="idle-timer-badge" class="idle-pill" hidden>15:00</span>
+          </div>
+          <div class="vram-track">
+            <div id="vram-fill" class="vram-fill"></div>
+          </div>
+        </div>
+
+        <div class="top-actions">
+          <button type="button" id="btn-load-model" class="btn-outline-sm">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+            <span>Modeli Yükle</span>
+          </button>
+          <button type="button" id="btn-unload-model" class="btn-outline-sm danger" hidden>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+            <span>VRAM'i Boşalt</span>
+          </button>
+          <button type="button" id="btn-toggle-inspector" class="icon-btn active" title="Model &amp; Parametre Paneli">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+          </button>
+        </div>
+      </header>
+
+      <!-- Workspace Body: Chat + Inspector -->
+      <div class="workspace-body">
+        <main class="chat-column" id="drop-zone">
+          <div id="drag-overlay" class="drag-overlay" hidden>
+            <div class="drag-overlay-box">
+              <div class="drag-icon">📂</div>
+              <div>Excel, PDF, Word, Kod, Görsel veya Ses dosyasını buraya bırakın</div>
+            </div>
+          </div>
+
+          <div class="chat-scroll" id="chat-scroll">
+            <!-- Hero Welcome -->
+            <section id="welcome-hero" class="welcome-hero">
+              <div class="hero-badge">Tamamen Yerel · İnternetsiz · Gemma 4 Multimodal</div>
+              <h1>Yerel GPU'nuzda çalışan kişisel yapay zekânız.</h1>
+              <p>Sesle konuşun, Excel veya PDF dosyalarınızı analiz edin, kod yazın ve Thinking Effort seviyesiyle düşünme derinliğini kontrol edin.</p>
+
+              <div class="starter-grid">
+                <button type="button" class="starter-card" data-action="excel">
+                  <span class="starter-emoji">📊</span>
+                  <strong>Excel Tablosu Analiz Et</strong>
+                  <span>.xlsx / .csv özet istatistik ve tablo sorgulama</span>
+                </button>
+                <button type="button" class="starter-card" data-action="voice">
+                  <span class="starter-emoji">🎙️</span>
+                  <strong>Sesli Konuşma Başlat</strong>
+                  <span>Doğrudan Gemma 4 yerleşik ses algılama ile konuş</span>
+                </button>
+                <button type="button" class="starter-card" data-action="code">
+                  <span class="starter-emoji">💻</span>
+                  <strong>Python / JS Kod Yaz</strong>
+                  <span>Yüksek düşünme moduyla hata ayıklama ve mimari</span>
+                </button>
+                <button type="button" class="starter-card" data-action="doc">
+                  <span class="starter-emoji">📄</span>
+                  <strong>PDF / Word Özeti Çıkar</strong>
+                  <span>Sayfa sayfa okuma, tablo çıkarma ve raporlama</span>
+                </button>
+              </div>
+            </section>
+
+            <!-- Messages Stream -->
+            <div id="messages-list" class="messages-list"></div>
+          </div>
+
+          <!-- Composer Dock -->
+          <div class="composer-wrap">
+            <div class="composer-card">
+              <!-- Thinking Effort + Audio Wave Row -->
+              <div class="composer-toolbar">
+                <div class="effort-pills" role="group" aria-label="Düşünme Seviyesi (Thinking Effort)">
+                  <span class="effort-label">Düşünme:</span>
+                  <button type="button" class="effort-pill" data-effort="off" title="Düşünme kapalı · Anında yanıt">⚡ Kapalı</button>
+                  <button type="button" class="effort-pill" data-effort="low" title="Hızlı akıl yürütme (256 token · 4GB dostu)">🧠 Düşük</button>
+                  <button type="button" class="effort-pill active" data-effort="medium" title="Dengeli akıl yürütme (768 token)">🧠 Orta</button>
+                  <button type="button" class="effort-pill" data-effort="high" title="Derin analiz ve kodlama (2048 token)">🔥 Yüksek</button>
+                </div>
+
+                <div class="voice-controls">
+                  <label class="auto-tts-toggle" title="Yanıt tamamlandığında otomatik sesli oku">
+                    <input type="checkbox" id="chk-auto-tts" />
+                    <span>🔊 Sesli Yanıt</span>
+                  </label>
+                </div>
+              </div>
+
+              <!-- Live Recording Bar -->
+              <div id="recording-bar" class="recording-bar" hidden>
+                <span class="rec-dot"></span>
+                <span class="rec-text">Dinleniyor (16kHz WAV)...</span>
+                <canvas id="rec-waveform" width="220" height="28"></canvas>
+                <span id="rec-timer" class="mono">00:00</span>
+                <button type="button" id="btn-rec-stop" class="btn-solid-xs">Kaydı Gönder</button>
+                <button type="button" id="btn-rec-cancel" class="btn-outline-xs">İptal</button>
+              </div>
+
+              <!-- Pending Attachments -->
+              <div id="pending-attachments" class="pending-attachments" hidden></div>
+
+              <!-- Input Area -->
+              <div class="composer-input-row">
+                <input type="file" id="file-input" multiple hidden accept=".xlsx,.xls,.csv,.pdf,.docx,.txt,.md,.py,.js,.ts,.jsx,.tsx,.html,.css,.json,.sql,.ps1,.bat,.png,.jpg,.jpeg,.webp,.bmp,.wav,.mp3,.ogg,.m4a" />
+                <button type="button" id="btn-attach" class="composer-icon-btn" title="Excel, PDF, Word, Kod, Görsel veya Ses Ekle">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                </button>
+                <button type="button" id="btn-mic" class="composer-icon-btn" title="Sesli Konuş (Bas-Konuş / Mikrofon)">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+                </button>
+
+                <textarea id="prompt-input" rows="1" placeholder="Bir soru sorun, kod isteyin veya Excel/PDF sürükleyip bırakın... (Enter: Gönder)"></textarea>
+
+                <button type="button" id="btn-send" class="btn-send" title="Gönder">
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                </button>
+                <button type="button" id="btn-stop" class="btn-send stop" title="Üretimi Durdur" hidden>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </main>
+
+        <!-- Right Inspector Panel -->
+        <aside class="inspector" id="inspector" aria-label="Model ve Donanım Ayarları">
+          <div class="inspector-header">
+            <span>Motor &amp; Model Ayarları</span>
+            <span id="inspector-state-badge" class="state-chip">Beklemede</span>
+          </div>
+
+          <div class="inspector-scroll">
+            <div class="insp-group">
+              <label class="insp-label" for="sel-model">Yerel Dil Modeli</label>
+              <select id="sel-model" class="insp-select"></select>
+              <div id="model-desc" class="insp-hint"></div>
+            </div>
+
+            <div class="insp-group">
+              <label class="insp-label" for="sel-lora">Colab LoRA Adaptörü</label>
+              <select id="sel-lora" class="insp-select">
+                <option value="">Adaptör Yok (Temel Model)</option>
+              </select>
+              <div class="slider-row" id="lora-scale-row">
+                <span class="insp-sub">LoRA Etki Gücü</span>
+                <span id="val-lora-scale" class="mono">1.0x</span>
+              </div>
+              <input type="range" id="rng-lora-scale" min="0" max="2" step="0.1" value="1.0" />
+            </div>
+
+            <div class="insp-group">
+              <label class="insp-label" for="sel-gpu-profile">Donanım VRAM Profili</label>
+              <select id="sel-gpu-profile" class="insp-select">
+                <option value="auto">Otomatik Algıla (4GB / 8GB+)</option>
+                <option value="low_vram">Low-VRAM (4GB Laptop Uyumlu)</option>
+                <option value="turbo">Turbo GPU (8GB+ Tam GPU)</option>
+              </select>
+            </div>
+
+            <div class="insp-group">
+              <div class="slider-row">
+                <label class="insp-label" for="rng-temp">Yaratıcılık (Temperature)</label>
+                <span id="val-temp" class="mono">0.70</span>
+              </div>
+              <input type="range" id="rng-temp" min="0" max="1.5" step="0.05" value="0.7" />
+            </div>
+
+            <div class="insp-group">
+              <div class="slider-row">
+                <label class="insp-label" for="rng-top-p">Top-P</label>
+                <span id="val-top-p" class="mono">0.95</span>
+              </div>
+              <input type="range" id="rng-top-p" min="0.1" max="1.0" step="0.05" value="0.95" />
+            </div>
+
+            <div class="insp-group">
+              <div class="slider-row">
+                <label class="insp-label" for="rng-max-tokens">Maks. Yanıt Tokeni</label>
+                <span id="val-max-tokens" class="mono">2048</span>
+              </div>
+              <input type="range" id="rng-max-tokens" min="256" max="4096" step="128" value="2048" />
+            </div>
+
+            <div class="insp-group">
+              <div class="slider-row">
+                <label class="insp-label" for="rng-idle-min">Boşta VRAM Temizleme</label>
+                <span id="val-idle-min" class="mono">15 dk</span>
+              </div>
+              <input type="range" id="rng-idle-min" min="2" max="60" step="1" value="15" />
+            </div>
+
+            <div class="insp-group">
+              <label class="insp-label" for="txt-system-prompt">Sistem Yönergesi</label>
+              <textarea id="txt-system-prompt" rows="4" class="insp-textarea"></textarea>
+              <button type="button" id="btn-save-config" class="btn-outline-xs full">Ayarları Kaydet</button>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </div>
+
+  <!-- Colab Dataset Entry Modal -->
+  <div id="dataset-modal" class="modal-backdrop" hidden>
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Colab Eğitim Setine Ekle</h3>
+        <button type="button" id="btn-modal-close" class="icon-btn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <label class="insp-label">Kullanıcı Sorusu (Prompt)</label>
+        <textarea id="ds-user-input" rows="3" class="insp-textarea"></textarea>
+        <label class="insp-label">İdeal Asistan Yanıtı (Düzenlenebilir)</label>
+        <textarea id="ds-assistant-input" rows="7" class="insp-textarea"></textarea>
+      </div>
+      <div class="modal-footer">
+        <button type="button" id="btn-ds-cancel" class="btn-outline-sm">Vazgeç</button>
+        <button type="button" id="btn-ds-save" class="btn-solid">Eğitim Setine Kaydet</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

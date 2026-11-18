@@ -1,0 +1,28 @@
+{
+  "models": [
+    {
+      "id": "gemma-4-e2b-4bit",
+      "name": "Gemma 4 E2B (4-Bit Multimodal)",
+      "hf_repo": "unsloth/gemma-4-E2B-it-unsloth-bnb-4bit",
+      "effective_params": "2.3B Aktif / 5.1B Toplam",
+      "vram_estimate_mb": 3000,
+      "recommended_profiles": ["low_vram", "turbo"],
+      "context_length": 131072,
+      "capabilities": ["text", "audio", "image", "thinking", "coding"],
+      "description": "4 GB ve 8 GB VRAM kartlarda tam GPU hızında çalışan yerleşik ses, görsel, kod ve düşünme destekli hızlı model.",
+      "badge": "4GB & 8GB · Hızlı"
+    },
+    {
+      "id": "gemma-4-e4b-4bit",
+      "name": "Gemma 4 E4B (4-Bit Multimodal)",
+      "hf_repo": "unsloth/gemma-4-E4B-it-unsloth-bnb-4bit",
+      "effective_params": "4.5B Aktif / 8.0B Toplam",
+      "vram_estimate_mb": 4600,
+      "recommended_profiles": ["turbo"],
+      "context_length": 131072,
+      "capabilities": ["text", "audio", "image", "thinking", "coding"],
+      "description": "8 GB RTX 4060 için üst düzey kodlama, derin akıl yürütme ve karmaşık analiz modeli (4 GB kartta hibrit modda çalışır).",
+      "badge": "8GB Turbo · Güçlü"
+    }
+  ]
+}
