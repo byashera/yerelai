@@ -1,0 +1,59 @@
+name: Build SEN.AI iOS (.ipa)
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "ios-app/**"
+      - ".github/workflows/build-ios.yml"
+
+jobs:
+  build-ios:
+    name: Build Unsigned SEN-AI.ipa
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Show Xcode & Swift version
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        working-directory: ios-app
+        run: xcodegen generate
+
+      - name: Build SENAI.app (Release, unsigned for SideStore / AltStore / Sideloadly)
+        working-directory: ios-app
+        run: |
+          xcodebuild \
+            -project SENAI.xcodeproj \
+            -scheme SENAI \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            clean build
+
+      - name: Package SEN-AI.ipa
+        working-directory: ios-app
+        run: |
+          mkdir -p dist/Payload
+          cp -R build/Build/Products/Release-iphoneos/SENAI.app dist/Payload/
+          cd dist
+          zip -qry SEN-AI.ipa Payload
+          ls -lh SEN-AI.ipa
+
+      - name: Upload SEN-AI.ipa artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SEN-AI-iOS-IPA
+          path: ios-app/dist/SEN-AI.ipa
+          retention-days: 30

@@ -3,6 +3,7 @@ venv/
 .venv/
 .python/
 .uv/
+.cloudflared/
 __pycache__/
 *.pyc
 *.pyo
@@ -14,12 +15,15 @@ models/**/*.safetensors
 models/**/*.pt
 models/**/*.bin
 models/**/*.gguf
+models/**/*.part
+models/gguf/**/.cache/
 models/loras/*/
 !models/loras/.gitkeep
 !models/loras/registry.json
 
 # Çalışma Zamanı Çıktıları & Loglar
 outputs/
+data/rag_index/
 *.log
 *.tmp
 
@@ -28,3 +32,16 @@ outputs/
 Thumbs.db
 .vscode/
 .idea/
+
+# Electron & iOS Derleme Çıktıları
+desktop/node_modules/
+desktop/dist/
+ios-app/build/
+ios-app/dist/
+ios-app/*.xcodeproj/
+
+# Kişisel Veriler, Sohbet Arşivi & Gizli Yapılandırmalar
+data/
+chat_logs/
+mcp_servers.json
+tunnel_config.json

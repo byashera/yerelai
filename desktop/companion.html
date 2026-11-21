@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="tr" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <title>YerelAI Hızlı Sor</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root, [data-theme="dark"] {
+      --bg: #181b23;
+      --bg-bar: #12151c;
+      --border: rgba(255, 255, 255, 0.13);
+      --text: #f1f5f9;
+      --muted: #9aa4b6;
+      --chip-bg: rgba(255, 255, 255, 0.06);
+      --chip-act-bg: rgba(59, 130, 246, 0.20);
+      --chip-act-bd: rgba(59, 130, 246, 0.55);
+      --chip-act-tx: #93c5fd;
+      --kbd-bg: rgba(255, 255, 255, 0.08);
+    }
+    [data-theme="light"] {
+      --bg: #fdfbf7;
+      --bg-bar: #f4efe6;
+      --border: rgba(72, 58, 38, 0.18);
+      --text: #1f1b16;
+      --muted: #766c5f;
+      --chip-bg: rgba(72, 58, 38, 0.06);
+      --chip-act-bg: rgba(37, 99, 235, 0.12);
+      --chip-act-bd: rgba(37, 99, 235, 0.45);
+      --chip-act-tx: #1d4ed8;
+      --kbd-bg: rgba(72, 58, 38, 0.09);
+    }
+    html, body {
+      width: 100%; height: 100%; overflow: hidden; background: transparent;
+      font-family: "Segoe UI Variable", "Segoe UI", "Inter", system-ui, sans-serif; color: var(--text);
+    }
+    .shell {
+      width: 100%; height: 100%; border-radius: 18px; overflow: hidden;
+      background: var(--bg); border: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      animation: popIn 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    @keyframes popIn { from { opacity: 0; transform: scale(0.97); } to { opacity: 1; transform: scale(1); } }
+    .top {
+      flex: 1; display: flex; align-items: center; gap: 11px; padding: 12px 14px;
+    }
+    .brand-ico {
+      width: 32px; height: 32px; border-radius: 10px; flex-shrink: 0;
+      display: inline-flex; align-items: center; justify-content: center;
+      background: linear-gradient(135deg, #06b6d4, #2563eb);
+      -webkit-app-region: drag;
+    }
+    input {
+      flex: 1; border: none; outline: none; background: transparent; color: var(--text);
+      font-size: 15.5px; font-weight: 500;
+    }
+    input::placeholder { color: var(--muted); }
+    .send-circle {
+      width: 34px; height: 34px; border-radius: 50%; border: none; flex-shrink: 0;
+      background: linear-gradient(135deg, #2563eb, #3b82f6); color: #ffffff;
+      display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+      transition: transform 0.15s ease, filter 0.15s ease;
+    }
+    .send-circle:hover { filter: brightness(1.08); transform: scale(1.05); }
+    .bar {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      padding: 8px 14px; background: var(--bg-bar); border-top: 1px solid var(--border);
+    }
+    .chips { display: inline-flex; align-items: center; gap: 6px; }
+    .chip {
+      height: 28px; padding: 0 10px; border-radius: 999px; border: 1px solid transparent;
+      background: var(--chip-bg); color: var(--muted); font-size: 11.5px; font-weight: 600;
+      display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
+      transition: all 0.14s ease;
+    }
+    .chip:hover { color: var(--text); border-color: var(--border); }
+    .chip.active {
+      background: var(--chip-act-bg); border-color: var(--chip-act-bd); color: var(--chip-act-tx);
+    }
+    .thumb-chip {
+      display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px 2px 3px;
+      border-radius: 999px; background: var(--chip-act-bg); border: 1px solid var(--chip-act-bd);
+      font-size: 11px; font-weight: 600; color: var(--chip-act-tx);
+    }
+    .thumb-chip[hidden] { display: none; }
+    .thumb-chip img { width: 24px; height: 18px; object-fit: cover; border-radius: 5px; }
+    .thumb-del { border: none; background: transparent; color: inherit; cursor: pointer; font-weight: 700; font-size: 13px; }
+    .hints { font-size: 10.5px; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
+    kbd { padding: 1px 5px; border-radius: 4px; font-size: 10px; font-family: Consolas, monospace; background: var(--kbd-bg); color: var(--text); }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="top">
+      <span class="brand-ico" title="Sürükle">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><polygon points="12,2.5 21,9 17.5,20.5 6.5,20.5 3,9" stroke="#fff" stroke-width="2" fill="rgba(255,255,255,0.22)"/></svg>
+      </span>
+      <input id="q" type="text" placeholder="YerelAI'ya hızlıca sor..." autofocus />
+      <button type="button" id="btn-go" class="send-circle" title="Gönder (Enter)" aria-label="Gönder">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
+      </button>
+    </div>
+    <div class="bar">
+      <div class="chips">
+        <button type="button" id="btn-shot" class="chip" title="Mevcut Ekranı Yakala">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+          <span>Ekran Yakala</span>
+        </button>
+        <button type="button" id="btn-clip" class="chip" title="Windows Panosundaki Metni Ekle">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></svg>
+          <span>Pano</span>
+        </button>
+        <button type="button" id="btn-web" class="chip" title="Canlı Web Araştırması ile Sor">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+          <span>Araştır</span>
+        </button>
+        <button type="button" id="btn-think" class="chip" title="Yüksek Akıl Yürütme Modu">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z"/></svg>
+          <span>Derin Düşün</span>
+        </button>
+        <span class="thumb-chip" id="thumb-wrap" hidden>
+          <img id="thumb-img" src="" alt="" />
+          <span>Ekran</span>
+          <button type="button" class="thumb-del" id="btn-thumb-del">×</button>
+        </span>
+      </div>
+      <span class="hints"><kbd>Enter</kbd> Gönder <kbd>ESC</kbd> Gizle</span>
+    </div>
+  </div>
+  <script>
+    const qEl = document.getElementById("q");
+    const btnShot = document.getElementById("btn-shot");
+    const btnClip = document.getElementById("btn-clip");
+    const btnWeb = document.getElementById("btn-web");
+    const btnThink = document.getElementById("btn-think");
+    const btnGo = document.getElementById("btn-go");
+    const thumbWrap = document.getElementById("thumb-wrap");
+    const thumbImg = document.getElementById("thumb-img");
+    const btnThumbDel = document.getElementById("btn-thumb-del");
+    let shotDataUrl = null;
+    let webOn = false;
+    let thinkOn = false;
+
+    window.yerelDesktop?.onThemeChange?.((t) => {
+      document.documentElement.setAttribute("data-theme", t === "light" ? "light" : "dark");
+    });
+
+    function clearShot() { shotDataUrl = null; thumbWrap.hidden = true; }
+    function submit() {
+      const text = (qEl.value || "").trim();
+      if (!text && !shotDataUrl) return;
+      window.yerelDesktop?.submitCompanion({ text, screenshot: shotDataUrl, webSearch: webOn, highEffort: thinkOn });
+      qEl.value = "";
+      clearShot();
+    }
+    btnWeb.addEventListener("click", () => { webOn = !webOn; btnWeb.classList.toggle("active", webOn); qEl.focus(); });
+    btnThink.addEventListener("click", () => { thinkOn = !thinkOn; btnThink.classList.toggle("active", thinkOn); qEl.focus(); });
+    btnShot.addEventListener("click", async () => {
+      const dataUrl = await window.yerelDesktop?.captureScreen();
+      if (dataUrl) { shotDataUrl = dataUrl; thumbImg.src = dataUrl; thumbWrap.hidden = false; qEl.focus(); }
+    });
+    btnClip?.addEventListener("click", async () => {
+      const txt = await window.yerelDesktop?.readClipboard?.();
+      if (txt && txt.trim()) {
+        const cur = qEl.value.trim();
+        qEl.value = cur ? `${cur}\n${txt.trim().slice(0, 600)}` : txt.trim().slice(0, 600);
+        qEl.focus();
+      }
+    });
+    btnThumbDel.addEventListener("click", clearShot);
+    btnGo.addEventListener("click", submit);
+    qEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); submit(); }
+      else if (e.key === "Escape") { e.preventDefault(); window.yerelDesktop?.hideCompanion(); }
+    });
+    window.addEventListener("focus", () => { setTimeout(() => qEl.focus(), 30); });
+  </script>
+</body>
+</html>

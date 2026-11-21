@@ -2,27 +2,35 @@
   "models": [
     {
       "id": "gemma-4-e2b-4bit",
-      "name": "Gemma 4 E2B (4-Bit Multimodal)",
+      "name": "Gemma 4 E2B (GGUF Turbo Multimodal)",
       "hf_repo": "unsloth/gemma-4-E2B-it-unsloth-bnb-4bit",
+      "gguf_repo": "unsloth/gemma-4-E2B-it-GGUF",
+      "gguf_file": "gemma-4-E2B-it-Q4_K_M.gguf",
+      "mmproj_file": "mmproj-F16.gguf",
+      "gguf_dir": "gemma-4-E2B-it",
       "effective_params": "2.3B Aktif / 5.1B Toplam",
-      "vram_estimate_mb": 3000,
+      "vram_estimate_mb": 3400,
       "recommended_profiles": ["low_vram", "turbo"],
       "context_length": 131072,
       "capabilities": ["text", "audio", "image", "thinking", "coding"],
-      "description": "4 GB ve 8 GB VRAM kartlarda tam GPU hızında çalışan yerleşik ses, görsel, kod ve düşünme destekli hızlı model.",
-      "badge": "4GB & 8GB · Hızlı"
+      "description": "4 GB ve 8 GB VRAM kartlarda tam CUDA GPU hızında çalışan yerleşik ses, görsel, kod ve düşünme destekli hızlı model.",
+      "badge": "GGUF Turbo · 4GB/8GB"
     },
     {
       "id": "gemma-4-e4b-4bit",
-      "name": "Gemma 4 E4B (4-Bit Multimodal)",
+      "name": "Gemma 4 E4B (GGUF Turbo Multimodal)",
       "hf_repo": "unsloth/gemma-4-E4B-it-unsloth-bnb-4bit",
+      "gguf_repo": "unsloth/gemma-4-E4B-it-GGUF",
+      "gguf_file": "gemma-4-E4B-it-Q4_K_M.gguf",
+      "mmproj_file": "mmproj-F16.gguf",
+      "gguf_dir": "gemma-4-E4B-it",
       "effective_params": "4.5B Aktif / 8.0B Toplam",
-      "vram_estimate_mb": 4600,
+      "vram_estimate_mb": 5600,
       "recommended_profiles": ["turbo"],
       "context_length": 131072,
       "capabilities": ["text", "audio", "image", "thinking", "coding"],
       "description": "8 GB RTX 4060 için üst düzey kodlama, derin akıl yürütme ve karmaşık analiz modeli (4 GB kartta hibrit modda çalışır).",
-      "badge": "8GB Turbo · Güçlü"
+      "badge": "GGUF Turbo · 8GB"
     }
   ]
 }

@@ -1,13 +1,19 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
   <defs>
-    <linearGradient id="g" x1="8" y1="8" x2="56" y2="56" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#f0713d"/>
-      <stop offset="55%" stop-color="#f59e0b"/>
-      <stop offset="100%" stop-color="#38bdf8"/>
+    <linearGradient id="aether-main" x1="10" y1="8" x2="54" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#06b6d4"/>
+      <stop offset="52%" stop-color="#3b82f6"/>
+      <stop offset="100%" stop-color="#6366f1"/>
+    </linearGradient>
+    <linearGradient id="aether-facet" x1="18" y1="16" x2="46" y2="48" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#67e8f9" stop-opacity="0.95"/>
+      <stop offset="100%" stop-color="#3b82f6" stop-opacity="0.25"/>
     </linearGradient>
   </defs>
-  <rect width="64" height="64" rx="16" fill="#0d1424"/>
-  <rect x="2" y="2" width="60" height="60" rx="14" stroke="url(#g)" stroke-width="2.5" stroke-opacity="0.7"/>
-  <path d="M32 14L37.2 26.8L50 32L37.2 37.2L32 50L26.8 37.2L14 32L26.8 26.8L32 14Z" fill="url(#g)"/>
-  <circle cx="32" cy="32" r="4.5" fill="#090e1a"/>
+  <rect width="64" height="64" rx="16" fill="#080b12"/>
+  <rect x="2" y="2" width="60" height="60" rx="14" stroke="url(#aether-main)" stroke-width="2" stroke-opacity="0.55"/>
+  <polygon points="32,11 51,25 43,51 21,51 13,25" fill="url(#aether-main)" fill-opacity="0.18" stroke="url(#aether-main)" stroke-width="2.2" stroke-linejoin="round"/>
+  <polygon points="32,11 43,51 21,51" fill="url(#aether-facet)"/>
+  <polygon points="32,11 51,25 32,33 13,25" fill="#e0f2fe" fill-opacity="0.28"/>
+  <circle cx="32" cy="31" r="3.4" fill="#f8fafc"/>
 </svg>

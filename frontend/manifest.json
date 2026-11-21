@@ -1,0 +1,18 @@
+{
+  "name": "SEN.AI",
+  "short_name": "SEN.AI",
+  "description": "Yerel GPU VRAM üzerinde çalışan SEN.AI sesli, görsel ve kod yapay zekâ asistanı.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#14161c",
+  "theme_color": "#14161c",
+  "icons": [
+    {
+      "src": "favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

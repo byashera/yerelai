@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="tr" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <title>YerelAI</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root, [data-theme="dark"] {
+      --bg: #14161c;
+      --bg2: #1b1f2a;
+      --border: rgba(255, 255, 255, 0.12);
+      --text: #f1f5f9;
+      --muted: #9aa4b6;
+      --track: rgba(255, 255, 255, 0.08);
+      --glow1: rgba(59, 130, 246, 0.22);
+      --glow2: rgba(6, 182, 212, 0.16);
+      --tag: #60a5fa;
+    }
+    [data-theme="light"] {
+      --bg: #faf7f0;
+      --bg2: #f1ebe0;
+      --border: rgba(72, 58, 38, 0.16);
+      --text: #1f1b16;
+      --muted: #6c6255;
+      --track: rgba(72, 58, 38, 0.10);
+      --glow1: rgba(37, 99, 235, 0.12);
+      --glow2: rgba(217, 119, 6, 0.11);
+      --tag: #2563eb;
+    }
+    html, body {
+      width: 100%; height: 100%; overflow: hidden; background: transparent;
+      font-family: "Segoe UI Variable", "Segoe UI", "Inter", system-ui, sans-serif;
+      color: var(--text); user-select: none; -webkit-app-region: drag;
+    }
+    .card {
+      position: relative; width: 100%; height: 100%; border-radius: 22px; overflow: hidden;
+      background:
+        radial-gradient(circle at 20% 15%, var(--glow1), transparent 55%),
+        radial-gradient(circle at 85% 85%, var(--glow2), transparent 55%),
+        linear-gradient(160deg, var(--bg), var(--bg2));
+      border: 1px solid var(--border);
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+      padding: 28px 34px;
+      animation: splashIn 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+      transition: opacity 0.26s ease, transform 0.26s ease;
+    }
+    .card.is-fading { opacity: 0; transform: scale(0.97); }
+    @keyframes splashIn {
+      from { opacity: 0; transform: scale(0.94); }
+      to   { opacity: 1; transform: scale(1); }
+    }
+    .card::before {
+      content: ""; position: absolute; inset: 0; border-radius: 22px; padding: 1.2px;
+      background: linear-gradient(125deg, rgba(59,130,246,0.45), transparent 38%, transparent 62%, rgba(6,182,212,0.45));
+      -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+      -webkit-mask-composite: xor; mask-composite: exclude;
+      pointer-events: none;
+    }
+    .orb-wrap {
+      position: relative; width: 84px; height: 84px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .ring {
+      position: absolute; inset: 4px; border-radius: 50%;
+      border: 1.5px solid rgba(59, 130, 246, 0.32);
+      animation: orbitSpin 5s linear infinite;
+    }
+    .ring::after {
+      content: ""; position: absolute; top: -3px; left: 50%; width: 6px; height: 6px;
+      border-radius: 50%; background: #38bdf8; box-shadow: 0 0 10px #38bdf8;
+    }
+    @keyframes orbitSpin {
+      from { transform: rotateX(64deg) rotateZ(0deg); }
+      to   { transform: rotateX(64deg) rotateZ(360deg); }
+    }
+    .halo {
+      position: absolute; inset: 14px; border-radius: 50%;
+      background: radial-gradient(circle, rgba(59, 130, 246, 0.34), transparent 70%);
+      filter: blur(10px); animation: pulseHalo 2.4s ease-in-out infinite;
+    }
+    @keyframes pulseHalo { 0%, 100% { opacity: 0.55; transform: scale(0.95); } 50% { opacity: 1; transform: scale(1.12); } }
+    .crystal {
+      position: relative; z-index: 2; width: 58px; height: 58px;
+      filter: drop-shadow(0 8px 18px rgba(37, 99, 235, 0.42));
+      animation: floatY 2.6s ease-in-out infinite;
+    }
+    @keyframes floatY { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+    .brand { text-align: center; display: flex; flex-direction: column; gap: 4px; }
+    .tag { font-size: 10.5px; font-weight: 700; letter-spacing: 0.12em; color: var(--tag); }
+    h1 { font-size: 22px; font-weight: 800; letter-spacing: -0.025em; }
+    .progress-wrap { width: 220px; display: flex; flex-direction: column; align-items: center; gap: 8px; margin-top: 2px; }
+    .progress-track {
+      width: 100%; height: 4px; border-radius: 999px; background: var(--track); overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%; width: 28%; border-radius: 999px;
+      background: linear-gradient(90deg, #06b6d4, #2563eb, #6366f1);
+      transition: width 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .step-msg { font-size: 12px; font-weight: 500; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="card" id="splash-card">
+    <div class="orb-wrap">
+      <span class="halo"></span>
+      <span class="ring"></span>
+      <svg class="crystal" viewBox="0 0 80 80" fill="none">
+        <defs>
+          <linearGradient id="g1" x1="16" y1="8" x2="42" y2="50" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#67e8f9"/><stop offset="100%" stop-color="#2563eb"/>
+          </linearGradient>
+          <linearGradient id="g2" x1="40" y1="8" x2="66" y2="54" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#93c5fd"/><stop offset="100%" stop-color="#4f46e5"/>
+          </linearGradient>
+        </defs>
+        <polygon points="40,6 14,48 40,56" fill="url(#g1)"/>
+        <polygon points="40,6 66,48 40,56" fill="url(#g2)"/>
+        <polygon points="14,48 40,74 40,56" fill="#1d4ed8"/>
+        <polygon points="66,48 40,74 40,56" fill="#4338ca"/>
+        <polygon points="40,6 40,56 26,44" fill="#ffffff" opacity="0.24"/>
+        <polygon points="40,6 66,48 40,74 14,48" stroke="rgba(255,255,255,0.5)" stroke-width="1.4" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <div class="brand">
+      <span class="tag">YERELAI MASAÜSTÜ · GEMMA 4</span>
+      <h1>YerelAI</h1>
+    </div>
+    <div class="progress-wrap">
+      <div class="progress-track"><div class="progress-fill" id="pfill"></div></div>
+      <div class="step-msg" id="status-msg">Yerel GPU motoru başlatılıyor...</div>
+    </div>
+  </div>
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    document.documentElement.setAttribute("data-theme", params.get("theme") === "light" ? "light" : "dark");
+    const msgEl = document.getElementById("status-msg");
+    const fillEl = document.getElementById("pfill");
+    const cardEl = document.getElementById("splash-card");
+    const pctMap = { 1: "32%", 2: "68%", 3: "100%" };
+    window.yerelDesktop?.onSplashStatus?.(({ step = 1, text = "", fade = false }) => {
+      if (text) msgEl.textContent = text;
+      if (pctMap[step]) fillEl.style.width = pctMap[step];
+      if (fade) cardEl.classList.add("is-fading");
+    });
+  </script>
+</body>
+</html>
