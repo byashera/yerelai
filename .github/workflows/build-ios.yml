@@ -1,4 +1,4 @@
-name: Build SEN.AI iOS (.ipa)
+name: Build SEN.AI iOS (.ipa & Simulator)
 
 on:
   workflow_dispatch:
@@ -9,7 +9,7 @@ on:
 
 jobs:
   build-ios:
-    name: Build Unsigned SEN-AI.ipa
+    name: Build SEN-AI.ipa, Appetize Simulator & Screenshots
     runs-on: macos-latest
 
     steps:
@@ -28,7 +28,7 @@ jobs:
         working-directory: ios-app
         run: xcodegen generate
 
-      - name: Build SENAI.app (Release, unsigned for SideStore / AltStore / Sideloadly)
+      - name: Build SENAI.app for iPhone (Release, unsigned .ipa)
         working-directory: ios-app
         run: |
           xcodebuild \
@@ -36,7 +36,7 @@ jobs:
             -scheme SENAI \
             -configuration Release \
             -sdk iphoneos \
-            -derivedDataPath build \
+            -derivedDataPath build-device \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
@@ -46,14 +46,69 @@ jobs:
         working-directory: ios-app
         run: |
           mkdir -p dist/Payload
-          cp -R build/Build/Products/Release-iphoneos/SENAI.app dist/Payload/
+          cp -R build-device/Build/Products/Release-iphoneos/SENAI.app dist/Payload/
           cd dist
           zip -qry SEN-AI.ipa Payload
           ls -lh SEN-AI.ipa
+
+      - name: Build SENAI.app for iOS Simulator (Appetize.io & Screenshots)
+        working-directory: ios-app
+        run: |
+          xcodebuild \
+            -project SENAI.xcodeproj \
+            -scheme SENAI \
+            -configuration Release \
+            -sdk iphonesimulator \
+            -destination "generic/platform=iOS Simulator" \
+            -derivedDataPath build-sim \
+            CODE_SIGNING_ALLOWED=NO \
+            clean build
+          mkdir -p dist-sim
+          cd build-sim/Build/Products/Release-iphonesimulator
+          zip -qry ../../../dist-sim/SEN-AI-Simulator.app.zip SENAI.app
+          ls -lh ../../../dist-sim/SEN-AI-Simulator.app.zip
+
+      - name: Capture Light & Dark iPhone Simulator Screenshots
+        working-directory: ios-app
+        continue-on-error: true
+        run: |
+          mkdir -p dist-shots
+          UDID=$(xcrun simctl list devices available | grep -E "iPhone 16 Pro|iPhone 16|iPhone 15" | head -n 1 | sed -E 's/.*\(([0-9A-F-]+)\).*/\1/')
+          echo "Using Simulator UDID: $UDID"
+          if [ -n "$UDID" ]; then
+            xcrun simctl boot "$UDID" || true
+            xcrun simctl bootstatus "$UDID" -b
+            xcrun simctl install "$UDID" build-sim/Build/Products/Release-iphonesimulator/SENAI.app
+            xcrun simctl ui "$UDID" appearance light
+            xcrun simctl launch "$UDID" com.senai.app
+            sleep 4
+            xcrun simctl io "$UDID" screenshot dist-shots/senai-ios-light.png
+            xcrun simctl ui "$UDID" appearance dark
+            sleep 2
+            xcrun simctl io "$UDID" screenshot dist-shots/senai-ios-dark.png
+            xcrun simctl shutdown "$UDID" || true
+            ls -lh dist-shots
+          fi
 
       - name: Upload SEN-AI.ipa artifact
         uses: actions/upload-artifact@v4
         with:
           name: SEN-AI-iOS-IPA
           path: ios-app/dist/SEN-AI.ipa
+          retention-days: 30
+
+      - name: Upload Appetize.io Simulator App (.app.zip)
+        uses: actions/upload-artifact@v4
+        with:
+          name: SEN-AI-Simulator-App
+          path: ios-app/dist-sim/SEN-AI-Simulator.app.zip
+          retention-days: 30
+
+      - name: Upload iPhone Simulator Screenshots (Light & Dark)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SEN-AI-Simulator-Screenshots
+          path: ios-app/dist-shots/*.png
+          if-no-files-found: ignore
           retention-days: 30
