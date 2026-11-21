@@ -64,9 +64,9 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             clean build
           mkdir -p dist-sim
-          cd build-sim/Build/Products/Release-iphonesimulator
-          zip -qry ../../../dist-sim/SEN-AI-Simulator.app.zip SENAI.app
-          ls -lh ../../../dist-sim/SEN-AI-Simulator.app.zip
+          OUT_ZIP="$PWD/dist-sim/SEN-AI-Simulator.app.zip"
+          (cd build-sim/Build/Products/Release-iphonesimulator && zip -qry "$OUT_ZIP" SENAI.app)
+          ls -lh "$OUT_ZIP"
 
       - name: Capture Light & Dark iPhone Simulator Screenshots
         working-directory: ios-app
