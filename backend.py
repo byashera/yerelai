@@ -2389,6 +2389,10 @@ app.add_middleware(
 )
 
 
+def _is_native_ios_client(request: Request) -> bool:
+    return request.headers.get("x-senai-client", "").strip().lower() == "ios-native"
+
+
 @app.middleware("http")
 async def pin_auth_middleware(request: Request, call_next):
     path = request.url.path
@@ -2398,7 +2402,7 @@ async def pin_auth_middleware(request: Request, call_next):
         cfg = load_json(CONFIG_PATH, {})
         if cfg.get("pin_enabled") and cfg.get("access_pin_hash"):
             local_bypass = cfg.get("pin_local_bypass", True)
-            if not (local_bypass and _is_local_request(request)):
+            if not (local_bypass and _is_local_request(request)) and not _is_native_ios_client(request):
                 tok = request.cookies.get(AUTH_COOKIE_NAME, "")
                 if not _verify_auth_token(tok, cfg):
                     return JSONResponse(status_code=401, content={"detail": "PIN kilidi aktif. Devam etmek için PIN girin.", "locked": True})
@@ -2412,7 +2416,7 @@ async def api_auth_state(request: Request):
     enabled = bool(cfg.get("pin_enabled") and cfg.get("access_pin_hash"))
     local_bypass = bool(cfg.get("pin_local_bypass", True))
     is_local = _is_local_request(request)
-    if not enabled or (local_bypass and is_local):
+    if not enabled or (local_bypass and is_local) or _is_native_ios_client(request):
         unlocked = True
     else:
         unlocked = _verify_auth_token(request.cookies.get(AUTH_COOKIE_NAME, ""), cfg)

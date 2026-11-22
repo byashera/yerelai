@@ -29,8 +29,9 @@ struct VoiceModeView: View {
             SenAmbientBackground()
 
             VStack(spacing: 24) {
-                // Top Header
+                // Top Header (centered status pill — bottom red button handles close)
                 HStack {
+                    Spacer()
                     HStack(spacing: 7) {
                         Circle()
                             .fill(server.connectionRoute == .disconnected ? Color.orange : Color.green)
@@ -38,23 +39,10 @@ struct VoiceModeView: View {
                         Text("SEN.AI · Sesli Sohbet")
                             .font(.subheadline.weight(.bold))
                     }
-                    .padding(.horizontal, 13)
-                    .padding(.vertical, 7)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
                     .senGlassCapsule(interactive: false)
-
                     Spacer()
-
-                    Button {
-                        voice.stopRecording(onFinal: nil)
-                        server.stopSpeaking()
-                        dismiss()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 15, weight: .bold))
-                            .frame(width: 38, height: 38)
-                    }
-                    .buttonStyle(SenSpringButtonStyle())
-                    .senGlassCircle(interactive: true)
                 }
                 .padding(.horizontal, 18)
                 .padding(.top, 14)
@@ -82,7 +70,14 @@ struct VoiceModeView: View {
                         .scaleEffect(voice.isRecording ? 1.07 : (server.speakingMessageId != nil ? 1.04 : 1.0))
                         .animation(.spring(response: 0.35, dampingFraction: 0.72), value: voice.isRecording)
                 }
-                .frame(height: 250)
+                .frame(height: 230)
+
+                // Live Audio Waveform Visualizer
+                VoiceWaveformBars(
+                    isActive: voice.isRecording || server.isGenerating || server.speakingMessageId != nil,
+                    tint: voice.isRecording ? .red : (server.isGenerating ? .indigo : .blue)
+                )
+                .frame(height: 28)
 
                 // Live Status & Transcript Preview
                 VStack(spacing: 10) {
@@ -170,6 +165,28 @@ struct VoiceModeView: View {
         .onDisappear {
             voice.stopRecording(onFinal: nil)
             server.stopSpeaking()
+        }
+    }
+}
+
+private struct VoiceWaveformBars: View {
+    let isActive: Bool
+    let tint: Color
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
+            let t = timeline.date.timeIntervalSinceReferenceDate
+            HStack(spacing: 5) {
+                ForEach(0..<9, id: \.self) { i in
+                    let phase = Double(i) * 0.65
+                    let wave = isActive
+                        ? (0.32 + 0.68 * abs(sin(t * 4.4 + phase)))
+                        : (0.22 + 0.16 * abs(sin(t * 1.4 + phase)))
+                    Capsule()
+                        .fill(tint.opacity(isActive ? 0.85 : 0.32))
+                        .frame(width: 4, height: max(6, CGFloat(wave) * 26))
+                }
+            }
         }
     }
 }

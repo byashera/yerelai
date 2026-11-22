@@ -51,6 +51,7 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
         cfg.httpCookieAcceptPolicy = .always
         cfg.httpShouldSetCookies = true
         cfg.httpCookieStorage = .shared
+        cfg.httpAdditionalHeaders = ["X-SENAI-Client": "ios-native"]
         cfg.timeoutIntervalForRequest = 120
         cfg.timeoutIntervalForResource = 300
         return URLSession(configuration: cfg)
@@ -141,18 +142,9 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
     // MARK: - Auth & Sessions
 
     private func checkAuthAndLoad() async {
-        guard let url = URL(string: "\(activeBaseURL)/api/auth/state") else { return }
-        do {
-            let (data, _) = try await urlSession.data(from: url)
-            if let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                let unlocked = (obj["unlocked"] as? Bool) ?? true
-                let pinEnabled = (obj["pin_enabled"] as? Bool) ?? false
-                requiresPin = pinEnabled && !unlocked
-                if !requiresPin {
-                    await fetchSessions()
-                }
-            }
-        } catch {}
+        // Native iOS IPA bypasses PIN via X-SENAI-Client: ios-native header
+        requiresPin = false
+        await fetchSessions()
     }
 
     func verifyPin(_ pin: String) async {

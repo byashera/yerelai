@@ -8,6 +8,7 @@ struct InstantCameraView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var controller = InstantCameraController()
     let onCapture: (Data) -> Void
+    var onOpenGallery: (() -> Void)? = nil
 
     var body: some View {
         ZStack {
@@ -39,7 +40,12 @@ struct InstantCameraView: View {
                 }
             }
 
-            // Subtle viewfinder corner guides
+            // Subtle viewfinder corner brackets
+            ViewfinderCornersOverlay()
+                .padding(.horizontal, 26)
+                .padding(.vertical, 118)
+                .allowsHitTesting(false)
+
             VStack {
                 // Top Liquid Glass Bar
                 HStack {
@@ -84,7 +90,21 @@ struct InstantCameraView: View {
 
                 // Bottom Instant Shutter Bar
                 HStack(spacing: 36) {
-                    Color.clear.frame(width: 44, height: 44)
+                    Button {
+                        SenHaptics.light()
+                        dismiss()
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                            onOpenGallery?()
+                        }
+                    } label: {
+                        Image(systemName: "photo.on.rectangle.angled")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 44, height: 44)
+                    }
+                    .buttonStyle(SenSpringButtonStyle())
+                    .senGlassCircle(interactive: true)
+                    .accessibilityLabel("Galeriden Seç")
 
                     // Instant Shutter Button (Zero Confirmation!)
                     Button {
@@ -126,6 +146,35 @@ struct InstantCameraView: View {
         }
         .onAppear { controller.start() }
         .onDisappear { controller.stop() }
+    }
+}
+
+private struct ViewfinderCornersOverlay: View {
+    var body: some View {
+        GeometryReader { geo in
+            let w = geo.size.width
+            let h = geo.size.height
+            let len: CGFloat = 24
+            Path { p in
+                // Top-left
+                p.move(to: CGPoint(x: 0, y: len))
+                p.addLine(to: CGPoint(x: 0, y: 0))
+                p.addLine(to: CGPoint(x: len, y: 0))
+                // Top-right
+                p.move(to: CGPoint(x: w - len, y: 0))
+                p.addLine(to: CGPoint(x: w, y: 0))
+                p.addLine(to: CGPoint(x: w, y: len))
+                // Bottom-left
+                p.move(to: CGPoint(x: 0, y: h - len))
+                p.addLine(to: CGPoint(x: 0, y: h))
+                p.addLine(to: CGPoint(x: len, y: h))
+                // Bottom-right
+                p.move(to: CGPoint(x: w - len, y: h))
+                p.addLine(to: CGPoint(x: w, y: h))
+                p.addLine(to: CGPoint(x: w, y: h - len))
+            }
+            .stroke(.white.opacity(0.42), style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+        }
     }
 }
 

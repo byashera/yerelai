@@ -24,6 +24,7 @@ struct ChatView: View {
         NavigationStack {
             ZStack {
                 SenAmbientBackground()
+                    .ignoresSafeArea(.keyboard)
 
                 VStack(spacing: 0) {
                     if server.connectionRoute == .disconnected && !server.isConnecting {
@@ -35,7 +36,9 @@ struct ChatView: View {
                     } else {
                         messageStream
                     }
-
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .safeAreaInset(edge: .bottom, spacing: 0) {
                     floatingComposer
                 }
             }
@@ -109,11 +112,16 @@ struct ChatView: View {
                     .presentationDragIndicator(.visible)
             }
             .fullScreenCover(isPresented: $showCamera) {
-                InstantCameraView { jpegData in
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
-                        pendingPhotos.append(PendingPhoto(data: jpegData))
+                InstantCameraView(
+                    onCapture: { jpegData in
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
+                            pendingPhotos.append(PendingPhoto(data: jpegData))
+                        }
+                    },
+                    onOpenGallery: {
+                        showPhotoPicker = true
                     }
-                }
+                )
             }
             .fullScreenCover(isPresented: $showVoiceMode) {
                 VoiceModeView()
@@ -189,73 +197,81 @@ struct ChatView: View {
     // MARK: - Flagship 2x2 Bento Welcome Hero
 
     private var welcomeHero: some View {
-        VStack(spacing: 22) {
-            Spacer()
+        ScrollView(showsIndicators: false) {
+            VStack(spacing: inputFocused ? 14 : 22) {
+                Spacer(minLength: inputFocused ? 14 : 44)
 
-            SenPrismOrb(size: 64)
+                SenPrismOrb(size: inputFocused ? 46 : 64)
 
-            VStack(spacing: 6) {
-                Text(turkishGreeting)
-                    .font(.title2.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Text("birlikte ne çözelim?")
-                    .font(.title.weight(.bold))
-                    .foregroundStyle(
-                        LinearGradient(colors: [.primary, .blue], startPoint: .leading, endPoint: .trailing)
-                    )
-                    .multilineTextAlignment(.center)
-                Text(server.connectionRoute == .disconnected ? "Sunucu bekleniyor · Ayarlar'dan bağlanın" : "\(server.connectionRoute.rawValue) · \(server.activeModelName)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 2)
-            }
+                VStack(spacing: 6) {
+                    Text(turkishGreeting)
+                        .font(inputFocused ? .headline.weight(.semibold) : .title2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Text("birlikte ne çözelim?")
+                        .font(inputFocused ? .title2.weight(.bold) : .title.weight(.bold))
+                        .foregroundStyle(
+                            LinearGradient(colors: [.primary, .blue], startPoint: .leading, endPoint: .trailing)
+                        )
+                        .multilineTextAlignment(.center)
+                    Text(server.connectionRoute == .disconnected ? "Sunucu bekleniyor · Ayarlar'dan bağlanın" : "\(server.connectionRoute.rawValue) · \(server.activeModelName)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 2)
+                }
 
-            let cols = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
-            LazyVGrid(columns: cols, spacing: 10) {
-                bentoCard(
-                    title: "Hava Durumu",
-                    subtitle: "5 günlük canlı tahmin",
-                    icon: "cloud.sun.fill",
-                    tint: .blue,
-                    prompt: "Manisa hava durumu nasıl?",
-                    delay: 0.04
-                )
-                bentoCard(
-                    title: "Film Önerisi",
-                    subtitle: "Puanlı görsel liste",
-                    icon: "film.fill",
-                    tint: .orange,
-                    prompt: "Bana sürükleyici bir bilim kurgu filmi öner",
-                    delay: 0.09
-                )
-                bentoCard(
-                    title: "Burç Uyumu",
-                    subtitle: "Yüzdelik analiz kartı",
-                    icon: "heart.fill",
-                    tint: .pink,
-                    prompt: "Oğlak ve Akrep uyumu nasıl olur?",
-                    delay: 0.14
-                )
-                bentoCard(
-                    title: "Hızlı Plan",
-                    subtitle: "Tıklanabilir adımlar",
-                    icon: "checklist",
-                    tint: .green,
-                    prompt: "Hafta sonu için 1 günlük verimli rutin planı yap",
-                    delay: 0.19
-                )
-            }
-            .padding(.horizontal, 16)
-            .onAppear {
-                if !bentoAppeared {
-                    withAnimation(.spring(duration: 0.50, bounce: 0.16)) {
-                        bentoAppeared = true
+                if !inputFocused {
+                    let cols = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
+                    LazyVGrid(columns: cols, spacing: 10) {
+                        bentoCard(
+                            title: "Hava Durumu",
+                            subtitle: "5 günlük canlı tahmin",
+                            icon: "cloud.sun.fill",
+                            tint: .blue,
+                            prompt: "Manisa hava durumu nasıl?",
+                            delay: 0.04
+                        )
+                        bentoCard(
+                            title: "Film Önerisi",
+                            subtitle: "Puanlı görsel liste",
+                            icon: "film.fill",
+                            tint: .orange,
+                            prompt: "Bana sürükleyici bir bilim kurgu filmi öner",
+                            delay: 0.09
+                        )
+                        bentoCard(
+                            title: "Burç Uyumu",
+                            subtitle: "Yüzdelik analiz kartı",
+                            icon: "heart.fill",
+                            tint: .pink,
+                            prompt: "Oğlak ve Akrep uyumu nasıl olur?",
+                            delay: 0.14
+                        )
+                        bentoCard(
+                            title: "Hızlı Plan",
+                            subtitle: "Tıklanabilir adımlar",
+                            icon: "checklist",
+                            tint: .green,
+                            prompt: "Hafta sonu için 1 günlük verimli rutin planı yap",
+                            delay: 0.19
+                        )
+                    }
+                    .padding(.horizontal, 16)
+                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                    .onAppear {
+                        if !bentoAppeared {
+                            withAnimation(.spring(duration: 0.50, bounce: 0.16)) {
+                                bentoAppeared = true
+                            }
+                        }
                     }
                 }
-            }
 
-            Spacer()
+                Spacer(minLength: 16)
+            }
+            .frame(maxWidth: .infinity)
+            .animation(.spring(response: 0.34, dampingFraction: 0.86), value: inputFocused)
         }
+        .scrollDismissesKeyboard(.interactively)
         .onTapGesture { inputFocused = false }
     }
 
@@ -333,21 +349,21 @@ struct ChatView: View {
     // MARK: - Floating iOS 26 Liquid Glass Composer
 
     private var floatingComposer: some View {
-        VStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             if !pendingPhotos.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
+                    HStack(spacing: 10) {
                         ForEach(pendingPhotos) { ph in
                             if let uiImg = UIImage(data: ph.data) {
                                 ZStack(alignment: .topTrailing) {
                                     Image(uiImage: uiImg)
                                         .resizable()
                                         .scaledToFill()
-                                        .frame(width: 64, height: 64)
+                                        .frame(width: 66, height: 66)
                                         .clipShape(.rect(cornerRadius: 14))
                                         .overlay {
                                             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                                .strokeBorder(.white.opacity(0.25), lineWidth: 0.8)
+                                                .strokeBorder(.white.opacity(0.26), lineWidth: 0.9)
                                         }
                                     Button {
                                         SenHaptics.light()
@@ -356,12 +372,13 @@ struct ChatView: View {
                                         }
                                     } label: {
                                         Image(systemName: "xmark.circle.fill")
-                                            .font(.system(size: 18))
-                                            .foregroundStyle(.white, Color.black.opacity(0.7))
+                                            .font(.system(size: 19))
+                                            .foregroundStyle(.white, Color.black.opacity(0.75))
                                     }
-                                    .offset(x: 5, y: -5)
+                                    .offset(x: 6, y: -6)
                                 }
-                                .padding(.top, 5)
+                                .padding(.top, 8)
+                                .padding(.trailing, 8)
                             }
                         }
                     }
@@ -393,8 +410,7 @@ struct ChatView: View {
                     .senGlassCapsule(interactive: true)
                     Spacer()
                 }
-                .padding(.horizontal, 58)
-                .padding(.bottom, 2)
+                .padding(.horizontal, 16)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 

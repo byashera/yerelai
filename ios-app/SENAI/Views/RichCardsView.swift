@@ -679,11 +679,28 @@ struct CodeBlockCardView: View {
             .background { Color.primary.opacity(0.05) }
 
             ScrollView(.horizontal, showsIndicators: false) {
-                Text(code)
-                    .font(.system(size: 13, weight: .regular, design: .monospaced))
-                    .foregroundStyle(.primary)
+                HStack(alignment: .top, spacing: 10) {
+                    let lines = code.components(separatedBy: "\n")
+                    VStack(alignment: .trailing, spacing: 2.5) {
+                        ForEach(Array(lines.enumerated()), id: \.offset) { idx, _ in
+                            Text("\(idx + 1)")
+                                .font(.system(size: 11.5, weight: .regular, design: .monospaced))
+                                .foregroundStyle(.secondary.opacity(0.45))
+                        }
+                    }
+                    .padding(.top, 1)
+
+                    VStack(alignment: .leading, spacing: 2.5) {
+                        ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
+                            Text(CodeSyntaxHighlighter.highlight(line))
+                                .font(.system(size: 13, weight: .regular, design: .monospaced))
+                                .fixedSize(horizontal: true, vertical: false)
+                        }
+                    }
                     .textSelection(.enabled)
-                    .padding(12)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 12)
             }
         }
         .background {
@@ -695,6 +712,97 @@ struct CodeBlockCardView: View {
                 }
         }
         .clipShape(.rect(cornerRadius: 15))
+    }
+}
+
+private enum CodeSyntaxHighlighter {
+    private static let keywords: Set<String> = [
+        "def", "return", "for", "in", "if", "else", "elif", "while", "import", "from", "as",
+        "class", "try", "except", "finally", "with", "lambda", "yield", "async", "await",
+        "True", "False", "None", "and", "or", "not", "is", "pass", "break", "continue",
+        "func", "let", "var", "struct", "enum", "private", "public", "guard", "switch", "case",
+        "const", "function", "export", "default", "new", "this", "true", "false", "null",
+        "SELECT", "FROM", "WHERE", "JOIN", "GROUP", "ORDER", "BY", "LIMIT", "INSERT", "UPDATE"
+    ]
+
+    static func highlight(_ line: String) -> AttributedString {
+        var result = AttributedString()
+        if line.isEmpty { return AttributedString(" ") }
+
+        let chars = Array(line)
+        var i = 0
+        while i < chars.count {
+            let ch = chars[i]
+
+            // Comment (# or //)
+            if ch == "#" || (ch == "/" && i + 1 < chars.count && chars[i + 1] == "/") {
+                var seg = AttributedString(String(chars[i...]))
+                seg.foregroundColor = .secondary
+                result.append(seg)
+                break
+            }
+
+            // String literal
+            if ch == "\"" || ch == "'" {
+                let quote = ch
+                var j = i + 1
+                while j < chars.count {
+                    if chars[j] == "\\" && j + 1 < chars.count {
+                        j += 2
+                        continue
+                    }
+                    if chars[j] == quote {
+                        j += 1
+                        break
+                    }
+                    j += 1
+                }
+                var seg = AttributedString(String(chars[i..<j]))
+                seg.foregroundColor = Color(red: 0.28, green: 0.80, blue: 0.52)
+                result.append(seg)
+                i = j
+                continue
+            }
+
+            // Number literal
+            if ch.isNumber {
+                var j = i + 1
+                while j < chars.count && (chars[j].isNumber || chars[j] == ".") {
+                    j += 1
+                }
+                var seg = AttributedString(String(chars[i..<j]))
+                seg.foregroundColor = Color(red: 0.35, green: 0.78, blue: 0.98)
+                result.append(seg)
+                i = j
+                continue
+            }
+
+            // Identifier / keyword / function call
+            if ch.isLetter || ch == "_" {
+                var j = i + 1
+                while j < chars.count && (chars[j].isLetter || chars[j].isNumber || chars[j] == "_") {
+                    j += 1
+                }
+                let word = String(chars[i..<j])
+                var seg = AttributedString(word)
+                if keywords.contains(word) {
+                    seg.foregroundColor = Color(red: 0.78, green: 0.50, blue: 0.98)
+                } else if j < chars.count && chars[j] == "(" {
+                    seg.foregroundColor = Color(red: 0.38, green: 0.68, blue: 1.0)
+                } else {
+                    seg.foregroundColor = .primary
+                }
+                result.append(seg)
+                i = j
+                continue
+            }
+
+            var seg = AttributedString(String(ch))
+            seg.foregroundColor = .primary.opacity(0.88)
+            result.append(seg)
+            i += 1
+        }
+        return result
     }
 }
 
@@ -718,6 +826,11 @@ struct MarkdownTableCardView: View {
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
                         .background { Capsule().fill(Color.primary.opacity(0.07)) }
+                    if headers.count >= 4 {
+                        Text("Kaydır →")
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(.secondary.opacity(0.75))
+                    }
                 }
                 Spacer()
                 Button {
@@ -752,7 +865,7 @@ struct MarkdownTableCardView: View {
                         ForEach(Array(headers.enumerated()), id: \.offset) { _, h in
                             Text(h)
                                 .font(.caption.weight(.bold))
-                                .frame(minWidth: 92, alignment: .leading)
+                                .frame(minWidth: 82, alignment: .leading)
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 8)
                         }
@@ -765,7 +878,7 @@ struct MarkdownTableCardView: View {
                                 Text(cIdx < row.count ? row[cIdx] : "")
                                     .font(.caption.monospacedDigit())
                                     .foregroundStyle(.primary)
-                                    .frame(minWidth: 92, alignment: .leading)
+                                    .frame(minWidth: 82, alignment: .leading)
                                     .padding(.horizontal, 10)
                                     .padding(.vertical, 8)
                             }
@@ -775,6 +888,7 @@ struct MarkdownTableCardView: View {
                         }
                     }
                 }
+                .padding(.trailing, 8)
             }
         }
         .background {
