@@ -1327,8 +1327,8 @@ struct SourcesSheetView: View {
                                 Text(src.domain)
                                     .font(.caption2.monospaced())
                                     .foregroundStyle(Color.blue)
-                                if !src.snippet.isEmpty {
-                                    Text(src.snippet)
+                                if let snip = src.snippet, !snip.isEmpty {
+                                    Text(snip)
                                         .font(.caption)
                                         .foregroundStyle(Color.secondary)
                                         .lineLimit(2)

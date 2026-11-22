@@ -61,7 +61,7 @@ struct SettingsView: View {
                                     .padding(.vertical, 8)
                             }
                         }
-                        .background { Capsule().fill(Color.primary) }
+                        .background { Capsule().fill(Color.blue) }
                         .buttonStyle(SenSpringButtonStyle())
                     }
                     .padding(16)
