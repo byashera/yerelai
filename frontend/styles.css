@@ -3765,3 +3765,85 @@ body[data-studio-state="generating"] .aurora-orb.orb-2 {
   line-height: 1.55 !important;
   color: var(--text-secondary) !important;
 }
+
+
+/* === FAZ 2: ChatGPT-Style Media List, 2-Image Compare, Dark Scorecard & Minimalist Tables === */
+.yc-green-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #34d399;
+  background: rgba(52, 211, 153, 0.14);
+}
+.yc-media-list { display: flex; flex-direction: column; gap: 14px; margin: 12px 0; }
+.yc-media-heading { font-size: 15px; font-weight: 700; color: var(--text); }
+.yc-media-row { display: flex; gap: 14px; align-items: flex-start; }
+.yc-media-thumb {
+  width: 68px; height: 94px; flex-shrink: 0; border-radius: 10px; overflow: hidden;
+  background: rgba(120, 140, 180, 0.14); border: 1px solid var(--border);
+}
+.yc-media-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.yc-media-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.yc-media-title { font-size: 14.5px; font-weight: 700; color: var(--text); }
+.yc-media-year { font-weight: 500; color: var(--text-muted); }
+.yc-media-sub { font-size: 13.5px; color: var(--text-muted); line-height: 1.45; }
+.yc-media-meta { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
+.yc-media-score { font-size: 12px; font-weight: 700; color: #f59e0b; }
+.yc-media-summary { font-size: 13.5px; color: var(--text-muted); margin-top: 2px; }
+
+.yc-imgcmp-wrap { display: flex; flex-direction: column; gap: 12px; margin: 12px 0; }
+.yc-imgcmp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.yc-imgcmp-col { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.yc-imgcmp-photo {
+  width: 100%; aspect-ratio: 16 / 11; border-radius: 14px; overflow: hidden;
+  background: rgba(120, 140, 180, 0.14); border: 1px solid var(--border);
+}
+.yc-imgcmp-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.yc-imgcmp-name { font-size: 14.5px; font-weight: 700; color: var(--text); }
+.yc-imgcmp-sub { font-size: 12.5px; color: var(--text-muted); }
+
+.yc-scorecard {
+  background: var(--surface-2, rgba(255,255,255,0.03));
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.yc-sc-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.yc-sc-profiles {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
+  padding-bottom: 12px; border-bottom: 1px solid var(--border);
+}
+.yc-sc-prof-em { font-size: 16px; margin-bottom: 4px; }
+.yc-sc-prof-title { font-size: 13.5px; font-weight: 700; }
+.yc-sc-prof-sub { font-size: 12px; color: var(--text-muted); }
+.yc-sc-prof-traits { font-size: 12px; color: var(--text-muted); opacity: 0.85; margin-top: 3px; }
+.yc-sc-hero { text-align: center; padding: 4px 0; }
+.yc-sc-big { font-size: 32px; font-weight: 800; color: #22c55e; line-height: 1.1; }
+.yc-sc-sub { font-size: 13px; font-weight: 600; margin-top: 4px; }
+.yc-sc-note { font-size: 11.5px; color: var(--text-muted); margin-top: 2px; }
+.yc-sc-table { display: flex; flex-direction: column; }
+.yc-sc-th, .yc-sc-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 0; border-bottom: 1px solid var(--border);
+}
+.yc-sc-th { font-size: 12px; font-weight: 600; color: var(--text-muted); }
+.yc-sc-row { font-size: 13.5px; }
+.yc-sc-sec strong { display: block; font-size: 13.5px; margin-bottom: 6px; }
+.yc-sc-sec ul { margin: 0; padding-left: 18px; font-size: 13px; color: var(--text-muted); line-height: 1.55; }
+
+/* Minimalist ChatGPT-style Hairline Markdown Tables */
+.md-body table {
+  width: 100%; border-collapse: collapse; background: transparent; border: none; margin: 12px 0;
+}
+.md-body table th, .md-body table td {
+  border: none; border-bottom: 1px solid var(--border);
+  padding: 9px 10px 9px 0; text-align: left; background: transparent;
+}
+.md-body table th { font-weight: 700; font-size: 13px; color: var(--text); }
+.md-body table td:last-child, .md-body table th:last-child { text-align: right; font-weight: 600; }

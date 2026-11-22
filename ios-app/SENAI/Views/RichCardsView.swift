@@ -295,10 +295,18 @@ struct SenVisualCardView: View {
 
     var body: some View {
         switch card.kind {
-        case "compatibility":
+        case "compatibility", "scorecard":
             CompatibilityCardView(card: card)
+        case "media_list":
+            MediaListCardView(card: card)
+        case "image_compare":
+            ImageCompareCardView(card: card)
         case "compare":
-            CompareCardView(card: card)
+            if card.left?.image_query != nil || card.right?.image_query != nil {
+                ImageCompareCardView(card: card)
+            } else {
+                CompareCardView(card: card)
+            }
         case "rating":
             RatingCardView(card: card)
         case "checklist":
@@ -329,64 +337,252 @@ struct CardLoadingPlaceholder: View {
 
 struct CompatibilityCardView: View {
     let card: SenVisualCard
-    @State private var animatedProgress: CGFloat = 0
+    @State private var appeared: Bool = false
+
+    private var bigScoreDisplay: String {
+        if let st = card.scoreText, !st.isEmpty { return st }
+        if let sc = card.score {
+            if sc <= 10 { return "\(sc)/10" }
+            let ten = Double(sc) / 10.0
+            let formatted = String(format: "%.1f", ten).replacingOccurrences(of: ".0", with: "").replacingOccurrences(of: ".", with: ",")
+            return "\(formatted)/10"
+        }
+        return "9/10"
+    }
 
     var body: some View {
-        let score = min(max(card.score ?? 80, 0), 100)
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(card.title ?? "Uyum Analizi")
-                        .font(.headline.weight(.bold))
-                    if let badge = card.badge, !badge.isEmpty {
-                        Text(badge)
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.blue)
-                            .padding(.horizontal, 9)
-                            .padding(.vertical, 3)
-                            .background { Capsule().fill(Color.blue.opacity(0.13)) }
-                    }
-                }
+        VStack(alignment: .leading, spacing: 14) {
+            // Top Title + Status Pill
+            HStack(alignment: .center, spacing: 8) {
+                Text(card.title ?? "Uyum Analizi")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(.primary)
                 Spacer()
-                ZStack {
-                    Circle()
-                        .fill(Color.blue.opacity(0.08))
-                    Circle()
-                        .stroke(Color.primary.opacity(0.10), lineWidth: 5.5)
-                    Circle()
-                        .trim(from: 0, to: animatedProgress * (CGFloat(score) / 100.0))
-                        .stroke(
-                            LinearGradient(colors: [.blue, .indigo], startPoint: .topLeading, endPoint: .bottomTrailing),
-                            style: StrokeStyle(lineWidth: 5.5, lineCap: .round)
-                        )
-                        .rotationEffect(.degrees(-90))
-                    Text("%\(score)")
-                        .font(.caption.weight(.heavy).monospacedDigit())
+                if let badge = card.badge, !badge.isEmpty {
+                    Text(badge)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.green)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background { Capsule().fill(Color.green.opacity(0.14)) }
                 }
-                .frame(width: 56, height: 56)
             }
 
-            if let metrics = card.metrics, !metrics.isEmpty {
-                VStack(spacing: 8) {
-                    ForEach(metrics) { m in
-                        let c = semanticColor(for: m.label)
-                        VStack(spacing: 4) {
-                            HStack {
-                                Text(m.label).font(.caption.weight(.semibold))
-                                Spacer()
-                                Text("%\(m.value)")
-                                    .font(.caption.weight(.bold).monospacedDigit())
-                                    .foregroundStyle(c)
+            // Optional 2-Profile Header (e.g. 1. Kişi / 2. Kişi)
+            if let profiles = card.profiles, !profiles.isEmpty {
+                HStack(alignment: .top, spacing: 12) {
+                    ForEach(profiles.prefix(2)) { prof in
+                        VStack(alignment: .leading, spacing: 3) {
+                            if let em = prof.emoji, !em.isEmpty {
+                                Text(em).font(.subheadline)
                             }
-                            GeometryReader { geo in
-                                ZStack(alignment: .leading) {
-                                    Capsule().fill(Color.primary.opacity(0.08))
-                                    Capsule()
-                                        .fill(c)
-                                        .frame(width: geo.size.width * animatedProgress * CGFloat(min(max(m.value, 0), 100)) / 100.0)
+                            Text(prof.title)
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(.primary)
+                            if let sub = prof.subtitle, !sub.isEmpty {
+                                Text(sub)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                            if let tr = prof.traits, !tr.isEmpty {
+                                Text(tr)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary.opacity(0.85))
+                                    .padding(.top, 2)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                Divider().opacity(0.45)
+            }
+
+            // Big Centered Score Hero
+            VStack(spacing: 4) {
+                Text(bigScoreDisplay)
+                    .font(.system(size: 32, weight: .bold, design: .rounded).monospacedDigit())
+                    .foregroundStyle(.green)
+                    .scaleEffect(appeared ? 1.0 : 0.85)
+                    .opacity(appeared ? 1 : 0)
+                Text(card.subtitle ?? "Genel uyum puanı")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.primary)
+                if let note = card.note, !note.isEmpty {
+                    Text(note)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 4)
+
+            // Clean Minimalist Category Score Rows
+            if let metrics = card.metrics, !metrics.isEmpty {
+                VStack(spacing: 0) {
+                    HStack {
+                        Text("Kategori")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Text("Puan")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.bottom, 7)
+
+                    Divider().opacity(0.5)
+
+                    ForEach(metrics) { m in
+                        HStack(spacing: 8) {
+                            Text(m.emoji != nil ? "\(m.emoji!) \(m.label)" : m.label)
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(.primary)
+                            Spacer()
+                            Text(m.displayValue ?? formatMetricScore(m.value))
+                                .font(.caption.weight(.bold).monospacedDigit())
+                                .foregroundStyle(.primary)
+                        }
+                        .padding(.vertical, 8)
+                        Divider().opacity(0.32)
+                    }
+                }
+            }
+
+            // Strengths & Challenges
+            if let strengths = card.strengths, !strengths.isEmpty {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Güçlü yönleri")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.primary)
+                    ForEach(strengths, id: \.self) { s in
+                        HStack(alignment: .top, spacing: 6) {
+                            Text("•").foregroundStyle(.green)
+                            Text(s).font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+
+            if let challenges = card.challenges, !challenges.isEmpty {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Zorlanabilecekleri")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.primary)
+                    ForEach(challenges, id: \.self) { ch in
+                        HStack(alignment: .top, spacing: 6) {
+                            Text("•").foregroundStyle(.orange)
+                            Text(ch).font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+
+            if let sum = card.summary, !sum.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("✨ Özet")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.primary)
+                    Text(sum)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineSpacing(3)
+                }
+                .padding(11)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color.primary.opacity(0.04))
+                }
+            }
+        }
+        .padding(16)
+        .background {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(.background.opacity(0.75))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.11), lineWidth: 0.85)
+                }
+        }
+        .onAppear {
+            withAnimation(.spring(duration: 0.55, bounce: 0.18)) {
+                appeared = true
+            }
+        }
+    }
+
+    private func formatMetricScore(_ val: Int) -> String {
+        if val <= 10 { return "\(val)/10" }
+        let ten = Double(val) / 10.0
+        let formatted = String(format: "%.1f", ten).replacingOccurrences(of: ".0", with: "").replacingOccurrences(of: ".", with: ",")
+        return "\(formatted)/10"
+    }
+}
+
+// MARK: - Universal Media List Card (Movies, Tarot, Products with HD Web Images)
+
+struct MediaListCardView: View {
+    @EnvironmentObject private var server: ServerManager
+    let card: SenVisualCard
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if let title = card.title, !title.isEmpty {
+                Text(title)
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(.primary)
+            }
+
+            if let items = card.items, !items.isEmpty {
+                VStack(spacing: 12) {
+                    ForEach(Array(items.enumerated()), id: \.element.id) { idx, item in
+                        HStack(alignment: .top, spacing: 12) {
+                            ResolvedRemoteImageView(
+                                url: server.imageResolveURL(for: item.image_query ?? item.title),
+                                fallbackIcon: "sparkles.rectangle.stack"
+                            )
+                            .frame(width: 68, height: 94)
+                            .clipShape(.rect(cornerRadius: 11))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                                    .strokeBorder(Color.primary.opacity(0.10), lineWidth: 0.7)
+                            }
+
+                            VStack(alignment: .leading, spacing: 5) {
+                                HStack(alignment: .firstTextBaseline, spacing: 5) {
+                                    Text("\(idx + 1). \(item.title)")
+                                        .font(.subheadline.weight(.bold))
+                                        .foregroundStyle(.primary)
+                                    if let yr = item.year, !yr.isEmpty {
+                                        Text("(\(yr))")
+                                            .font(.caption.weight(.medium))
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                if let sub = item.subtitle, !sub.isEmpty {
+                                    Text(sub)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineSpacing(2.5)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                                HStack(spacing: 6) {
+                                    if let badge = item.badge, !badge.isEmpty {
+                                        Text(badge)
+                                            .font(.caption2.weight(.semibold))
+                                            .foregroundStyle(.green)
+                                            .padding(.horizontal, 8)
+                                            .padding(.vertical, 3)
+                                            .background { Capsule().fill(Color.green.opacity(0.14)) }
+                                    }
+                                    if let sc = item.score, !sc.isEmpty {
+                                        Text("★ \(sc)")
+                                            .font(.caption2.weight(.bold).monospacedDigit())
+                                            .foregroundStyle(.orange)
+                                    }
                                 }
                             }
-                            .frame(height: 6)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
                 }
@@ -396,40 +592,131 @@ struct CompatibilityCardView: View {
                 Text(sum)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .padding(.top, 2)
+            }
+        }
+    }
+}
+
+// MARK: - Universal 2-Image Side-by-Side Comparison Card (Products, Fabrics, Zodiac)
+
+struct ImageCompareCardView: View {
+    @EnvironmentObject private var server: ServerManager
+    let card: SenVisualCard
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if let title = card.title, !title.isEmpty {
+                Text(title)
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(.primary)
+            }
+
+            HStack(alignment: .top, spacing: 10) {
+                if let left = card.left {
+                    compareColumn(left, accent: .blue)
+                }
+                if let right = card.right {
+                    compareColumn(right, accent: .indigo)
+                }
+            }
+
+            if let verdict = card.verdict, !verdict.isEmpty {
+                Text("✨ \(verdict)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                     .padding(10)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background {
                         RoundedRectangle(cornerRadius: 11, style: .continuous)
-                            .fill(.background.opacity(0.75))
+                            .fill(Color.primary.opacity(0.04))
                     }
-            }
-        }
-        .padding(14)
-        .background {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color.indigo.opacity(0.07))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .strokeBorder(
-                            LinearGradient(colors: [Color.pink.opacity(0.24), Color.blue.opacity(0.26)], startPoint: .topLeading, endPoint: .bottomTrailing),
-                            lineWidth: 0.9
-                        )
-                }
-        }
-        .onAppear {
-            withAnimation(.spring(duration: 0.78, bounce: 0.14)) {
-                animatedProgress = 1.0
             }
         }
     }
 
-    private func semanticColor(for label: String) -> Color {
-        let s = label.lowercased()
-        if s.contains("aşk") || s.contains("tutku") || s.contains("romant") || s.contains("kalp") { return .pink }
-        if s.contains("güven") || s.contains("sadakat") || s.contains("sağlam") { return .green }
-        if s.contains("iletişim") || s.contains("anlayış") || s.contains("sohbet") { return .blue }
-        if s.contains("kariyer") || s.contains("enerji") || s.contains("hedef") { return .orange }
-        return .indigo
+    private func compareColumn(_ side: SenCompareSide, accent: Color) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            ResolvedRemoteImageView(
+                url: server.imageResolveURL(for: side.image_query ?? side.name),
+                fallbackIcon: "photo"
+            )
+            .frame(height: 116)
+            .frame(maxWidth: .infinity)
+            .clipShape(.rect(cornerRadius: 14))
+            .overlay {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.10), lineWidth: 0.7)
+            }
+
+            Text("\(side.name) \(side.emoji ?? "")".trimmingCharacters(in: .whitespaces))
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(.primary)
+
+            if let sub = side.subtitle, !sub.isEmpty {
+                Text(sub)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
+            if let pts = side.points, !pts.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(pts, id: \.self) { p in
+                        HStack(alignment: .top, spacing: 5) {
+                            Text("•").foregroundStyle(accent)
+                            Text(p)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+                .padding(.top, 2)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+struct ResolvedRemoteImageView: View {
+    let url: URL?
+    let fallbackIcon: String
+
+    var body: some View {
+        if let url {
+            AsyncImage(url: url) { phase in
+                switch phase {
+                case .success(let img):
+                    img
+                        .resizable()
+                        .scaledToFill()
+                case .failure:
+                    placeholder
+                case .empty:
+                    ZStack {
+                        Color.primary.opacity(0.06)
+                        ProgressView().controlSize(.mini)
+                    }
+                @unknown default:
+                    placeholder
+                }
+            }
+        } else {
+            placeholder
+        }
+    }
+
+    private var placeholder: some View {
+        ZStack {
+            LinearGradient(
+                colors: [Color.blue.opacity(0.14), Color.indigo.opacity(0.10)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            Image(systemName: fallbackIcon)
+                .font(.title3)
+                .foregroundStyle(.secondary.opacity(0.7))
+        }
     }
 }
 
@@ -573,47 +860,87 @@ struct ChecklistCardView: View {
     @State private var checked: Set<String> = []
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            HStack {
-                Text(card.title ?? "Hızlı Plan")
-                    .font(.headline.weight(.bold))
+        let steps = card.steps ?? []
+        let total = max(steps.count, 1)
+        let doneCount = steps.filter { checked.contains($0.id) }.count
+        let progress = CGFloat(doneCount) / CGFloat(total)
+
+        VStack(alignment: .leading, spacing: 11) {
+            HStack(alignment: .center) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(card.title ?? "Günlük Plan")
+                        .font(.headline.weight(.bold))
+                    Text("\(doneCount)/\(steps.count) tamamlandı")
+                        .font(.caption2.weight(.medium).monospacedDigit())
+                        .foregroundStyle(doneCount == steps.count && steps.count > 0 ? .green : .secondary)
+                }
                 Spacer()
-                if let badge = card.badge {
+                if let badge = card.badge, !badge.isEmpty {
                     Text(badge)
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(.blue)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 4)
                         .background { Capsule().fill(Color.blue.opacity(0.13)) }
                 }
             }
-            if let steps = card.steps {
+
+            // Live Animated Progress Bar
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color.primary.opacity(0.08))
+                    Capsule()
+                        .fill(
+                            LinearGradient(
+                                colors: doneCount == steps.count && steps.count > 0 ? [.green, .mint] : [.blue, .indigo],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .frame(width: max(progress > 0 ? 10 : 0, geo.size.width * progress))
+                        .animation(.spring(response: 0.36, dampingFraction: 0.82), value: progress)
+                }
+            }
+            .frame(height: 6)
+
+            if !steps.isEmpty {
                 VStack(spacing: 6) {
                     ForEach(Array(steps.enumerated()), id: \.element.id) { idx, st in
                         let isDone = checked.contains(st.id)
                         Button {
                             SenHaptics.light()
-                            if isDone { checked.remove(st.id) } else { checked.insert(st.id) }
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
+                                if isDone { checked.remove(st.id) } else { checked.insert(st.id) }
+                            }
                         } label: {
-                            HStack(spacing: 9) {
+                            HStack(spacing: 10) {
                                 Image(systemName: isDone ? "checkmark.circle.fill" : "circle")
-                                    .foregroundStyle(isDone ? .green : .secondary)
+                                    .font(.system(size: 18, weight: .medium))
+                                    .foregroundStyle(isDone ? .green : .secondary.opacity(0.7))
+                                    .contentTransition(.symbolEffect(.replace))
                                 Text("\(idx + 1). \(st.label)")
-                                    .font(.caption.weight(.medium))
+                                    .font(.subheadline.weight(.medium))
                                     .strikethrough(isDone)
                                     .foregroundStyle(isDone ? .secondary : .primary)
                                     .multilineTextAlignment(.leading)
-                                Spacer()
-                                if let meta = st.meta {
+                                Spacer(minLength: 6)
+                                if let meta = st.meta, !meta.isEmpty {
                                     Text(meta)
-                                        .font(.caption2.monospacedDigit())
-                                        .foregroundStyle(.secondary)
+                                        .font(.caption2.weight(.semibold).monospacedDigit())
+                                        .foregroundStyle(isDone ? .secondary : .blue)
+                                        .padding(.horizontal, 7)
+                                        .padding(.vertical, 3)
+                                        .background {
+                                            Capsule().fill((isDone ? Color.secondary : Color.blue).opacity(0.11))
+                                        }
                                 }
                             }
-                            .padding(9)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 9)
                             .background {
-                                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                    .fill(.background.opacity(0.8))
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .fill(isDone ? Color.green.opacity(0.06) : Color.primary.opacity(0.035))
                             }
                         }
                         .buttonStyle(.plain)
@@ -621,13 +948,13 @@ struct ChecklistCardView: View {
                 }
             }
         }
-        .padding(14)
+        .padding(15)
         .background {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color.blue.opacity(0.06))
+                .fill(.background.opacity(0.75))
                 .overlay {
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .strokeBorder(Color.blue.opacity(0.18), lineWidth: 0.8)
+                        .strokeBorder(Color.primary.opacity(0.11), lineWidth: 0.85)
                 }
         }
     }
@@ -813,24 +1140,74 @@ struct MarkdownTableCardView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                HStack(spacing: 6) {
-                    Image(systemName: "tablecells")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.blue)
-                    Text("Veri Tablosu")
+            if headers.count == 2 {
+                // ChatGPT-style ultra-clean borderless 2-column table (left label, right bold value)
+                HStack {
+                    Text(headers[0])
                         .font(.caption.weight(.bold))
-                    Text("\(rows.count)×\(headers.count)")
-                        .font(.caption2.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background { Capsule().fill(Color.primary.opacity(0.07)) }
-                    if headers.count >= 4 {
-                        Text("Kaydır →")
-                            .font(.caption2.weight(.medium))
-                            .foregroundStyle(.secondary.opacity(0.75))
+                        .foregroundStyle(.primary)
+                    Spacer()
+                    Text(headers[1])
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.primary)
+                }
+                .padding(.vertical, 8)
+
+                Divider().opacity(0.55)
+
+                ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                    HStack(alignment: .top, spacing: 12) {
+                        Text(row.count > 0 ? row[0] : "")
+                            .font(.subheadline)
+                            .foregroundStyle(.primary)
+                        Spacer(minLength: 12)
+                        Text(row.count > 1 ? row[1] : "")
+                            .font(.subheadline.weight(.semibold).monospacedDigit())
+                            .foregroundStyle(.primary)
+                            .multilineTextAlignment(.trailing)
                     }
+                    .padding(.vertical, 9)
+                    Divider().opacity(0.30)
+                }
+            } else {
+                // Multi-column minimalist horizontal-scroll hairline table
+                ScrollView(.horizontal, showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        HStack(spacing: 0) {
+                            ForEach(Array(headers.enumerated()), id: \.offset) { _, h in
+                                Text(h)
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(.primary)
+                                    .frame(minWidth: 94, alignment: .leading)
+                                    .padding(.trailing, 14)
+                                    .padding(.vertical, 8)
+                            }
+                        }
+                        Divider().opacity(0.55)
+
+                        ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                            HStack(alignment: .top, spacing: 0) {
+                                ForEach(0..<headers.count, id: \.self) { cIdx in
+                                    Text(cIdx < row.count ? row[cIdx] : "")
+                                        .font(.caption.monospacedDigit())
+                                        .foregroundStyle(cIdx == headers.count - 1 ? .primary : .primary.opacity(0.88))
+                                        .fontWeight(cIdx == headers.count - 1 ? .semibold : .regular)
+                                        .frame(minWidth: 94, alignment: .leading)
+                                        .padding(.trailing, 14)
+                                        .padding(.vertical, 9)
+                                }
+                            }
+                            Divider().opacity(0.30)
+                        }
+                    }
+                }
+            }
+
+            HStack {
+                if headers.count >= 4 {
+                    Text("Kaydır →")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary.opacity(0.7))
                 }
                 Spacer()
                 Button {
@@ -845,60 +1222,15 @@ struct MarkdownTableCardView: View {
                     HStack(spacing: 4) {
                         Image(systemName: copied ? "checkmark" : "doc.on.doc")
                             .contentTransition(.symbolEffect(.replace))
-                        Text(copied ? "Kopyalandı" : "Kopyala")
+                        Text(copied ? "Kopyalandı" : "Tabloyu kopyala")
                     }
-                    .font(.caption2.weight(.semibold))
+                    .font(.caption2.weight(.medium))
                     .foregroundStyle(copied ? .green : .secondary)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background { Capsule().fill(Color.primary.opacity(0.07)) }
                 }
                 .buttonStyle(.plain)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 9)
-            .background { Color.primary.opacity(0.05) }
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 0) {
-                    HStack(spacing: 0) {
-                        ForEach(Array(headers.enumerated()), id: \.offset) { _, h in
-                            Text(h)
-                                .font(.caption.weight(.bold))
-                                .frame(minWidth: 82, alignment: .leading)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 8)
-                        }
-                    }
-                    .background { Color.blue.opacity(0.09) }
-
-                    ForEach(Array(rows.enumerated()), id: \.offset) { rIdx, row in
-                        HStack(spacing: 0) {
-                            ForEach(0..<headers.count, id: \.self) { cIdx in
-                                Text(cIdx < row.count ? row[cIdx] : "")
-                                    .font(.caption.monospacedDigit())
-                                    .foregroundStyle(.primary)
-                                    .frame(minWidth: 82, alignment: .leading)
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 8)
-                            }
-                        }
-                        .background {
-                            rIdx % 2 == 1 ? Color.primary.opacity(0.03) : Color.clear
-                        }
-                    }
-                }
-                .padding(.trailing, 8)
-            }
+            .padding(.top, 6)
         }
-        .background {
-            RoundedRectangle(cornerRadius: 15, style: .continuous)
-                .fill(.background.opacity(0.65))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 15, style: .continuous)
-                        .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.8)
-                }
-        }
-        .clipShape(.rect(cornerRadius: 15))
+        .padding(.vertical, 4)
     }
 }

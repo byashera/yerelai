@@ -45,6 +45,7 @@ targets:
         NSPhotoLibraryUsageDescription: "SEN.AI galerinizden seçtiğiniz fotoğrafları analiz edebilmek için fotoğraf arşivinize erişir."
         NSMicrophoneUsageDescription: "SEN.AI sesli mesaj göndermek için mikrofonunuzu kullanır."
         NSSpeechRecognitionUsageDescription: "SEN.AI Türkçe sesli komutlarınızı metne çevirmek için konuşma tanıma izni kullanır."
+        NSLocationWhenInUseUsageDescription: "SEN.AI bulunduğunuz şehrin anlık hava durumunu gösterebilmek için konum bilginize erişir."
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.senai.app

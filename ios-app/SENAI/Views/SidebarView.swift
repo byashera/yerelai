@@ -6,11 +6,21 @@ struct SidebarView: View {
     @AppStorage("senai_theme") private var themePref: String = "system"
     @Binding var showSettings: Bool
     @State private var searchText: String = ""
+    @State private var renameTarget: ChatSessionSummary? = nil
+    @State private var renameDraft: String = ""
 
     private var filtered: [ChatSessionSummary] {
         let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if q.isEmpty { return server.sessions }
         return server.sessions.filter { $0.title.lowercased().contains(q) }
+    }
+
+    private var pinnedSessions: [ChatSessionSummary] {
+        filtered.filter { $0.pinned == true }
+    }
+
+    private var regularSessions: [ChatSessionSummary] {
+        filtered.filter { $0.pinned != true }
     }
 
     var body: some View {
@@ -33,7 +43,7 @@ struct SidebarView: View {
                                 Circle()
                                     .fill(server.connectionRoute == .disconnected ? Color.orange : Color.green)
                                     .frame(width: 6, height: 6)
-                                Text(server.connectionRoute == .lan ? "Wi-Fi" : (server.connectionRoute == .cloudflare ? "Bulut" : "Bağlı değil"))
+                                Text(server.connectionRoute == .lan ? "Wi-Fi" : (server.connectionRoute == .cloudflare ? "Uzaktan" : "Bağlı değil"))
                                     .font(.caption2.weight(.medium))
                                     .foregroundStyle(.secondary)
                             }
@@ -42,41 +52,26 @@ struct SidebarView: View {
                     .tint(.primary)
                 }
 
+                if !pinnedSessions.isEmpty {
+                    Section("Sabitlenenler") {
+                        ForEach(pinnedSessions) { s in
+                            sessionRow(s)
+                        }
+                    }
+                }
+
                 Section("Sohbet Geçmişi") {
-                    if filtered.isEmpty {
+                    if regularSessions.isEmpty && pinnedSessions.isEmpty {
                         Text("Henüz kayıtlı sohbet yok")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
+                    } else if regularSessions.isEmpty {
+                        Text("Diğer sohbet yok")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     } else {
-                        ForEach(filtered) { s in
-                            Button {
-                                Task {
-                                    await server.openSession(s.id)
-                                    dismiss()
-                                }
-                            } label: {
-                                HStack(spacing: 10) {
-                                    Image(systemName: server.activeSessionId == s.id ? "bubble.left.fill" : "bubble.left")
-                                        .font(.caption)
-                                        .foregroundStyle(server.activeSessionId == s.id ? .blue : .secondary)
-                                    Text(s.title)
-                                        .font(.subheadline.weight(server.activeSessionId == s.id ? .semibold : .regular))
-                                        .foregroundStyle(.primary)
-                                        .lineLimit(1)
-                                    Spacer()
-                                    if let dt = s.updated_at, !dt.isEmpty {
-                                        Text(dt)
-                                            .font(.caption2)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    if server.activeSessionId == s.id {
-                                        Image(systemName: "checkmark")
-                                            .font(.caption.weight(.bold))
-                                            .foregroundStyle(.blue)
-                                    }
-                                }
-                            }
-                            .tint(.primary)
+                        ForEach(regularSessions) { s in
+                            sessionRow(s)
                         }
                     }
                 }
@@ -103,6 +98,89 @@ struct SidebarView: View {
                         Image(systemName: "gearshape")
                     }
                 }
+            }
+            .alert("Sohbeti Yeniden Adlandır", isPresented: Binding(
+                get: { renameTarget != nil },
+                set: { if !$0 { renameTarget = nil } }
+            )) {
+                TextField("Yeni başlık", text: $renameDraft)
+                Button("İptal", role: .cancel) { renameTarget = nil }
+                Button("Kaydet") {
+                    if let target = renameTarget {
+                        let draft = renameDraft
+                        renameTarget = nil
+                        Task { await server.renameSession(target.id, newTitle: draft) }
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func sessionRow(_ s: ChatSessionSummary) -> some View {
+        let isPinned = s.pinned == true
+        Button {
+            Task {
+                await server.openSession(s.id)
+                dismiss()
+            }
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: isPinned ? "pin.fill" : (server.activeSessionId == s.id ? "bubble.left.fill" : "bubble.left"))
+                    .font(.caption)
+                    .foregroundStyle(isPinned ? .orange : (server.activeSessionId == s.id ? .blue : .secondary))
+                Text(s.title)
+                    .font(.subheadline.weight(server.activeSessionId == s.id ? .semibold : .regular))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Spacer()
+                if server.activeSessionId == s.id {
+                    Image(systemName: "checkmark")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.blue)
+                }
+            }
+        }
+        .tint(.primary)
+        .swipeActions(edge: .leading, allowsFullSwipe: true) {
+            Button {
+                Task { await server.togglePinSession(s.id) }
+            } label: {
+                Label(isPinned ? "Kaldır" : "Sabitle", systemImage: isPinned ? "pin.slash" : "pin.fill")
+            }
+            .tint(.orange)
+        }
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            Button(role: .destructive) {
+                Task { await server.deleteSession(s.id) }
+            } label: {
+                Label("Sil", systemImage: "trash")
+            }
+            Button {
+                renameDraft = s.title
+                renameTarget = s
+            } label: {
+                Label("Adlandır", systemImage: "pencil")
+            }
+            .tint(.blue)
+        }
+        .contextMenu {
+            Button {
+                Task { await server.togglePinSession(s.id) }
+            } label: {
+                Label(isPinned ? "Sabitlemeyi Kaldır" : "Sabitle", systemImage: isPinned ? "pin.slash" : "pin")
+            }
+            Button {
+                renameDraft = s.title
+                renameTarget = s
+            } label: {
+                Label("Yeniden Adlandır", systemImage: "pencil")
+            }
+            Divider()
+            Button(role: .destructive) {
+                Task { await server.deleteSession(s.id) }
+            } label: {
+                Label("Sil", systemImage: "trash")
             }
         }
     }

@@ -2295,46 +2295,95 @@
         }
         try {
           const cardObj = JSON.parse(code.trim());
-          if (cardObj && cardObj.kind === "compatibility") {
-            const score = Math.max(0, Math.min(100, Math.round(Number(cardObj.score) || 0)));
-            const r = 24;
-            const circ = 2 * Math.PI * r;
-            const offset = circ * (1 - score / 100);
-            const metrics = Array.isArray(cardObj.metrics) ? cardObj.metrics.slice(0, 6) : [];
-            const fallbackPalette = ["rose", "emerald", "sky", "amber", "indigo", "rose"];
-            const pickSemanticTone = (lbl, i) => {
-              const s = String(lbl || "").toLowerCase();
-              if (/aşk|ask|tutku|romant|sevgi|kalp|çekim|cekim/.test(s)) return "rose";
-              if (/güven|guven|sadakat|sağlam|saglam|istikrar|bağlı/.test(s)) return "emerald";
-              if (/iletişim|iletisim|anlayış|anlayis|sohbet|zihin|empati/.test(s)) return "sky";
-              if (/kariyer|enerji|hedef|iş|is\b|başarı|eğlence|eglence/.test(s)) return "amber";
-              return fallbackPalette[i % fallbackPalette.length];
-            };
-            const barsHtml = metrics.map((m, mi) => {
-              const val = Math.max(0, Math.min(100, Math.round(Number(m.value) || 0)));
-              const tone = pickSemanticTone(m.label, mi);
-              return `<div class="yc-metric-row">
-                <div class="yc-metric-head"><span>${escHtml(m.label || "")}</span><span class="mono yc-metric-val tone-${tone}">%${val}</span></div>
-                <div class="yc-bar-track"><div class="yc-bar-fill tone-${tone}" style="width:${val}%"></div></div>
+          const imgUrl = (q) => `/api/image-resolve?q=${encodeURIComponent(String(q || "").trim())}`;
+          const fmtTen = (v) => {
+            if (typeof v === "string" && v.trim()) return escHtml(v.trim());
+            const num = Number(v);
+            if (Number.isNaN(num)) return "9/10";
+            const ten = num <= 10 ? num : num / 10;
+            return `${String(ten.toFixed(1)).replace(/\.0$/, "").replace(".", ",")}/10`;
+          };
+
+          if (cardObj && cardObj.kind === "media_list" && Array.isArray(cardObj.items)) {
+            const rowsHtml = cardObj.items.slice(0, 10).map((it, ii) => {
+              const q = it.image_query || it.title || "";
+              const yr = it.year ? ` <span class="yc-media-year">(${escHtml(String(it.year))})</span>` : "";
+              const badge = it.badge ? `<span class="yc-green-pill">${escHtml(it.badge)}</span>` : "";
+              const sc = it.score ? `<span class="yc-media-score">★ ${escHtml(String(it.score))}</span>` : "";
+              return `<div class="yc-media-row">
+                <div class="yc-media-thumb"><img src="${imgUrl(q)}" alt="${escHtml(it.title || "")}" loading="lazy" onerror="this.style.display='none'" /></div>
+                <div class="yc-media-body">
+                  <div class="yc-media-title">${ii + 1}. ${escHtml(it.title || "")}${yr}</div>
+                  ${it.subtitle ? `<div class="yc-media-sub">${escHtml(it.subtitle)}</div>` : ""}
+                  ${(badge || sc) ? `<div class="yc-media-meta">${badge}${sc}</div>` : ""}
+                </div>
               </div>`;
             }).join("");
             codeBlocks.push(
-              `<div class="yc-card yc-compat">
-                <div class="yc-compat-head">
-                  <div class="yc-title-col">
-                    <div class="yc-title">${escHtml(cardObj.title || "Uyum Analizi")}</div>
-                    ${cardObj.badge ? `<span class="yc-badge">${escHtml(cardObj.badge)}</span>` : ""}
-                  </div>
-                  <div class="yc-svg-ring" aria-label="%${score} uyum">
-                    <svg viewBox="0 0 60 60" width="56" height="56">
-                      <circle class="yc-ring-bg" cx="30" cy="30" r="${r}" />
-                      <circle class="yc-ring-fg" cx="30" cy="30" r="${r}" stroke-dasharray="${circ.toFixed(1)}" stroke-dashoffset="${offset.toFixed(1)}" />
-                    </svg>
-                    <span class="yc-ring-num mono">%${score}</span>
-                  </div>
+              `<div class="yc-media-list">
+                ${cardObj.title ? `<div class="yc-media-heading">${escHtml(cardObj.title)}</div>` : ""}
+                ${rowsHtml}
+                ${cardObj.summary ? `<div class="yc-media-summary">${escHtml(cardObj.summary)}</div>` : ""}
+              </div>`
+            );
+            return `\u0000CODEBLOCK_${idx}\u0000`;
+          }
+
+          if (cardObj && (cardObj.kind === "image_compare" || (cardObj.kind === "compare" && (cardObj.left?.image_query || cardObj.right?.image_query))) && cardObj.left && cardObj.right) {
+            const renderImgSide = (side) => {
+              const pts = Array.isArray(side.points) ? side.points.slice(0, 6) : [];
+              const q = side.image_query || side.name || "";
+              return `<div class="yc-imgcmp-col">
+                <div class="yc-imgcmp-photo"><img src="${imgUrl(q)}" alt="${escHtml(side.name || "")}" loading="lazy" onerror="this.style.display='none'" /></div>
+                <div class="yc-imgcmp-name">${escHtml(side.name || "")} ${side.emoji ? escHtml(side.emoji) : ""}</div>
+                ${side.subtitle ? `<div class="yc-imgcmp-sub">${escHtml(side.subtitle)}</div>` : ""}
+                ${pts.length ? `<ul class="yc-side-pts">${pts.map((p) => `<li>${escHtml(p)}</li>`).join("")}</ul>` : ""}
+              </div>`;
+            };
+            codeBlocks.push(
+              `<div class="yc-imgcmp-wrap">
+                ${cardObj.title ? `<div class="yc-media-heading">${escHtml(cardObj.title)}</div>` : ""}
+                <div class="yc-imgcmp-grid">${renderImgSide(cardObj.left)}${renderImgSide(cardObj.right)}</div>
+                ${cardObj.verdict ? `<div class="yc-verdict"><strong>✨ Özet:</strong> ${escHtml(cardObj.verdict)}</div>` : ""}
+              </div>`
+            );
+            return `\u0000CODEBLOCK_${idx}\u0000`;
+          }
+
+          if (cardObj && (cardObj.kind === "compatibility" || cardObj.kind === "scorecard")) {
+            const metrics = Array.isArray(cardObj.metrics) ? cardObj.metrics.slice(0, 10) : [];
+            const profiles = Array.isArray(cardObj.profiles) ? cardObj.profiles.slice(0, 2) : [];
+            const strengths = Array.isArray(cardObj.strengths) ? cardObj.strengths.slice(0, 6) : [];
+            const challenges = Array.isArray(cardObj.challenges) ? cardObj.challenges.slice(0, 6) : [];
+            const profilesHtml = profiles.length
+              ? `<div class="yc-sc-profiles">${profiles.map((p) => `<div class="yc-sc-prof">
+                  ${p.emoji ? `<div class="yc-sc-prof-em">${escHtml(p.emoji)}</div>` : ""}
+                  <div class="yc-sc-prof-title">${escHtml(p.title || "")}</div>
+                  ${p.subtitle ? `<div class="yc-sc-prof-sub">${escHtml(p.subtitle)}</div>` : ""}
+                  ${p.traits ? `<div class="yc-sc-prof-traits">${escHtml(p.traits)}</div>` : ""}
+                </div>`).join("")}</div>`
+              : "";
+            const rowsHtml = metrics.map((m) => {
+              const lbl = `${m.emoji ? `${escHtml(m.emoji)} ` : ""}${escHtml(m.label || "")}`;
+              const val = fmtTen(m.value ?? m.score);
+              return `<div class="yc-sc-row"><span>${lbl}</span><strong class="mono">${val}</strong></div>`;
+            }).join("");
+            codeBlocks.push(
+              `<div class="yc-card yc-scorecard">
+                <div class="yc-sc-top">
+                  <div class="yc-title">${escHtml(cardObj.title || "Uyum Analizi")}</div>
+                  ${cardObj.badge ? `<span class="yc-green-pill">${escHtml(cardObj.badge)}</span>` : ""}
                 </div>
-                ${barsHtml ? `<div class="yc-metrics-list">${barsHtml}</div>` : ""}
-                ${cardObj.summary ? `<div class="yc-summary">${escHtml(cardObj.summary)}</div>` : ""}
+                ${profilesHtml}
+                <div class="yc-sc-hero">
+                  <div class="yc-sc-big mono">${fmtTen(cardObj.score)}</div>
+                  <div class="yc-sc-sub">${escHtml(cardObj.subtitle || "Genel uyum puanı")}</div>
+                  ${cardObj.note ? `<div class="yc-sc-note">${escHtml(cardObj.note)}</div>` : ""}
+                </div>
+                ${rowsHtml ? `<div class="yc-sc-table"><div class="yc-sc-th"><span>Kategori</span><span>Puan</span></div>${rowsHtml}</div>` : ""}
+                ${strengths.length ? `<div class="yc-sc-sec"><strong>Güçlü yönleri</strong><ul>${strengths.map((s) => `<li>${escHtml(s)}</li>`).join("")}</ul></div>` : ""}
+                ${challenges.length ? `<div class="yc-sc-sec"><strong>Zorlanabilecekleri</strong><ul>${challenges.map((c) => `<li>${escHtml(c)}</li>`).join("")}</ul></div>` : ""}
+                ${cardObj.summary ? `<div class="yc-summary"><strong>✨ Özet:</strong> ${escHtml(cardObj.summary)}</div>` : ""}
               </div>`
             );
             return `\u0000CODEBLOCK_${idx}\u0000`;

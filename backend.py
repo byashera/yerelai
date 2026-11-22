@@ -1501,6 +1501,7 @@ class ChatRequest(BaseModel):
     thinking_effort: Optional[str] = "medium"
     web_search: Optional[bool] = False
     use_library: Optional[bool] = False
+    user_city: Optional[str] = None
     temperature: Optional[float] = None
     top_p: Optional[float] = None
     max_new_tokens: Optional[int] = None
@@ -1876,10 +1877,19 @@ def _extract_weather_cities(query: str) -> List[str]:
 
 
 def _geocode_city(name: str) -> Optional[Dict[str, Any]]:
-    attempts = [name]
-    stripped = re.sub(r"(?:daki|deki|taki|teki|da|de|ta|te|nın|nin|nun|nün)$", "", name, flags=re.I).strip()
-    if stripped and len(stripped) >= 2 and stripped.lower() != name.lower():
+    raw = (name or "").strip()
+    if not raw:
+        return None
+    # Strip attached Turkish locative/genitive suffixes cleanly (e.g. "boluda" -> "bolu", "izmirde" -> "izmir")
+    keep_exact = {"isparta", "malta", "atlanta", "jakarta", "calcutta", "osaka"}
+    stripped = raw
+    if raw.lower() not in keep_exact and len(raw) >= 5:
+        stripped = re.sub(r"(?:daki|deki|taki|teki|dan|den|tan|ten|da|de|ta|te|nın|nin|nun|nün)$", "", raw, flags=re.I).strip()
+
+    attempts: List[str] = []
+    if stripped and len(stripped) >= 3 and stripped.lower() != raw.lower():
         attempts.append(stripped)
+    attempts.append(raw)
 
     for attempt in attempts:
         r = httpx.get(
@@ -1995,11 +2005,13 @@ def _fetch_single_city_weather(city_guess: str) -> Tuple[Optional[Dict[str, Any]
         return None, None, "", False
 
 
-def _fetch_live_weather(query: str, force_weather: bool = False) -> Tuple[List[Dict[str, Any]], List[Dict[str, str]], str, bool]:
+def _fetch_live_weather(query: str, force_weather: bool = False, fallback_city: Optional[str] = None) -> Tuple[List[Dict[str, Any]], List[Dict[str, str]], str, bool]:
     if not force_weather and not _is_weather_text(query):
         return [], [], "", False
 
     city_guesses = _extract_weather_cities(query)
+    if not city_guesses and fallback_city and fallback_city.strip():
+        city_guesses = [fallback_city.strip()]
     if not city_guesses:
         return [], [], "", False
 
@@ -2104,10 +2116,11 @@ def _resolve_followup_intent(query: str, history: Optional[List[Dict[str, str]]]
     last_prev = prev_users[-1]
     q_low = query.lower()
 
-    # Check if previous turn was a weather question and current is a short follow-up
-    if _is_weather_text(last_prev) and not _is_weather_text(query):
-        followup_weather_cues = ("için", "icin", "nasıl", "nasil", "peki", "ya ", "durum", "bir de", "orada", "yarın", "hafta")
-        if any(c in q_low for c in followup_weather_cues) or len(query.split()) <= 3:
+    # Check if any recent user turn was a weather question and current is a short follow-up
+    recent_weather_turn = any(_is_weather_text(pm) for pm in prev_users[-2:])
+    if recent_weather_turn and not _is_weather_text(query):
+        followup_weather_cues = ("için", "icin", "nasıl", "nasil", "peki", "ya ", "durum", "bir de", "birde", "orada", "yarın", "hafta")
+        if any(c in q_low for c in followup_weather_cues) or len(query.split()) <= 4:
             cities = _extract_weather_cities(query)
             if cities:
                 return f"{' ve '.join(cities)} hava durumu", True
@@ -2131,7 +2144,7 @@ def _resolve_followup_intent(query: str, history: Optional[List[Dict[str, str]]]
     return query, False
 
 
-def _perform_web_search(query: str, max_results: int = 5, history: Optional[List[Dict[str, str]]] = None, allow_general_search: bool = True) -> Dict[str, Any]:
+def _perform_web_search(query: str, max_results: int = 5, history: Optional[List[Dict[str, str]]] = None, allow_general_search: bool = True, user_city: Optional[str] = None) -> Dict[str, Any]:
     """Smart conversation-aware web search (intent filter + follow-up memory + multi-city weather + direct URL reader + ddgs)."""
     clean_q = re.sub(r"\s+", " ", (query or "").strip())[:240]
     direct_urls = _extract_urls(clean_q)
@@ -2186,12 +2199,35 @@ def _perform_web_search(query: str, max_results: int = 5, history: Optional[List
             sources.append({"title": f"Doğrudan Sayfa: {dom}", "url": u, "domain": dom, "snippet": txt[:180]})
             ctx_parts.append(f"[{len(sources)}] {u}\nSayfa İçeriği:\n{txt}")
 
-    # 2. Live Open-Meteo multi-city weather (with follow-up memory!)
-    weather_cards, weather_srcs, weather_ctx, weather_net_err = _fetch_live_weather(eff_q, force_weather=inherited_weather)
+    # 2. Live Open-Meteo multi-city weather (with follow-up memory + optional device user_city!)
+    weather_cards, weather_srcs, weather_ctx, weather_net_err = _fetch_live_weather(
+        eff_q, force_weather=inherited_weather, fallback_city=user_city
+    )
     if weather_srcs:
         sources.extend(weather_srcs)
     if weather_ctx:
         ctx_parts.append(weather_ctx)
+
+    # If user asked for weather without specifying a city and no device location is available, ask cleanly instead of random web search
+    weather_need_city = bool(
+        (inherited_weather or _is_weather_text(eff_q))
+        and not weather_cards
+        and not _extract_weather_cities(eff_q)
+        and not (user_city and user_city.strip())
+    )
+    if weather_need_city:
+        return {
+            "online": True,
+            "skipped": False,
+            "reason": "weather_need_city",
+            "weather_need_city": True,
+            "query": eff_q,
+            "sources": [],
+            "rich_cards": [],
+            "rich_card": None,
+            "context": "",
+            "warning": "",
+        }
 
     # 3. Live Currency / Finance card
     fin_card, fin_src, fin_ctx = _fetch_live_finance(eff_q)
@@ -2398,7 +2434,7 @@ async def pin_auth_middleware(request: Request, call_next):
     path = request.url.path
     if (path.startswith("/api/workspace") or path.startswith("/api/mcp")) and not _is_local_request(request):
         return JSONResponse(status_code=403, content={"detail": "Bu özellik yalnızca yerel masaüstü uygulamasında kullanılabilir."})
-    if path.startswith("/api/") and not path.startswith("/api/auth/"):
+    if path.startswith("/api/") and not path.startswith("/api/auth/") and path != "/api/image-resolve":
         cfg = load_json(CONFIG_PATH, {})
         if cfg.get("pin_enabled") and cfg.get("access_pin_hash"):
             local_bypass = cfg.get("pin_local_bypass", True)
@@ -2407,6 +2443,80 @@ async def pin_auth_middleware(request: Request, call_next):
                 if not _verify_auth_token(tok, cfg):
                     return JSONResponse(status_code=401, content={"detail": "PIN kilidi aktif. Devam etmek için PIN girin.", "locked": True})
     return await call_next(request)
+
+
+_IMG_RESOLVE_CACHE: Dict[str, Tuple[float, bytes, str]] = {}
+_IMG_CACHE_TTL_SEC = 21600  # 6 hours
+
+
+def _fetch_resolved_image_sync(query: str) -> Optional[Tuple[bytes, str]]:
+    key = re.sub(r"\s+", " ", (query or "").strip().lower())[:120]
+    if not key:
+        return None
+    now = time.time()
+    cached = _IMG_RESOLVE_CACHE.get(key)
+    if cached and (now - cached[0]) < _IMG_CACHE_TTL_SEC:
+        return cached[1], cached[2]
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8",
+    }
+    try:
+        r = httpx.get(
+            "https://www.bing.com/images/search",
+            params={"q": query, "first": 1, "adlt": "moderate"},
+            headers=headers,
+            timeout=6.0,
+            follow_redirects=True,
+        )
+        if r.status_code != 200:
+            return None
+        urls = re.findall(r'murl&quot;:&quot;(https?://[^&]+?)&quot;', r.text)
+        blocked_ext = (".svg", ".gif", ".ico", ".webp.html")
+        for raw_u in urls[:8]:
+            u = html_lib.unescape(raw_u)
+            u_low = u.lower()
+            if any(u_low.endswith(ext) for ext in blocked_ext):
+                continue
+            if not _is_safe_public_url(u):
+                continue
+            try:
+                ir = httpx.get(u, headers=headers, timeout=4.5, follow_redirects=True)
+                if ir.status_code != 200 or not _is_safe_public_url(str(ir.url)):
+                    continue
+                ctype = (ir.headers.get("content-type") or "").split(";")[0].strip().lower()
+                if not ctype.startswith("image/") or "svg" in ctype:
+                    continue
+                data = ir.content
+                if len(data) < 2048 or len(data) > 4_000_000:
+                    continue
+                if len(_IMG_RESOLVE_CACHE) >= 300:
+                    oldest_k = min(_IMG_RESOLVE_CACHE.keys(), key=lambda k: _IMG_RESOLVE_CACHE[k][0])
+                    _IMG_RESOLVE_CACHE.pop(oldest_k, None)
+                _IMG_RESOLVE_CACHE[key] = (now, data, ctype)
+                return data, ctype
+            except Exception:
+                continue
+    except Exception:
+        return None
+    return None
+
+
+@app.get("/api/image-resolve")
+async def api_image_resolve(q: str = ""):
+    clean_q = re.sub(r"\s+", " ", (q or "").strip())[:120]
+    if not clean_q:
+        raise HTTPException(status_code=400, detail="q gerekli")
+    hit = await asyncio.to_thread(_fetch_resolved_image_sync, clean_q)
+    if not hit:
+        raise HTTPException(status_code=404, detail="Görsel bulunamadı")
+    data, ctype = hit
+    return Response(
+        content=data,
+        media_type=ctype,
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
 
 
 @app.get("/api/auth/status")
@@ -2905,9 +3015,11 @@ async def api_chat(req: ChatRequest, request: Request):
                 )
             )
             if last_user_msg and (do_web_search or has_direct_url) and not is_local_code_turn:
-                yield _format_sse({"type": "status", "stage": "web_search", "message": "Sayfa okunuyor..." if (has_direct_url and not do_web_search) else "İnternet araştırması yapılıyor..."})
-                web_result = await asyncio.to_thread(_perform_web_search, last_user_msg, 5, hist_for_search, do_web_search)
+                yield _format_sse({"type": "status", "stage": "web_search", "sites_count": 1, "message": "Sayfa okunuyor..." if (has_direct_url and not do_web_search) else "Web siteleri taranıyor..."})
+                web_result = await asyncio.to_thread(_perform_web_search, last_user_msg, 5, hist_for_search, do_web_search, req.user_city)
                 if not web_result.get("skipped", False):
+                    if web_result.get("sources"):
+                        yield _format_sse({"type": "status", "stage": "web_search", "sites_count": len(web_result["sources"]), "message": f"{len(web_result['sources'])} web sitesi incelendi"})
                     yield _format_sse({
                         "type": "web_search",
                         "online": web_result["online"],
@@ -2985,7 +3097,11 @@ async def api_chat(req: ChatRequest, request: Request):
             # Smart Auto-Persona Routing (automatically selects specialist expertise per turn based on user need)
             auto_persona_name = None
             auto_persona_prompt = None
-            att_exts = " ".join(str(a.get("filename") or a.get("name") or "").lower() for m in req.messages[-2:] for a in (m.attachments or []))
+            att_exts = " ".join(
+                str((a.get("filename") or a.get("name")) if isinstance(a, dict) else (getattr(a, "filename", None) or getattr(a, "name", None) or "")).lower()
+                for m in req.messages[-2:]
+                for a in (m.attachments or [])
+            )
             if req.skill_id == "web-tasarimci" or (last_user_msg and re.search(r"\b(?:html|css|web\s*sitesi|landing\s*page|arayüz|dashboard|portfolyo|ui\s*tasarım|bento)\b", last_user_msg, re.I)):
                 auto_persona_name = "Web & UI Tasarımcısı"
                 auto_persona_prompt = "Aktif Uzmanlık: Kıdemli Web & UI/UX Tasarımcısı (Apple/Linear/Vercel tasarım sistemi, modern CSS Grid & mikro-etkileşimler)."
@@ -3016,27 +3132,41 @@ async def api_chat(req: ChatRequest, request: Request):
             if 0.64 <= eff_temp <= 0.82:
                 eff_temp = 0.68 if is_technical_turn else 0.73
 
+            is_brief_request = bool(last_user_msg and re.search(r"\b(?:kısaca|kisaca|kısa\s+özet|tek\s+cümle|özetçe)\b", last_user_msg, re.I))
+            is_broad_clarify_request = bool(
+                last_user_msg
+                and re.search(
+                    r"^(?:bana\s+film\s+önerisi\s+yapar\s+mısın\??|film\s+öner(?:isi)?\??|burç\s+uyumu\s+karşılaştırmak\s+istiyorum|günlük\s+veya\s+haftalık\s+plan\s+oluşturmak\s+istiyorum|plan\s+yap(?:ar\s+mısın)?\??)$",
+                    last_user_msg.strip(),
+                    re.I,
+                )
+            )
+
             if not is_technical_turn:
                 eff_system_prompt = (
                     f"{eff_system_prompt}\n\n"
-                    "[SOHBET VE RİTİM KURALI]: Kullanıcıyla içten, sade, akıcı ve doğal bir dost gibi konuş. "
-                    "ASLA 'taze kahve kokusu gibi', 'veri akışları', 'yıkılmaz kale' gibi abartılı yapay metaforlar veya kullanıcının söylemediği varsayımlar ('sen Akrep'sin' vb.) üretme; robotik yapay zekâ uyarıları verme. "
-                    "Cümle ortasına rastgele emoji koyma; emojileri yalnızca başlık önünde (ör. '💖 Aşk ve İlişki:', '⚡ Güçlü Yönler:') veya paragraf sonunda temizce, yanıt başına en fazla 1-3 adet kullan. "
-                    "Kısa, nefes alan paragraflarla yaz ve sonunda sohbeti sürdüren doğal bir soru sor."
+                    "[SOHBET VE RİTİM KURALI — CHATGPT SEVİYESİ DOĞALLIK]:\n"
+                    "1) İçten, zeki, net ve akıcı Türkçe konuş. ASLA abartılı yapay metaforlar, robotik yapay zekâ uyarıları veya kullanıcının söylemediği varsayımlar üretme.\n"
+                    "2) BELİRSİZ / GENEL İSTEKLERDE ÖNCE SOR: Kullanıcı tercih belirtmeden 'Film öner', 'Burç uyumu karşılaştırmak istiyorum', 'Günlük/haftalık plan oluşturmak istiyorum' veya 'Tarot/Arcana bak' dediyse rastgele liste boşaltma! Önce sıcak 1 cümleyle gir, ardından konuya uygun tek emojili 4–6 kısa şıkla tek netleştirme sorusu sor (ör. filmde tür + son beğendiği 1-2 film; burçta hangi burçlar/yükselenler; planda günlük mü haftalık mı + hedefi).\n"
+                    "3) 4 ADIMLI AKICI RİTİM: Kısa sıcak giriş (1–2 cümle) → kalın başlık + tek emojili kısa maddeler (her madde max 1 cümle) → net kişisel fikir satırı ('**Benim yorumum:**' veya '**Benim ilk tercihim:**') → derinleşmeye uygun konularda sonda merak uyandıran 3–4 şıklı kısa yönlendirme sorusu ('Biraz daha derine inelim: Hangisini merak ediyorsun?').\n"
+                    "4) UZUNLUK UYUMU: Kullanıcı 'kısaca' dediyse gereksiz uzatma; 5–6 net madde ve 1 kısa yorumla bitir.\n"
+                    "5) EMOJİ DİSİPLİNİ: Cümle ortasına rastgele emoji serpiştirme; emojileri yalnızca başlık veya liste maddesi başında tek ve anlamlı biçimde kullan."
                 ).strip()
             else:
                 eff_system_prompt = (
                     f"{eff_system_prompt}\n\n"
-                    "[TEKNİK SUNUM TONU]: Kod, tablo ve teknik analizleri hatasız ve tertemiz sun; giriş/özet başlıklarında gerekirse sade tek bir emoji (✨, 📊, ⚡) kullanabilirsin."
+                    "[TEKNİK SUNUM TONU]: Kod, tablo ve teknik analizleri hatasız, öz ve tertemiz sun; giriş/özet başlıklarında gerekirse sade tek bir emoji (✨, 📊, ⚡) kullanabilirsin."
                 ).strip()
 
-            # Contextual Rich Visual Cards (sen_card: compatibility / compare / rating / checklist)
+            # Contextual Rich Visual Cards (sen_card: media_list / image_compare / scorecard / compatibility / checklist / rating)
             is_visual_card_turn = bool(
                 last_user_msg
                 and not is_technical_turn
+                and not is_brief_request
+                and not is_broad_clarify_request
                 and re.search(
-                    r"(?:uyum|uyumlu\s+mu|karşılaştır|kıyasla|\bvs\b|hangisi\s+daha\s+iyi|farkı\s+ne|burç.*uyum|aşk\s+uyumu|"
-                    r"öner\w*|tavsiye|film|dizi|kitap|oyun|mekan|mekân|gezi|rota|plan\w*|program|rutin|tarif|liste\s+yap|puanla|incele)",
+                    r"(?:uyum|uyumlu\s+mu|karşılaştır|kıyasla|\bvs\b|hangisi\s+daha\s+iyi|farkı\s+ne|burç.*uyum|aşk\s+uyumu|arcana|tarot|"
+                    r"öner\w*|tavsiye|film|dizi|kitap|oyun|mekan|mekân|gezi|rota|plan\w*|program|rutin|tarif|liste\s+yap|puanla|incele|koltuk|kumaş|ürün)",
                     last_user_msg,
                     re.I,
                 )
@@ -3044,16 +3174,16 @@ async def api_chat(req: ChatRequest, request: Request):
             if is_visual_card_turn:
                 eff_system_prompt = (
                     f"{eff_system_prompt}\n\n"
-                    "[GÖRSEL KART YETENEĞİ]: Bu yanıtı daha keyifli ve okunaklı kılmak için uygunsa TAM OLARAK BİR TANE ```sen_card JSON bloğu ekle (arayüz bunu şık görsel karta çevirir). "
-                    "1) Uyum/Skor: "
-                    '```sen_card\n{"kind":"compatibility","title":"Oğlak ♑ × Akrep ♏","score":86,"badge":"Güçlü Bağ","summary":"Kısa 1 cümle özet","metrics":[{"label":"💖 Aşk","value":88},{"label":"🛡️ Güven","value":92},{"label":"💬 İletişim","value":80}]}\n``` '
-                    "2) Karşılaştırma: "
-                    '```sen_card\n{"kind":"compare","title":"Seçenek A vs Seçenek B","left":{"name":"A","emoji":"🔥","score":88,"points":["Artı 1","Artı 2"]},"right":{"name":"B","emoji":"⚡","score":85,"points":["Artı 1","Artı 2"]},"verdict":"Kısa net karar"}\n``` '
-                    "3) Öneri/Puanlama (film, kitap, oyun, mekân): "
-                    '```sen_card\n{"kind":"rating","title":"Başlık","emoji":"🎬","score":"8.9/10","tags":["Bilim Kurgu","Sürükleyici"],"points":["Öne çıkan 1","Öne çıkan 2"],"summary":"Kısa neden önerdiğin"}\n``` '
-                    "4) Hızlı Plan/Adımlar (rutin, gezi, tarif, çalışma): "
-                    '```sen_card\n{"kind":"checklist","title":"Plan Başlığı","badge":"Hızlı Plan","steps":[{"label":"Adım 1","meta":"15 dk"},{"label":"Adım 2","meta":"30 dk"}]}\n``` '
-                    "JSON tek parça ve geçerli olmalı; gereksiz uzunluk yapmadan kartın altında sıcak ve kısa özetini yaz."
+                    "[GÖRSEL KART YETENEĞİ]: Yanıtı görsel olarak zenginleştirmek için uygunsa TAM OLARAK BİR TANE geçerli ```sen_card JSON bloğu ekle (arayüz gerçek HD görselleri 'image_query' alanından otomatik çeker; ASLA URL uydurma):\n"
+                    "1) Görselli Liste (film, dizi, kitap, ürün, tarot/arcana): "
+                    '```sen_card\n{"kind":"media_list","title":"Sana önereceğim filmler","items":[{"title":"Shutter Island","year":"2010","subtitle":"Gizem, psikoloji ve akıl oyunları. Sonuna kadar merak ettirir.","badge":"İlk önerim","image_query":"Shutter Island movie poster"},{"title":"Se7en","year":"1995","subtitle":"Karanlık suç hikâyesi ve unutulmaz final.","image_query":"Se7en 1995 movie poster"}]}\n```\n'
+                    "2) 2'li Görselli Karşılaştırma (ürün, kumaş, burç, cihaz): "
+                    '```sen_card\n{"kind":"image_compare","title":"Kadife Kumaş vs Suni Deri","left":{"name":"Kadife kumaş","emoji":"🛋️","subtitle":"Yumuşak ve nefes alan","image_query":"velvet fabric texture dark","points":["Daha az terletir","Yazın konforludur"]},"right":{"name":"Suni deri","emoji":"✨","subtitle":"Şık ve kolay silinen","image_query":"faux leather texture black","points":["Nemli bezle kolay temizlenir","Daha şık görünür"]},"verdict":"Günde 4+ saat oturuyorsan kadife kumaş daha rahat eder."}\n```\n'
+                    "3) Skor & Uyumluluk Kartı (burç, ilişki, analiz): "
+                    '```sen_card\n{"kind":"scorecard","title":"AKREP ♏ × OĞLAK ♑","badge":"Yüksek uyum","score":"9/10","subtitle":"Genel uyum puanı","metrics":[{"emoji":"❤️","label":"Aşk","value":"9/10"},{"emoji":"🔥","label":"Tutku","value":"9,5/10"},{"emoji":"🛡️","label":"Güven ve sadakat","value":"10/10"}],"strengths":["Karşılıklı sadakat ve güven"],"challenges":["İki tarafın da inatçı olması"],"summary":"Birbirlerine alan tanıdıklarında çok sağlam bir bağ kurarlar."}\n```\n'
+                    "4) İnteraktif Günlük/Haftalık Plan: "
+                    '```sen_card\n{"kind":"checklist","title":"Verimli Gün Planı","badge":"5 Adım","steps":[{"label":"Sabah yürüyüşü ve kahve","meta":"08:30"},{"label":"Derin odak çalışma bloğu","meta":"10:00"}]}\n```\n'
+                    "JSON tek parça ve hatasız olsun; kartın altında kısa kişisel yorumunu ve gerekirse derinleştirme sorunu ekle."
                 ).strip()
 
             # Keep quick weather/finance checks crisp without forced therapist follow-ups
@@ -3167,6 +3297,11 @@ async def api_chat(req: ChatRequest, request: Request):
                             "KURAL: Bu arka plan bilgisini kendi doğal bilgin gibi kullanarak soruyu doğrudan, akıcı Türkçe yanıtla. "
                             "ASLA 'Sağladığınız canlı web araştırması sonuçlarını temel alarak', 'Verdiğiniz kaynaklara göre', 'Aşağıda bulabilirsiniz' gibi gereksiz giriş cümleleri yazma. "
                             "Karşılaştırma veya veriler için düzenli Markdown tablosu kullanabilirsin; LaTeX ($...$) kullanma.\n\n"
+                        )
+                    elif web_result.get("weather_need_city"):
+                        web_prefix = (
+                            "[Sistem Notu: Kullanıcı şehir belirtmeden hava durumunu sordu ve cihaz konum bilgisi alınamadı. "
+                            "Tek kısa ve samimi cümleyle konum bilgisine ulaşamadığını belirtip hangi şehrin hava durumunu öğrenmek istediğini sor (ör. 'Konum bilgine ulaşamadım 📍 Hangi şehrin hava durumunu öğrenmek istersin?'). Başka bir şey uydurma.]\n\n"
                         )
                     elif not web_result.get("online", True):
                         web_prefix = (

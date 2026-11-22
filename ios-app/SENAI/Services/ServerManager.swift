@@ -26,6 +26,8 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
     @Published var activeSessionId: String = UUID().uuidString.prefix(12).lowercased()
     @Published var messages: [ChatMessage] = []
     @Published var isGenerating: Bool = false
+    @Published var isSearchingWeb: Bool = false
+    @Published var searchingSitesCount: Int = 0
     @Published var statusLine: String = ""
     @Published var speakingMessageId: String? = nil
 
@@ -41,6 +43,15 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
 
     var activeModelName: String {
         availableModels.first(where: { $0.id == selectedModelId })?.name ?? "SEN.AI"
+    }
+
+    func imageResolveURL(for query: String?) -> URL? {
+        guard let q = query?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !q.isEmpty, !activeBaseURL.isEmpty,
+              let encoded = q.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
+            return nil
+        }
+        return URL(string: "\(activeBaseURL)/api/image-resolve?q=\(encoded)")
     }
 
     private var streamTask: Task<Void, Never>?
@@ -257,7 +268,7 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
         }
     }
 
-    func sendMessage(_ rawText: String, images: [Data] = [], autoSpeak: Bool = false) {
+    func sendMessage(_ rawText: String, images: [Data] = [], autoSpeak: Bool = false, userCity: String? = nil) {
         let trimmed = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard (!trimmed.isEmpty || !images.isEmpty), !isGenerating else { return }
         guard !activeBaseURL.isEmpty else {
@@ -274,7 +285,9 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
         messages.append(assistantMsg)
 
         isGenerating = true
-        statusLine = images.isEmpty ? "Bağlanıyor..." : "Görsel yükleniyor..."
+        isSearchingWeb = false
+        searchingSitesCount = 0
+        statusLine = images.isEmpty ? "" : "Görsel yükleniyor..."
 
         streamTask = Task {
             var uploadedAtts: [[String: Any]] = []
@@ -287,7 +300,7 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
                     ])
                 }
             }
-            if !images.isEmpty { statusLine = "Görsel analiz ediliyor..." }
+            if !images.isEmpty { statusLine = "" }
 
             let historyPayload: [[String: Any]] = messages.dropLast().enumerated().map { idx, m in
                 let isLatestUser = (idx == messages.count - 2)
@@ -299,7 +312,7 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
                 ]
             }
 
-            let bodyObj: [String: Any] = [
+            var bodyObj: [String: Any] = [
                 "session_id": activeSessionId,
                 "model_id": selectedModelId,
                 "thinking_effort": thinkingEffort.rawValue,
@@ -307,9 +320,20 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
                 "use_library": false,
                 "messages": historyPayload,
             ]
+            if let city = userCity, !city.isEmpty {
+                bodyObj["user_city"] = city
+            }
 
             await performSSEStream(bodyObj: bodyObj, assistantId: assistantId, autoSpeak: autoSpeak)
         }
+    }
+
+    func regenerateLast() {
+        guard !isGenerating else { return }
+        guard let lastUserIdx = messages.lastIndex(where: { $0.role == "user" }) else { return }
+        let lastUser = messages[lastUserIdx]
+        messages = Array(messages.prefix(lastUserIdx))
+        sendMessage(lastUser.content, images: lastUser.attachedImages)
     }
 
     func stopGeneration() {
@@ -317,6 +341,8 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
         streamTask = nil
         if isGenerating {
             isGenerating = false
+            isSearchingWeb = false
+            searchingSitesCount = 0
             statusLine = ""
             if let idx = messages.indices.last, messages[idx].role == "assistant" {
                 messages[idx].isStreaming = false
@@ -334,6 +360,8 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
         let startTime = Date()
         defer {
             isGenerating = false
+            isSearchingWeb = false
+            searchingSitesCount = 0
             statusLine = ""
             var finalSpokenText = ""
             if let idx = messages.firstIndex(where: { $0.id == assistantId }) {
@@ -355,10 +383,6 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
         do {
             let (bytes, response) = try await urlSession.bytes(for: req)
             if let http = response as? HTTPURLResponse {
-                if http.statusCode == 401 {
-                    requiresPin = true
-                    return
-                }
                 if http.statusCode != 200 {
                     updateAssistant(assistantId) { $0.content = "Sunucu hatası (HTTP \(http.statusCode))." }
                     return
@@ -375,9 +399,19 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
 
                 switch type {
                 case "status":
-                    if let msg = ev["message"] as? String { statusLine = msg }
+                    let stage = (ev["stage"] as? String) ?? ""
+                    if stage == "web_search" {
+                        isSearchingWeb = true
+                        let cnt = (ev["sites_count"] as? Int) ?? max(1, searchingSitesCount)
+                        withAnimation(.snappy(duration: 0.25)) {
+                            searchingSitesCount = max(searchingSitesCount, cnt)
+                        }
+                    } else if stage == "generating" || stage == "model_loading" {
+                        isSearchingWeb = false
+                    }
                 case "thinking_delta", "thinking":
                     if let delta = ev["delta"] as? String {
+                        isSearchingWeb = false
                         let secs = Date().timeIntervalSince(startTime)
                         updateAssistant(assistantId) {
                             $0.thinking += delta
@@ -386,6 +420,7 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
                     }
                 case "answer_delta", "text":
                     if let delta = ev["delta"] as? String {
+                        isSearchingWeb = false
                         statusLine = ""
                         updateAssistant(assistantId) { $0.content += delta }
                     }
@@ -397,6 +432,11 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
                     if let srcs = ev["sources"],
                        let sData = try? JSONSerialization.data(withJSONObject: srcs),
                        let parsed = try? JSONDecoder().decode([WebSource].self, from: sData) {
+                        if !parsed.isEmpty {
+                            withAnimation(.snappy(duration: 0.25)) {
+                                searchingSitesCount = parsed.count
+                            }
+                        }
                         updateAssistant(assistantId) { $0.webSources = parsed }
                     }
                 case "rich_card":
@@ -429,10 +469,31 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
         }
     }
 
-    private func saveCurrentSession() async {
+    var currentSessionTitle: String {
+        if let existing = sessions.first(where: { $0.id == activeSessionId }), !existing.title.isEmpty {
+            return existing.title
+        }
+        return String(messages.first(where: { $0.role == "user" })?.content.prefix(48) ?? "Yeni Sohbet")
+    }
+
+    var isCurrentSessionPinned: Bool {
+        sessions.first(where: { $0.id == activeSessionId })?.pinned == true
+    }
+
+    var currentTranscriptForShare: String {
+        messages.map { m in
+            let who = m.role == "user" ? "Sen" : "SEN.AI"
+            return "\(who):\n\(m.content)"
+        }.joined(separator: "\n\n---\n\n")
+    }
+
+    private func saveCurrentSession(customTitle: String? = nil, customPinned: Bool? = nil) async {
         guard !activeBaseURL.isEmpty, !messages.isEmpty,
               let url = URL(string: "\(activeBaseURL)/api/sessions") else { return }
-        let title = messages.first(where: { $0.role == "user" })?.content.prefix(48) ?? "Yeni Sohbet"
+        let existing = sessions.first(where: { $0.id == activeSessionId })
+        let title = customTitle ?? existing?.title ?? String(messages.first(where: { $0.role == "user" })?.content.prefix(48) ?? "Yeni Sohbet")
+        let pinned = customPinned ?? existing?.pinned ?? false
+
         let serialized: [[String: Any]] = messages.map { m in
             var dict: [String: Any] = ["id": m.id, "role": m.role, "content": m.content, "thinking": m.thinking]
             if let ap = m.autoPersona { dict["auto_persona"] = ap }
@@ -442,7 +503,71 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = try? JSONSerialization.data(withJSONObject: ["id": activeSessionId, "title": String(title), "messages": serialized])
+        req.httpBody = try? JSONSerialization.data(withJSONObject: [
+            "id": activeSessionId,
+            "title": title,
+            "pinned": pinned,
+            "messages": serialized,
+        ])
+        _ = try? await urlSession.data(for: req)
+        await fetchSessions()
+    }
+
+    func togglePinSession(_ sid: String) async {
+        guard !activeBaseURL.isEmpty else { return }
+        let nextPinned = !(sessions.first(where: { $0.id == sid })?.pinned ?? false)
+        if let idx = sessions.firstIndex(where: { $0.id == sid }) {
+            sessions[idx].pinned = nextPinned
+        }
+        SenHaptics.light()
+        if sid == activeSessionId && !messages.isEmpty {
+            await saveCurrentSession(customPinned: nextPinned)
+            return
+        }
+        await patchSessionMeta(sid: sid, newTitle: nil, newPinned: nextPinned)
+    }
+
+    func renameSession(_ sid: String, newTitle: String) async {
+        let clean = newTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty, !activeBaseURL.isEmpty else { return }
+        if let idx = sessions.firstIndex(where: { $0.id == sid }) {
+            sessions[idx].title = clean
+        }
+        SenHaptics.light()
+        if sid == activeSessionId && !messages.isEmpty {
+            await saveCurrentSession(customTitle: clean)
+            return
+        }
+        await patchSessionMeta(sid: sid, newTitle: clean, newPinned: nil)
+    }
+
+    private func patchSessionMeta(sid: String, newTitle: String?, newPinned: Bool?) async {
+        guard let getUrl = URL(string: "\(activeBaseURL)/api/sessions/\(sid)"),
+              let postUrl = URL(string: "\(activeBaseURL)/api/sessions") else { return }
+        do {
+            let (data, _) = try await urlSession.data(from: getUrl)
+            guard var obj = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+            if let t = newTitle { obj["title"] = t }
+            if let p = newPinned { obj["pinned"] = p }
+            var req = URLRequest(url: postUrl)
+            req.httpMethod = "POST"
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.httpBody = try? JSONSerialization.data(withJSONObject: obj)
+            _ = try? await urlSession.data(for: req)
+            await fetchSessions()
+        } catch {}
+    }
+
+    func deleteSession(_ sid: String) async {
+        guard !activeBaseURL.isEmpty,
+              let url = URL(string: "\(activeBaseURL)/api/sessions/\(sid)") else { return }
+        sessions.removeAll { $0.id == sid }
+        if activeSessionId == sid {
+            startNewChat()
+        }
+        SenHaptics.medium()
+        var req = URLRequest(url: url)
+        req.httpMethod = "DELETE"
         _ = try? await urlSession.data(for: req)
         await fetchSessions()
     }
@@ -522,11 +647,14 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
         connectionRoute = .cloudflare
         connectionError = nil
         requiresPin = false
+        isGenerating = false
+        isSearchingWeb = false
+        searchingSitesCount = 0
         sessions = [
-            ChatSessionSummary(id: "p1", title: "Manisa hava durumu ve hafta sonu planı", updated_at: "Bugün"),
-            ChatSessionSummary(id: "p2", title: "Oğlak ve Akrep uyumu", updated_at: "Bugün"),
-            ChatSessionSummary(id: "p3", title: "SwiftUI Liquid Glass mimarisi", updated_at: "Dün"),
-            ChatSessionSummary(id: "p4", title: "Envanter Excel tablosu", updated_at: "Dün"),
+            ChatSessionSummary(id: "p1", title: "Hafta sonu verimli rutin planı", updated_at: "Bugün", pinned: true),
+            ChatSessionSummary(id: "p2", title: "Akrep ve Oğlak uyumu", updated_at: "Bugün", pinned: true),
+            ChatSessionSummary(id: "p3", title: "Oyuncu koltuğu karşılaştırması", updated_at: "Dün", pinned: false),
+            ChatSessionSummary(id: "p4", title: "Psikolojik gerilim film listesi", updated_at: "Dün", pinned: false),
         ]
         activeSessionId = "p2"
         if screen == "models" {
@@ -538,99 +666,118 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
                 kind: "weather",
                 title: nil,
                 location: "Manisa, Türkiye",
-                updated_at: "Canlı · 02:45",
-                temp_c: 12.4,
-                feels_like_c: 11.2,
-                humidity: 73,
-                wind_kmh: 3.1,
+                updated_at: "Canlı · 16:40",
+                temp_c: 18.4,
+                feels_like_c: 17.6,
+                humidity: 58,
+                wind_kmh: 9.2,
                 precip_mm: 0,
                 condition: "Parçalı Bulutlu",
                 daily: [
-                    WeatherDay(day: "Bugün", date: nil, condition: "Parçalı Bulutlu", t_max: 19, t_min: 10, rain_prob: 0),
-                    WeatherDay(day: "Yarın", date: nil, condition: "Açık", t_max: 22, t_min: 8, rain_prob: 5),
-                    WeatherDay(day: "Sal", date: nil, condition: "Yağmur", t_max: 17, t_min: 7, rain_prob: 40),
-                    WeatherDay(day: "Çar", date: nil, condition: "Güneşli", t_max: 14, t_min: 4, rain_prob: 0),
-                    WeatherDay(day: "Per", date: nil, condition: "Bulutlu", t_max: 15, t_min: 5, rain_prob: 10),
+                    WeatherDay(day: "Bugün", date: nil, condition: "Parçalı Bulutlu", t_max: 21, t_min: 11, rain_prob: 5),
+                    WeatherDay(day: "Yarın", date: nil, condition: "Güneşli", t_max: 23, t_min: 10, rain_prob: 0),
+                    WeatherDay(day: "Sal", date: nil, condition: "Yağmur", t_max: 17, t_min: 9, rain_prob: 45),
+                    WeatherDay(day: "Çar", date: nil, condition: "Açık", t_max: 19, t_min: 8, rain_prob: 0),
+                    WeatherDay(day: "Per", date: nil, condition: "Bulutlu", t_max: 18, t_min: 8, rain_prob: 15),
                 ],
                 items: nil
             )
             let compatMd = """
-            İki burç arasında hem duygusal derinlik hem de güçlü bir güven bağı oluşur.
+            Hava bugün Manisa'da oldukça keyifli, hafif bir ceket yeterli olur. ☀️
 
             ```sen_card
-            {"kind":"compatibility","title":"Oğlak ♑ × Akrep ♏","score":88,"badge":"Güçlü Bağ","summary":"Sağlam adımlar ile yüksek sadakatin birleşimi uzun soluklu bir denge kurar.","metrics":[{"label":"💖 Aşk","value":89},{"label":"🛡️ Güven","value":94},{"label":"💬 İletişim","value":82}]}
+            {"kind":"scorecard","title":"AKREP ♏ × OĞLAK ♑","badge":"Yüksek uyum","score":"9,5/10","subtitle":"Genel uyum puanı","note":"Astrolojik, eğlence amaçlı değerlendirme","metrics":[{"emoji":"❤️","label":"Aşk","value":"9,5/10"},{"emoji":"🔥","label":"Tutku","value":"10/10"},{"emoji":"🛡️","label":"Güven ve sadakat","value":"9,5/10"},{"emoji":"💬","label":"İletişim","value":"8,5/10"}],"strengths":["Karşılıklı sadakat ve yüksek güven","Birlikte uzun vadeli hedeflere yürüme"],"challenges":["İki tarafın da inatçı olabilmesi"],"summary":"Birbirlerine alan tanıdıklarında çok sağlam ve kalıcı bir bağ kurarlar."}
             ```
-
-            **⚡ Güçlü Yönler:** Birbirlerinin hedeflerini sessizce ama kararlılıkla desteklerler. ✨
             """
             messages = [
-                ChatMessage(id: "u1", role: "user", content: "Manisa hava durumu nasıl ve Oğlak Akrep uyumu?"),
+                ChatMessage(id: "u1", role: "user", content: "Hava durumu nasıl ve Akrep Oğlak uyumu?"),
                 ChatMessage(
                     id: "a1",
                     role: "assistant",
                     content: compatMd,
-                    thinking: "Kullanıcı hem Manisa canlı hava durumunu hem de Oğlak–Akrep uyumunu sordu. Önce hava kartını, ardından net uyum kartını ve kısa özeti sunuyorum.",
+                    thinking: "internal thought hidden",
                     webSources: [
-                        WebSource(title: "Manisa Canlı Hava Durumu — 12.4°C", url: "https://open-meteo.com", domain: "open-meteo.com", snippet: nil),
+                        WebSource(title: "Manisa Canlı Hava Durumu — 18.4°C", url: "https://open-meteo.com", domain: "open-meteo.com", snippet: nil),
                         WebSource(title: "Meteoroloji Genel Müdürlüğü", url: "https://mgm.gov.tr", domain: "mgm.gov.tr", snippet: nil),
+                        WebSource(title: "Hava Tahmin Raporu", url: "https://accuweather.com", domain: "accuweather.com", snippet: nil),
                     ],
                     richCards: [sampleWeather],
                     rating: "like",
-                    thinkingSeconds: 1.4
+                    thinkingSeconds: 2.3
                 ),
             ]
-        } else if screen == "chat_more" {
-            let richMd = """
-            Hafta sonu için hem harika bir bilim kurgu önerisi hem de verimli bir gün planı hazırladım:
+        } else if screen == "media_list" {
+            let moviesMd = """
+            Gizem, psikolojik derinlik ve ters köşe seviyorsan tam senlik 3 film seçtim: 🎬
 
             ```sen_card
-            {"kind":"rating","title":"Interstellar (Yıldızlararası)","emoji":"🎬","score":"8.9/10","tags":["Bilim Kurgu","Epik","Duygusal"],"points":["Hans Zimmer'in unutulmaz müzikleri","Gerçek astrofizik temelli kara delik sahneleri","Güçlü baba-kız hikayesi"],"summary":"Görsel şölen ve duygusal derinliği bir arada arıyorsan ilk sıraya koyabilirsin."}
+            {"kind":"media_list","title":"Sana önereceğim filmler","items":[{"title":"Shutter Island","year":"2010","subtitle":"Gizem, psikoloji ve akıl oyunları. Sonuna kadar merak ettirir.","badge":"İlk önerim","score":"8.2","image_query":"Shutter Island movie poster"},{"title":"Se7en","year":"1995","subtitle":"Karanlık suç hikâyesi, psikolojik gerilim ve unutulmaz final.","score":"8.6","image_query":"Se7en movie poster"},{"title":"Gone Girl","year":"2014","subtitle":"Manipülasyon, sırlar ve sürekli değişen şüpheler.","score":"8.1","image_query":"Gone Girl movie poster"}]}
             ```
 
+            **Benim ilk tercihim Shutter Island.** İzlemediysen konusunu hiç araştırmadan aç; spoiler yemek insanlığın en gereksiz icatlarından biri. 🍿
+            """
+            messages = [
+                ChatMessage(id: "um1", role: "user", content: "Psikolojik gerilim ve ters köşe film önerir misin?"),
+                ChatMessage(id: "am1", role: "assistant", content: moviesMd, thinking: "ok", rating: "like", thinkingSeconds: 1.8),
+            ]
+        } else if screen == "image_compare" {
+            let cmpMd = """
+            Kısaca temel fark **terletme, temizlik ve uzun vadeli kullanımda** ortaya çıkıyor.
+
             ```sen_card
-            {"kind":"checklist","title":"Verimli Hafta Sonu Planı","badge":"4 Adım","steps":[{"label":"Sabah kahvesi ve 20 dk yürüyüş","meta":"09:30"},{"label":"Odaklı çalışma veya proje bloğu","meta":"11:00"},{"label":"Kısa mola ve öğle yemeği","meta":"13:30"},{"label":"Akşam film keyfi: Interstellar","meta":"21:00"}]}
+            {"kind":"image_compare","title":"Kadife Kumaş vs Suni Deri","left":{"name":"Kadife kumaş","emoji":"🛋️","subtitle":"Yumuşak ve nefes alan","image_query":"dark velvet fabric texture","points":["Deriye göre daha az terletir","Yazın daha konforludur","Toz ve tüyü biraz daha tutar"]},"right":{"name":"Suni deri","emoji":"✨","subtitle":"Şık ve kolay silinen","image_query":"black faux leather texture","points":["Nemli bezle kolay temizlenir","Daha şık ve düzgün görünür","Sıcak havada terletebilir"]},"verdict":"Günde 4-6 saat oturuyorsan kadife kumaş çok daha rahat ettirir."}
             ```
             """
             messages = [
-                ChatMessage(id: "u2", role: "user", content: "Film önerisi ve hafta sonu planı yapar mısın?"),
-                ChatMessage(
-                    id: "a2",
-                    role: "assistant",
-                    content: richMd,
-                    webSources: [
-                        WebSource(title: "Interstellar — IMDb (8.7)", url: "https://imdb.com", domain: "imdb.com", snippet: nil),
-                        WebSource(title: "Bilim Kurgu En İyiler", url: "https://rottentomatoes.com", domain: "rottentomatoes.com", snippet: nil),
-                    ],
-                    rating: "like"
-                ),
+                ChatMessage(id: "uc1", role: "user", content: "Kadife kumaş ile suni deri farkı nedir kısaca?"),
+                ChatMessage(id: "ac1", role: "assistant", content: cmpMd, rating: "like"),
+            ]
+        } else if screen == "chat_more" {
+            let richMd = """
+            Hem odaklanabileceğin hem de dinlenmeye vakit ayırabileceğin dengeli bir gün planı hazırladım:
+
+            ```sen_card
+            {"kind":"checklist","title":"Verimli Günlük Plan","badge":"5 Adım","steps":[{"label":"Sabah kahvesi ve 20 dk yürüyüş","meta":"09:00"},{"label":"Derin odak çalışma bloğu","meta":"10:30"},{"label":"Öğle molası ve ekran arası","meta":"13:00"},{"label":"Spor veya esneme rutini","meta":"17:30"},{"label":"Akşam film keyfi & kitap","meta":"21:00"}]}
+            ```
+
+            | Özellik | Seviye |
+            | --- | --- |
+            | Odak süresi | 3,5 saat |
+            | Dinlenme dengesi | 9/10 |
+            | Sürdürülebilirlik | 10/10 |
+            """
+            messages = [
+                ChatMessage(id: "u2", role: "user", content: "Günlük verimli bir rutin planı yapar mısın?"),
+                ChatMessage(id: "a2", role: "assistant", content: richMd, rating: "like"),
             ]
         } else if screen == "code_table" {
             let codeTableMd = """
-            İşte hem temiz bir **Python stok hesaplayıcı** hem de karşılaştırmalı **envanter tablosu**:
+            İşte hem renklendirilmiş **Python stok hesaplayıcı** hem de minimalist **envanter tablosu**:
 
             ```python
             def stok_degeri(urunler):
+                # Toplam envanter değerini hesaplar
                 toplam = sum(u["adet"] * u["fiyat"] for u in urunler)
                 return f"{toplam:,.2f} TL"
             ```
 
-            | Ürün Kodu | Ürün Adı | Stok | Birim Fiyat | Toplam |
-            | --- | --- | --- | --- | --- |
-            | ELK-01 | Mavi Tişört | 150 | 240 TL | 36.000 TL |
-            | ELK-02 | Keten Gömlek | 85 | 490 TL | 41.650 TL |
-            | ELK-03 | Spor Şapka | 210 | 180 TL | 37.800 TL |
-
-            Tek dokunuşla kodu veya tabloyu kopyalayabilirsin. ✨
+            | Ürün Kodu | Ürün Adı | Stok | Toplam |
+            | --- | --- | --- | --- |
+            | ELK-01 | Mavi Tişört | 150 | 36.000 TL |
+            | ELK-02 | Keten Gömlek | 85 | 41.650 TL |
+            | ELK-03 | Spor Şapka | 210 | 37.800 TL |
             """
             messages = [
                 ChatMessage(id: "u3", role: "user", content: "Python stok hesaplama kodu ve örnek envanter tablosu yazar mısın?"),
-                ChatMessage(
-                    id: "a3",
-                    role: "assistant",
-                    content: codeTableMd,
-                    autoPersona: "Veri & Excel Analisti",
-                    rating: "like"
-                ),
+                ChatMessage(id: "a3", role: "assistant", content: codeTableMd, autoPersona: "Veri & Excel Analisti", rating: "like"),
+            ]
+        } else if screen == "searching" {
+            isGenerating = true
+            isSearchingWeb = true
+            searchingSitesCount = 4
+            messages = [
+                ChatMessage(id: "us1", role: "user", content: "Claw's Z14 koltuğunun kendi sitesinde 135° yatış bilgisi yazıyor mu?"),
+                ChatMessage(id: "as1", role: "assistant", content: "", isStreaming: true),
             ]
         } else {
             messages = []

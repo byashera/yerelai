@@ -4,6 +4,7 @@ import SwiftUI
 struct ChatView: View {
     @EnvironmentObject private var server: ServerManager
     @StateObject private var voice = VoiceInputManager()
+    @StateObject private var location = LocationManager()
 
     var initialPreviewScreen: String? = nil
 
@@ -18,6 +19,10 @@ struct ChatView: View {
     @State private var pendingPhotos: [PendingPhoto] = []
     @State private var activeSources: [WebSource]? = nil
     @State private var bentoAppeared: Bool = false
+    @State private var showRenameAlert: Bool = false
+    @State private var renameDraft: String = ""
+    @State private var showScrollToBottom: Bool = false
+    @State private var scrollToBottomTrigger: Int = 0
     @FocusState private var inputFocused: Bool
 
     var body: some View {
@@ -88,12 +93,55 @@ struct ChatView: View {
                 }
 
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        server.startNewChat()
-                    } label: {
-                        Image(systemName: "square.and.pencil")
+                    HStack(spacing: 4) {
+                        Button {
+                            server.startNewChat()
+                        } label: {
+                            Image(systemName: "square.and.pencil")
+                        }
+                        .accessibilityLabel("Yeni Sohbet")
+
+                        if !server.messages.isEmpty {
+                            Menu {
+                                Section(server.currentSessionTitle) {
+                                    ShareLink(item: server.currentTranscriptForShare) {
+                                        Label("Paylaş", systemImage: "square.and.arrow.up")
+                                    }
+                                    Button {
+                                        Task { await server.togglePinSession(server.activeSessionId) }
+                                    } label: {
+                                        Label(
+                                            server.isCurrentSessionPinned ? "Sabitlemeyi Kaldır" : "Sabitle",
+                                            systemImage: server.isCurrentSessionPinned ? "pin.slash" : "pin"
+                                        )
+                                    }
+                                    Button {
+                                        renameDraft = server.currentSessionTitle
+                                        showRenameAlert = true
+                                    } label: {
+                                        Label("Yeniden Adlandır", systemImage: "pencil")
+                                    }
+                                    Divider()
+                                    Button(role: .destructive) {
+                                        Task { await server.deleteSession(server.activeSessionId) }
+                                    } label: {
+                                        Label("Sil", systemImage: "trash")
+                                    }
+                                }
+                            } label: {
+                                Image(systemName: "ellipsis")
+                            }
+                            .accessibilityLabel("Sohbet Seçenekleri")
+                        }
                     }
-                    .accessibilityLabel("Yeni Sohbet")
+                }
+            }
+            .alert("Sohbeti Yeniden Adlandır", isPresented: $showRenameAlert) {
+                TextField("Yeni başlık", text: $renameDraft)
+                Button("İptal", role: .cancel) {}
+                Button("Kaydet") {
+                    let next = renameDraft
+                    Task { await server.renameSession(server.activeSessionId, newTitle: next) }
                 }
             }
             .sheet(isPresented: $showSidebar) {
@@ -224,34 +272,35 @@ struct ChatView: View {
                     LazyVGrid(columns: cols, spacing: 10) {
                         bentoCard(
                             title: "Hava Durumu",
-                            subtitle: "5 günlük canlı tahmin",
+                            subtitle: "Konuma göre canlı tahmin",
                             icon: "cloud.sun.fill",
                             tint: .blue,
-                            prompt: "Manisa hava durumu nasıl?",
-                            delay: 0.04
+                            prompt: "Hava durumu nasıl?",
+                            delay: 0.04,
+                            useLocation: true
                         )
                         bentoCard(
                             title: "Film Önerisi",
-                            subtitle: "Puanlı görsel liste",
+                            subtitle: "Zevkine göre afişli liste",
                             icon: "film.fill",
                             tint: .orange,
-                            prompt: "Bana sürükleyici bir bilim kurgu filmi öner",
+                            prompt: "Bana film önerisi yapar mısın?",
                             delay: 0.09
                         )
                         bentoCard(
                             title: "Burç Uyumu",
-                            subtitle: "Yüzdelik analiz kartı",
+                            subtitle: "Kişisel uyum analizi",
                             icon: "heart.fill",
                             tint: .pink,
-                            prompt: "Oğlak ve Akrep uyumu nasıl olur?",
+                            prompt: "Burç uyumu karşılaştırmak istiyorum",
                             delay: 0.14
                         )
                         bentoCard(
-                            title: "Hızlı Plan",
-                            subtitle: "Tıklanabilir adımlar",
+                            title: "Günlük Plan",
+                            subtitle: "İnteraktif rutin oluştur",
                             icon: "checklist",
                             tint: .green,
-                            prompt: "Hafta sonu için 1 günlük verimli rutin planı yap",
+                            prompt: "Günlük veya haftalık plan oluşturmak istiyorum",
                             delay: 0.19
                         )
                     }
@@ -275,9 +324,16 @@ struct ChatView: View {
         .onTapGesture { inputFocused = false }
     }
 
-    private func bentoCard(title: String, subtitle: String, icon: String, tint: Color, prompt: String, delay: Double) -> some View {
+    private func bentoCard(title: String, subtitle: String, icon: String, tint: Color, prompt: String, delay: Double, useLocation: Bool = false) -> some View {
         Button {
-            server.sendMessage(prompt)
+            if useLocation {
+                Task {
+                    let city = await location.requestCityOnce()
+                    server.sendMessage(prompt, userCity: city)
+                }
+            } else {
+                server.sendMessage(prompt)
+            }
         } label: {
             VStack(alignment: .leading, spacing: 8) {
                 Image(systemName: icon)
@@ -322,7 +378,20 @@ struct ChatView: View {
                         .id(msg.id)
                         .transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity), removal: .opacity))
                     }
-                    if !server.statusLine.isEmpty {
+                    if server.isSearchingWeb {
+                        LiveWebSearchStatusView(sitesCount: max(1, server.searchingSitesCount))
+                            .padding(.horizontal, 2)
+                            .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    } else if server.isGenerating,
+                              let last = server.messages.last,
+                              last.role == "assistant",
+                              last.content.isEmpty,
+                              last.thinking.isEmpty {
+                        SenStreamingDot()
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 2)
+                            .transition(.opacity)
+                    } else if !server.statusLine.isEmpty {
                         HStack(spacing: 7) {
                             ProgressView().controlSize(.mini)
                             Text(server.statusLine)
@@ -331,7 +400,21 @@ struct ChatView: View {
                         }
                         .padding(.horizontal, 4)
                     }
-                    Color.clear.frame(height: 12).id("BOTTOM_ANCHOR")
+                    Color.clear
+                        .frame(height: 12)
+                        .id("BOTTOM_ANCHOR")
+                        .onAppear {
+                            withAnimation(.snappy(duration: 0.22)) {
+                                showScrollToBottom = false
+                            }
+                        }
+                        .onDisappear {
+                            if !server.messages.isEmpty {
+                                withAnimation(.snappy(duration: 0.22)) {
+                                    showScrollToBottom = true
+                                }
+                            }
+                        }
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 10)
@@ -339,7 +422,12 @@ struct ChatView: View {
             .senSoftScrollEdge()
             .scrollDismissesKeyboard(.interactively)
             .onChange(of: server.messages.count) { _, _ in
-                withAnimation(.easeOut(duration: 0.2)) {
+                withAnimation(.easeOut(duration: 0.22)) {
+                    proxy.scrollTo("BOTTOM_ANCHOR", anchor: .bottom)
+                }
+            }
+            .onChange(of: scrollToBottomTrigger) { _, _ in
+                withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
                     proxy.scrollTo("BOTTOM_ANCHOR", anchor: .bottom)
                 }
             }
@@ -349,7 +437,29 @@ struct ChatView: View {
     // MARK: - Floating iOS 26 Liquid Glass Composer
 
     private var floatingComposer: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        let isExpanded = inputFocused || !draft.isEmpty || !pendingPhotos.isEmpty
+        return VStack(alignment: .leading, spacing: 8) {
+            // ChatGPT-style floating Scroll-to-Bottom (↓) button — auto-hides when keyboard opens
+            if showScrollToBottom && !inputFocused && !server.messages.isEmpty {
+                HStack {
+                    Spacer()
+                    Button {
+                        SenHaptics.light()
+                        scrollToBottomTrigger += 1
+                    } label: {
+                        Image(systemName: "arrow.down")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(.primary)
+                            .frame(width: 34, height: 34)
+                    }
+                    .buttonStyle(SenSpringButtonStyle())
+                    .senGlassCircle(interactive: true)
+                    .accessibilityLabel("En Alta İn")
+                    Spacer()
+                }
+                .transition(.scale(scale: 0.75).combined(with: .opacity))
+            }
+
             if !pendingPhotos.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 10) {
@@ -451,11 +561,11 @@ struct ChatView: View {
                     .senGlassCircle(interactive: true)
 
                     HStack(alignment: .bottom, spacing: 6) {
-                        TextField("SEN.AI'ya bir şey sor...", text: $draft, axis: .vertical)
+                        TextField("SEN.AI'ye sor...", text: $draft, axis: .vertical)
                             .lineLimit(1...5)
                             .font(.body)
                             .focused($inputFocused)
-                            .padding(.vertical, 8)
+                            .padding(.vertical, isExpanded ? 9 : 7)
                             .padding(.leading, 12)
 
                         Button {
@@ -470,18 +580,20 @@ struct ChatView: View {
                         }
                         .padding(.bottom, 2)
 
-                        Button {
-                            SenHaptics.light()
-                            showVoiceMode = true
-                        } label: {
-                            Image(systemName: "waveform")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundStyle(.blue)
-                                .frame(width: 32, height: 34)
+                        if !isExpanded || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            Button {
+                                SenHaptics.light()
+                                showVoiceMode = true
+                            } label: {
+                                Image(systemName: "waveform")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundStyle(.blue)
+                                    .frame(width: 32, height: 34)
+                            }
+                            .padding(.bottom, 2)
+                            .padding(.trailing, 4)
+                            .accessibilityLabel("Canlı Sesli Sohbet")
                         }
-                        .padding(.bottom, 2)
-                        .padding(.trailing, 4)
-                        .accessibilityLabel("Canlı Sesli Sohbet")
                     }
                     .senGlassCapsule(interactive: false)
 
@@ -496,7 +608,7 @@ struct ChatView: View {
                                 .background { Circle().fill(Color.red) }
                         }
                         .accessibilityLabel("Durdur")
-                    } else {
+                    } else if isExpanded {
                         let isEmpty = draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && pendingPhotos.isEmpty
                         Button {
                             let text = draft
@@ -504,7 +616,7 @@ struct ChatView: View {
                             draft = ""
                             pendingPhotos = []
                             inputFocused = false
-                            server.sendMessage(text, images: imgs)
+                            server.sendMessage(text, images: imgs, userCity: location.currentCity)
                         } label: {
                             Image(systemName: "arrow.up")
                                 .font(.system(size: 16, weight: .bold))
@@ -518,9 +630,10 @@ struct ChatView: View {
                         .accessibilityLabel("Gönder")
                     }
                 }
-                .padding(.horizontal, 12)
+                .padding(.horizontal, isExpanded ? 10 : 18)
                 .padding(.bottom, 8)
                 .padding(.top, 4)
+                .animation(.spring(response: 0.34, dampingFraction: 0.84), value: isExpanded)
             }
         }
     }
@@ -557,7 +670,6 @@ struct MessageRowView: View {
     @EnvironmentObject private var server: ServerManager
     let msg: ChatMessage
     let onShowSources: ([WebSource]) -> Void
-    @State private var showThinking: Bool = false
     @State private var copied: Bool = false
 
     var body: some View {
@@ -623,38 +735,29 @@ struct MessageRowView: View {
                     }
                 }
 
-                // Compact 1-line "Düşünüyor" disclosure
+                // Detay-free Apple/ChatGPT-style Thinking Pill:
+                // Animated "Düşünüyor..." while thinking, then static "✦ X sn düşündü" badge
                 if !msg.thinking.isEmpty {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.18)) { showThinking.toggle() }
-                        } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: "sparkles")
-                                    .font(.caption2)
-                                Text(msg.isStreaming ? "Düşünüyor · \(String(format: "%.1fs", msg.thinkingSeconds))" : "Düşünme süreci")
-                                    .font(.caption.weight(.semibold))
-                                Image(systemName: showThinking ? "chevron.up" : "chevron.down")
-                                    .font(.system(size: 10, weight: .bold))
-                            }
-                            .foregroundStyle(msg.isStreaming ? .blue : .secondary)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                            .background {
-                                Capsule().fill(.secondary.opacity(0.10))
-                            }
+                    let isActivelyThinking = msg.isStreaming && msg.content.isEmpty
+                    let secs = max(1, Int(round(msg.thinkingSeconds)))
+                    HStack(spacing: 6) {
+                        Image(systemName: "sparkles")
+                            .font(.caption2.weight(.semibold))
+                            .symbolEffect(.pulse, isActive: isActivelyThinking)
+                        if isActivelyThinking {
+                            Text("Düşünüyor...")
+                                .font(.caption.weight(.semibold))
+                        } else {
+                            Text("\(secs) sn düşündü")
+                                .font(.caption.weight(.semibold))
+                                .contentTransition(.numericText())
                         }
-                        .buttonStyle(.plain)
-
-                        if showThinking {
-                            Text(msg.thinking)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .padding(.leading, 10)
-                                .overlay(alignment: .leading) {
-                                    Capsule().fill(Color.secondary.opacity(0.35)).frame(width: 2)
-                                }
-                        }
+                    }
+                    .foregroundStyle(isActivelyThinking ? .blue : .secondary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background {
+                        Capsule().fill(isActivelyThinking ? Color.blue.opacity(0.12) : Color.secondary.opacity(0.10))
                     }
                 }
 
@@ -683,16 +786,9 @@ struct MessageRowView: View {
                         .padding(.top, 2)
                 }
 
-                // Bottom Action Bar + Right-Aligned Liquid Glass "🌐 N kaynak" Capsule
+                // ChatGPT-Style Clean Action Row + Overlapping Favicon "Kaynaklar" Capsule
                 if !msg.isStreaming && !msg.content.isEmpty {
-                    HStack(spacing: 14) {
-                        Button {
-                            Task { await server.toggleSpeak(messageId: msg.id, text: msg.content) }
-                        } label: {
-                            Image(systemName: server.speakingMessageId == msg.id ? "stop.circle.fill" : "speaker.wave.2")
-                                .foregroundStyle(server.speakingMessageId == msg.id ? .blue : .secondary)
-                        }
-
+                    HStack(spacing: 15) {
                         Button {
                             UIPasteboard.general.string = msg.content
                             SenHaptics.light()
@@ -720,28 +816,66 @@ struct MessageRowView: View {
                                 .foregroundStyle(msg.rating == "dislike" ? .red : .secondary)
                         }
 
-                        Spacer()
+                        Button {
+                            Task { await server.toggleSpeak(messageId: msg.id, text: msg.content) }
+                        } label: {
+                            Image(systemName: server.speakingMessageId == msg.id ? "stop.circle.fill" : "speaker.wave.2")
+                                .foregroundStyle(server.speakingMessageId == msg.id ? .blue : .secondary)
+                        }
+
+                        ShareLink(item: msg.content) {
+                            Image(systemName: "square.and.arrow.up")
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Menu {
+                            Button {
+                                server.regenerateLast()
+                            } label: {
+                                Label("Yeniden Üret", systemImage: "arrow.clockwise")
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis")
+                                .foregroundStyle(.secondary)
+                        }
 
                         if !msg.webSources.isEmpty {
                             Button {
                                 SenHaptics.light()
                                 onShowSources(msg.webSources)
                             } label: {
-                                HStack(spacing: 5) {
-                                    Image(systemName: "globe")
-                                        .foregroundStyle(.blue)
-                                    Text("\(msg.webSources.count) kaynak")
-                                        .foregroundStyle(.primary)
+                                HStack(spacing: 6) {
+                                    HStack(spacing: -6) {
+                                        ForEach(Array(msg.webSources.prefix(3).enumerated()), id: \.offset) { idx, src in
+                                            let initial = String(src.domain.prefix(1)).uppercased()
+                                            let colors: [Color] = [.blue, .orange, .indigo]
+                                            Circle()
+                                                .fill(colors[idx % colors.count])
+                                                .frame(width: 18, height: 18)
+                                                .overlay {
+                                                    Text(initial)
+                                                        .font(.system(size: 9, weight: .bold))
+                                                        .foregroundStyle(.white)
+                                                }
+                                                .overlay {
+                                                    Circle().strokeBorder(Color(.systemBackground), lineWidth: 1.2)
+                                                }
+                                        }
+                                    }
+                                    Text("Kaynaklar")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(.secondary)
                                 }
-                                .font(.caption.weight(.semibold))
-                                .padding(.horizontal, 11)
-                                .padding(.vertical, 6)
+                                .padding(.horizontal, 9)
+                                .padding(.vertical, 5)
                             }
                             .buttonStyle(SenSpringButtonStyle())
                             .senGlassCapsule(interactive: true)
                         }
+
+                        Spacer(minLength: 0)
                     }
-                    .font(.system(size: 15))
+                    .font(.system(size: 14.5, weight: .regular))
                     .padding(.top, 4)
                     .padding(.bottom, 6)
                 }
@@ -751,6 +885,34 @@ struct MessageRowView: View {
 
     private func markdownAttributed(_ text: String) -> AttributedString {
         (try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(text)
+    }
+}
+
+struct LiveWebSearchStatusView: View {
+    let sitesCount: Int
+    @State private var pulse: Bool = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "globe")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.blue)
+                .scaleEffect(pulse ? 1.12 : 0.94)
+                .animation(.easeInOut(duration: 0.95).repeatForever(autoreverses: true), value: pulse)
+            HStack(spacing: 4) {
+                Text("\(sitesCount)")
+                    .font(.subheadline.weight(.semibold).monospacedDigit())
+                    .contentTransition(.numericText())
+                    .animation(.spring(response: 0.3, dampingFraction: 0.8), value: sitesCount)
+                Text("web sitesi aranıyor")
+                    .font(.subheadline.weight(.medium))
+            }
+            .foregroundStyle(.secondary)
+            .opacity(pulse ? 1.0 : 0.58)
+            .animation(.easeInOut(duration: 0.95).repeatForever(autoreverses: true), value: pulse)
+        }
+        .padding(.vertical, 4)
+        .onAppear { pulse = true }
     }
 }
 
