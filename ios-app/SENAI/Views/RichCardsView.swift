@@ -80,7 +80,8 @@ struct WeatherCardView: View {
                     Text(card.location ?? "Hava Durumu")
                         .font(.subheadline.weight(.bold))
                     if let upd = card.updated_at {
-                        Text("Canlı · \(upd)")
+                        let cleanUpd = upd.hasPrefix("Canlı") ? upd : "Canlı · \(upd)"
+                        Text(cleanUpd)
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
@@ -109,21 +110,19 @@ struct WeatherCardView: View {
                 }
             }
 
-            // Compact 1-row stats strip
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
-                    if let f = card.feels_like_c {
-                        statChip("Hissedilen \(String(format: "%.1f°", f))")
-                    }
-                    if let h = card.humidity {
-                        statChip("Nem %\(h)")
-                    }
-                    if let w = card.wind_kmh {
-                        statChip("Rüzgar \(String(format: "%.1f", w)) km/sa")
-                    }
-                    if let p = card.precip_mm {
-                        statChip("Yağış \(String(format: "%.0f", p)) mm")
-                    }
+            // Compact 1-row stats strip (fits all 4 cleanly without right-edge clipping)
+            HStack(spacing: 5) {
+                if let f = card.feels_like_c {
+                    statChip("Hissedilen \(String(format: "%.0f°", f))")
+                }
+                if let h = card.humidity {
+                    statChip("Nem %\(h)")
+                }
+                if let w = card.wind_kmh {
+                    statChip("\(String(format: "%.1f", w)) km/s")
+                }
+                if let p = card.precip_mm {
+                    statChip("\(String(format: "%.0f", p)) mm")
                 }
             }
 
@@ -297,15 +296,20 @@ struct CompatibilityCardView: View {
                 Spacer()
                 ZStack {
                     Circle()
+                        .fill(Color.blue.opacity(0.08))
+                    Circle()
                         .stroke(Color.primary.opacity(0.10), lineWidth: 5.5)
                     Circle()
                         .trim(from: 0, to: CGFloat(score) / 100.0)
-                        .stroke(Color.blue, style: StrokeStyle(lineWidth: 5.5, lineCap: .round))
+                        .stroke(
+                            LinearGradient(colors: [.blue, .indigo], startPoint: .topLeading, endPoint: .bottomTrailing),
+                            style: StrokeStyle(lineWidth: 5.5, lineCap: .round)
+                        )
                         .rotationEffect(.degrees(-90))
                     Text("%\(score)")
                         .font(.caption.weight(.heavy).monospacedDigit())
                 }
-                .frame(width: 54, height: 54)
+                .frame(width: 56, height: 56)
             }
 
             if let metrics = card.metrics, !metrics.isEmpty {
@@ -352,7 +356,10 @@ struct CompatibilityCardView: View {
                 .fill(Color.indigo.opacity(0.07))
                 .overlay {
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .strokeBorder(Color.indigo.opacity(0.20), lineWidth: 0.8)
+                        .strokeBorder(
+                            LinearGradient(colors: [Color.pink.opacity(0.24), Color.blue.opacity(0.26)], startPoint: .topLeading, endPoint: .bottomTrailing),
+                            lineWidth: 0.9
+                        )
                 }
         }
     }

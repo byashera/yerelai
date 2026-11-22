@@ -246,19 +246,22 @@ enum SenHaptics {
 
 struct SenPrismOrb: View {
     var size: CGFloat = 68
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var breathe: Bool = false
 
     var body: some View {
         ZStack {
             Circle()
                 .fill(
                     RadialGradient(
-                        colors: [Color.blue.opacity(0.32), Color.indigo.opacity(0.14), Color.clear],
+                        colors: [Color.blue.opacity(breathe ? 0.38 : 0.24), Color.indigo.opacity(0.14), Color.clear],
                         center: .center,
                         startRadius: 4,
-                        endRadius: size * 0.72
+                        endRadius: size * 0.76
                     )
                 )
-                .frame(width: size * 1.38, height: size * 1.38)
+                .frame(width: size * 1.44, height: size * 1.44)
+                .scaleEffect(breathe ? 1.06 : 0.96)
 
             Circle()
                 .fill(
@@ -270,15 +273,37 @@ struct SenPrismOrb: View {
                 )
                 .frame(width: size, height: size)
                 .overlay {
-                    Circle().strokeBorder(.white.opacity(0.28), lineWidth: 1)
+                    Circle().strokeBorder(.white.opacity(0.32), lineWidth: 1)
                 }
-                .shadow(color: Color.blue.opacity(0.32), radius: 16, y: 6)
+                .shadow(color: Color.blue.opacity(0.34), radius: 18, y: 6)
 
             Image(systemName: "diamond.fill")
                 .font(.system(size: size * 0.42, weight: .semibold))
                 .foregroundStyle(
-                    LinearGradient(colors: [.white, Color.cyan.opacity(0.85)], startPoint: .top, endPoint: .bottom)
+                    LinearGradient(colors: [.white, Color.cyan.opacity(0.88)], startPoint: .top, endPoint: .bottom)
                 )
         }
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.easeInOut(duration: 2.6).repeatForever(autoreverses: true)) {
+                breathe = true
+            }
+        }
+    }
+}
+
+struct SenStreamingDot: View {
+    @State private var pulse = false
+    var body: some View {
+        Circle()
+            .fill(Color.blue)
+            .frame(width: 8, height: 8)
+            .scaleEffect(pulse ? 1.25 : 0.78)
+            .opacity(pulse ? 1.0 : 0.45)
+            .onAppear {
+                withAnimation(.easeInOut(duration: 0.75).repeatForever(autoreverses: true)) {
+                    pulse = true
+                }
+            }
     }
 }

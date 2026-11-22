@@ -65,21 +65,26 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
 
         // 1. Try local Wi-Fi LAN first (blazing instant speed at home)
         let cleanLan = normalizeBase(lanURL)
-        if !cleanLan.isEmpty, await probeHealth(cleanLan, timeout: 1.5) {
+        if !cleanLan.isEmpty, await probeHealth(cleanLan, timeout: 1.2) {
             activeBaseURL = cleanLan
             connectionRoute = .lan
             await checkAuthAndLoad()
             return
         }
 
-        // 2. Try permanent GitHub Gist JSON Bridge (auto-resolves live Cloudflare HTTPS URL)
+        // 2. Try permanent GitHub Gist JSON Bridge (auto-resolves live Cloudflare HTTPS URL with 1 retry)
         let cleanGist = gistJsonURL.trimmingCharacters(in: .whitespacesAndNewlines)
         if !cleanGist.isEmpty, let resolved = await resolveGistURL(cleanGist) {
-            if await probeHealth(resolved, timeout: 4.0) {
-                activeBaseURL = resolved
-                connectionRoute = .cloudflare
-                await checkAuthAndLoad()
-                return
+            for attempt in 0..<2 {
+                if await probeHealth(resolved, timeout: 8.0) {
+                    activeBaseURL = resolved
+                    connectionRoute = .cloudflare
+                    await checkAuthAndLoad()
+                    return
+                }
+                if attempt == 0 {
+                    try? await Task.sleep(for: .milliseconds(600))
+                }
             }
         }
 
@@ -118,7 +123,7 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
     private func resolveGistURL(_ rawUrl: String) async -> String? {
         guard let url = URL(string: rawUrl) else { return nil }
         var req = URLRequest(url: url)
-        req.timeoutInterval = 5.0
+        req.timeoutInterval = 8.0
         req.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
         do {
             let (data, _) = try await urlSession.data(for: req)
@@ -485,7 +490,7 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
         ]
         activeSessionId = "p2"
 
-        if screen == "chat" {
+        if screen == "chat" || screen == "sources" {
             let sampleWeather = RichCardPayload(
                 kind: "weather",
                 title: nil,
@@ -529,6 +534,31 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
                     richCards: [sampleWeather],
                     rating: "like",
                     thinkingSeconds: 1.4
+                ),
+            ]
+        } else if screen == "chat_more" {
+            let richMd = """
+            Hafta sonu için hem harika bir bilim kurgu önerisi hem de verimli bir gün planı hazırladım:
+
+            ```sen_card
+            {"kind":"rating","title":"Interstellar (Yıldızlararası)","emoji":"🎬","score":"8.9/10","tags":["Bilim Kurgu","Epik","Duygusal"],"points":["Hans Zimmer'in unutulmaz müzikleri","Gerçek astrofizik temelli kara delik sahneleri","Güçlü baba-kız hikayesi"],"summary":"Görsel şölen ve duygusal derinliği bir arada arıyorsan ilk sıraya koyabilirsin."}
+            ```
+
+            ```sen_card
+            {"kind":"checklist","title":"Verimli Hafta Sonu Planı","badge":"4 Adım","steps":[{"label":"Sabah kahvesi ve 20 dk yürüyüş","meta":"09:30"},{"label":"Odaklı çalışma veya proje bloğu","meta":"11:00"},{"label":"Kısa mola ve öğle yemeği","meta":"13:30"},{"label":"Akşam film keyfi: Interstellar","meta":"21:00"}]}
+            ```
+            """
+            messages = [
+                ChatMessage(id: "u2", role: "user", content: "Film önerisi ve hafta sonu planı yapar mısın?"),
+                ChatMessage(
+                    id: "a2",
+                    role: "assistant",
+                    content: richMd,
+                    webSources: [
+                        WebSource(title: "Interstellar — IMDb (8.7)", url: "https://imdb.com", domain: "imdb.com", snippet: nil),
+                        WebSource(title: "Bilim Kurgu En İyiler", url: "https://rottentomatoes.com", domain: "rottentomatoes.com", snippet: nil),
+                    ],
+                    rating: "like"
                 ),
             ]
         } else {

@@ -9,6 +9,7 @@ struct ChatView: View {
     @State private var draft: String = ""
     @State private var showSidebar: Bool = false
     @State private var showSettings: Bool = false
+    @State private var showModelSheet: Bool = false
     @State private var activeSources: [WebSource]? = nil
     @FocusState private var inputFocused: Bool
 
@@ -36,6 +37,12 @@ struct ChatView: View {
                     showSidebar = true
                 } else if initialPreviewScreen == "settings" {
                     showSettings = true
+                } else if initialPreviewScreen == "models" {
+                    showModelSheet = true
+                } else if initialPreviewScreen == "sources" {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                        activeSources = server.messages.last?.webSources
+                    }
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
@@ -73,6 +80,11 @@ struct ChatView: View {
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
             }
+            .sheet(isPresented: $showModelSheet) {
+                ModelPickerSheetView(showSettings: $showSettings)
+                    .presentationDetents([.height(360), .medium])
+                    .presentationDragIndicator(.visible)
+            }
             .sheet(item: Binding(
                 get: { activeSources.map { SourcesSheetWrapper(sources: $0) } },
                 set: { activeSources = $0?.sources }
@@ -84,45 +96,12 @@ struct ChatView: View {
         }
     }
 
-    // MARK: - Native iOS 26 Toolbar Model & Thinking Menu
+    // MARK: - Native iOS 26 Toolbar Model & Thinking Sheet Trigger
 
     private var modelPickerMenu: some View {
-        Menu {
-            Section("Aktif Model") {
-                ForEach(server.availableModels) { m in
-                    Button {
-                        SenHaptics.light()
-                        server.selectedModelId = m.id
-                    } label: {
-                        if server.selectedModelId == m.id {
-                            Label("\(m.name) · \(m.subtitle)", systemImage: "checkmark")
-                        } else {
-                            Text("\(m.name) · \(m.subtitle)")
-                        }
-                    }
-                }
-            }
-            Section("Düşünme Seviyesi") {
-                ForEach(ThinkingEffort.allCases) { eff in
-                    Button {
-                        SenHaptics.light()
-                        server.thinkingEffort = eff
-                    } label: {
-                        if server.thinkingEffort == eff {
-                            Label(eff.label, systemImage: "checkmark")
-                        } else {
-                            Label(eff.label, systemImage: eff.icon)
-                        }
-                    }
-                }
-            }
-            Section {
-                Button {
-                    showSettings = true
-                } label: {
-                    Label("Ayarlar & Sunucu", systemImage: "gearshape")
-                }
-            }
+        Button {
+            SenHaptics.light()
+            showModelSheet = true
         } label: {
             HStack(spacing: 6) {
                 Circle()
@@ -130,6 +109,7 @@ struct ChatView: View {
                     .frame(width: 7, height: 7)
                 Text("SEN.AI")
                     .font(.headline.weight(.bold))
+                    .foregroundStyle(.primary)
                 Image(systemName: "chevron.down")
                     .font(.caption2.weight(.bold))
                     .foregroundStyle(.secondary)
@@ -137,6 +117,7 @@ struct ChatView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
         }
+        .buttonStyle(.plain)
     }
 
     private var statusDotColor: Color {
@@ -311,7 +292,7 @@ struct ChatView: View {
                     .senGlassCapsule(interactive: true)
                     Spacer()
                 }
-                .padding(.horizontal, 14)
+                    .padding(.horizontal, 58)
             }
 
             SenGlassContainer(spacing: 8) {
@@ -381,12 +362,13 @@ struct ChatView: View {
                         } label: {
                             Image(systemName: "arrow.up")
                                 .font(.system(size: 16, weight: .bold))
-                                .foregroundStyle(.white)
+                                .foregroundStyle(isEmpty ? Color.secondary : Color.white)
                                 .frame(width: 38, height: 38)
                         }
                         .buttonStyle(.plain)
-                        .senGlassCircle(interactive: true, tint: isEmpty ? .gray : .blue)
+                        .senGlassCircle(interactive: true, tint: isEmpty ? nil : .blue)
                         .disabled(isEmpty)
+                        .animation(.spring(response: 0.28, dampingFraction: 0.78), value: isEmpty)
                         .accessibilityLabel("Gönder")
                     }
                 }
@@ -441,7 +423,17 @@ struct MessageRowView: View {
                     .padding(.vertical, 10)
                     .background {
                         RoundedRectangle(cornerRadius: 20, style: .continuous)
-                            .fill(Color.blue.opacity(0.13))
+                            .fill(
+                                LinearGradient(
+                                    colors: [Color.blue.opacity(0.16), Color.indigo.opacity(0.11)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                    .strokeBorder(Color.blue.opacity(0.18), lineWidth: 0.6)
+                            }
                     }
             }
         } else {
@@ -513,6 +505,11 @@ struct MessageRowView: View {
                     case .visualCard(let card):
                         SenVisualCardView(card: card)
                     }
+                }
+
+                if msg.isStreaming && !msg.content.isEmpty {
+                    SenStreamingDot()
+                        .padding(.top, 2)
                 }
 
                 // Bottom Action Bar + Right-Aligned Liquid Glass "🌐 N kaynak" Capsule
@@ -611,6 +608,126 @@ struct SourcesSheetView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Kapat") { dismiss() }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Dedicated iOS 26 Liquid Glass Model & Thinking Picker Sheet
+
+struct ModelPickerSheetView: View {
+    @EnvironmentObject private var server: ServerManager
+    @Environment(\.dismiss) private var dismiss
+    @Binding var showSettings: Bool
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Düşünme Seviyesi")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 4)
+
+                    HStack(spacing: 6) {
+                        ForEach(ThinkingEffort.allCases) { eff in
+                            let active = server.thinkingEffort == eff
+                            Button {
+                                SenHaptics.light()
+                                server.thinkingEffort = eff
+                            } label: {
+                                VStack(spacing: 4) {
+                                    Image(systemName: eff.icon)
+                                        .font(.caption.weight(.semibold))
+                                    Text(eff.label)
+                                        .font(.caption2.weight(.semibold))
+                                }
+                                .foregroundStyle(active ? .white : .primary)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 9)
+                                .background {
+                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                        .fill(active ? Color.blue : Color.primary.opacity(0.06))
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Aktif Yerel Model")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 4)
+
+                    VStack(spacing: 8) {
+                        ForEach(server.availableModels) { m in
+                            let selected = server.selectedModelId == m.id
+                            Button {
+                                SenHaptics.light()
+                                server.selectedModelId = m.id
+                                dismiss()
+                            } label: {
+                                HStack(spacing: 12) {
+                                    Image(systemName: m.id.contains("e4b") ? "sparkles" : "bolt.fill")
+                                        .font(.body.weight(.semibold))
+                                        .foregroundStyle(m.id.contains("e4b") ? .indigo : .blue)
+                                        .frame(width: 36, height: 36)
+                                        .background {
+                                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                                .fill((m.id.contains("e4b") ? Color.indigo : Color.blue).opacity(0.14))
+                                        }
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(m.name)
+                                            .font(.subheadline.weight(.bold))
+                                            .foregroundStyle(.primary)
+                                        Text(m.subtitle)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    if selected {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .font(.title3)
+                                            .foregroundStyle(.blue)
+                                    }
+                                }
+                                .padding(12)
+                                .background {
+                                    RoundedRectangle(cornerRadius: 15, style: .continuous)
+                                        .fill(selected ? Color.blue.opacity(0.10) : Color.primary.opacity(0.05))
+                                        .overlay {
+                                            RoundedRectangle(cornerRadius: 15, style: .continuous)
+                                                .strokeBorder(selected ? Color.blue.opacity(0.45) : Color.clear, lineWidth: 1)
+                                        }
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(18)
+            .navigationTitle("Model & Düşünme")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        dismiss()
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                            showSettings = true
+                        }
+                    } label: {
+                        Image(systemName: "gearshape")
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Bitti") { dismiss() }
+                        .fontWeight(.semibold)
                 }
             }
         }

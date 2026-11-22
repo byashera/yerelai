@@ -21,9 +21,25 @@ struct SidebarView: View {
                         server.startNewChat()
                         dismiss()
                     } label: {
-                        Label("Yeni Sohbet Başlat", systemImage: "plus.bubble.fill")
-                            .font(.subheadline.weight(.semibold))
+                        HStack(spacing: 10) {
+                            Image(systemName: "plus.bubble.fill")
+                                .font(.body.weight(.semibold))
+                                .foregroundStyle(.blue)
+                            Text("Yeni Sohbet Başlat")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.primary)
+                            Spacer()
+                            HStack(spacing: 5) {
+                                Circle()
+                                    .fill(server.connectionRoute == .disconnected ? Color.orange : Color.green)
+                                    .frame(width: 6, height: 6)
+                                Text(server.connectionRoute == .lan ? "Wi-Fi" : (server.connectionRoute == .cloudflare ? "Bulut" : "Bağlı değil"))
+                                    .font(.caption2.weight(.medium))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
                     }
+                    .tint(.primary)
                 }
 
                 Section("Sohbet Geçmişi") {
@@ -39,12 +55,20 @@ struct SidebarView: View {
                                     dismiss()
                                 }
                             } label: {
-                                HStack {
+                                HStack(spacing: 10) {
+                                    Image(systemName: server.activeSessionId == s.id ? "bubble.left.fill" : "bubble.left")
+                                        .font(.caption)
+                                        .foregroundStyle(server.activeSessionId == s.id ? .blue : .secondary)
                                     Text(s.title)
-                                        .font(.subheadline)
+                                        .font(.subheadline.weight(server.activeSessionId == s.id ? .semibold : .regular))
                                         .foregroundStyle(.primary)
                                         .lineLimit(1)
                                     Spacer()
+                                    if let dt = s.updated_at, !dt.isEmpty {
+                                        Text(dt)
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                    }
                                     if server.activeSessionId == s.id {
                                         Image(systemName: "checkmark")
                                             .font(.caption.weight(.bold))
@@ -52,6 +76,7 @@ struct SidebarView: View {
                                     }
                                 }
                             }
+                            .tint(.primary)
                         }
                     }
                 }

@@ -58,7 +58,7 @@ struct RootContainerView: View {
     var body: some View {
         ZStack {
             ChatView(initialPreviewScreen: previewScreen)
-            if server.requiresPin && previewScreen == nil {
+            if (server.requiresPin && previewScreen == nil) || previewScreen == "pin" {
                 PinLockView()
                     .transition(.opacity.combined(with: .scale(scale: 0.98)))
             }
