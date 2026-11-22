@@ -872,7 +872,7 @@ struct ChecklistCardView: View {
                         .font(.headline.weight(.bold))
                     Text("\(doneCount)/\(steps.count) tamamlandı")
                         .font(.caption2.weight(.medium).monospacedDigit())
-                        .foregroundStyle(doneCount == steps.count && steps.count > 0 ? .green : .secondary)
+                        .foregroundStyle(doneCount == steps.count && steps.count > 0 ? Color.green : Color.secondary)
                 }
                 Spacer()
                 if let badge = card.badge, !badge.isEmpty {
@@ -917,18 +917,18 @@ struct ChecklistCardView: View {
                             HStack(spacing: 10) {
                                 Image(systemName: isDone ? "checkmark.circle.fill" : "circle")
                                     .font(.system(size: 18, weight: .medium))
-                                    .foregroundStyle(isDone ? .green : .secondary.opacity(0.7))
+                                    .foregroundStyle(isDone ? Color.green : Color.secondary.opacity(0.7))
                                     .contentTransition(.symbolEffect(.replace))
                                 Text("\(idx + 1). \(st.label)")
                                     .font(.subheadline.weight(.medium))
                                     .strikethrough(isDone)
-                                    .foregroundStyle(isDone ? .secondary : .primary)
+                                    .foregroundStyle(isDone ? Color.secondary : Color.primary)
                                     .multilineTextAlignment(.leading)
                                 Spacer(minLength: 6)
                                 if let meta = st.meta, !meta.isEmpty {
                                     Text(meta)
                                         .font(.caption2.weight(.semibold).monospacedDigit())
-                                        .foregroundStyle(isDone ? .secondary : .blue)
+                                        .foregroundStyle(isDone ? Color.secondary : Color.blue)
                                         .padding(.horizontal, 7)
                                         .padding(.vertical, 3)
                                         .background {
@@ -1064,7 +1064,7 @@ private enum CodeSyntaxHighlighter {
             // Comment (# or //)
             if ch == "#" || (ch == "/" && i + 1 < chars.count && chars[i + 1] == "/") {
                 var seg = AttributedString(String(chars[i...]))
-                seg.foregroundColor = .secondary
+                seg.foregroundColor = Color.secondary
                 result.append(seg)
                 break
             }
@@ -1117,7 +1117,7 @@ private enum CodeSyntaxHighlighter {
                 } else if j < chars.count && chars[j] == "(" {
                     seg.foregroundColor = Color(red: 0.38, green: 0.68, blue: 1.0)
                 } else {
-                    seg.foregroundColor = .primary
+                    seg.foregroundColor = Color.primary
                 }
                 result.append(seg)
                 i = j
@@ -1125,7 +1125,7 @@ private enum CodeSyntaxHighlighter {
             }
 
             var seg = AttributedString(String(ch))
-            seg.foregroundColor = .primary.opacity(0.88)
+            seg.foregroundColor = Color.primary.opacity(0.88)
             result.append(seg)
             i += 1
         }
@@ -1190,7 +1190,7 @@ struct MarkdownTableCardView: View {
                                 ForEach(0..<headers.count, id: \.self) { cIdx in
                                     Text(cIdx < row.count ? row[cIdx] : "")
                                         .font(.caption.monospacedDigit())
-                                        .foregroundStyle(cIdx == headers.count - 1 ? .primary : .primary.opacity(0.88))
+                                        .foregroundStyle(cIdx == headers.count - 1 ? Color.primary : Color.primary.opacity(0.88))
                                         .fontWeight(cIdx == headers.count - 1 ? .semibold : .regular)
                                         .frame(minWidth: 94, alignment: .leading)
                                         .padding(.trailing, 14)
