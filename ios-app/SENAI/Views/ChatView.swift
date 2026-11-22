@@ -146,7 +146,7 @@ struct ChatView: View {
             }
             .sheet(isPresented: $showSidebar) {
                 SidebarView(showSettings: $showSettings)
-                    .presentationDetents([.medium, .large])
+                    .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
             }
             .sheet(isPresented: $showSettings) {
@@ -401,7 +401,7 @@ struct ChatView: View {
                         .padding(.horizontal, 4)
                     }
                     Color.clear
-                        .frame(height: 12)
+                        .frame(height: 28)
                         .id("BOTTOM_ANCHOR")
                         .onAppear {
                             withAnimation(.snappy(duration: 0.22)) {
@@ -426,6 +426,15 @@ struct ChatView: View {
                     proxy.scrollTo("BOTTOM_ANCHOR", anchor: .bottom)
                 }
             }
+            .onChange(of: inputFocused) { _, focused in
+                if focused && !server.messages.isEmpty {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+                        withAnimation(.easeOut(duration: 0.22)) {
+                            proxy.scrollTo("BOTTOM_ANCHOR", anchor: .bottom)
+                        }
+                    }
+                }
+            }
             .onChange(of: scrollToBottomTrigger) { _, _ in
                 withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
                     proxy.scrollTo("BOTTOM_ANCHOR", anchor: .bottom)
@@ -437,9 +446,9 @@ struct ChatView: View {
     // MARK: - Floating iOS 26 Liquid Glass Composer
 
     private var floatingComposer: some View {
-        let isExpanded = inputFocused || !draft.isEmpty || !pendingPhotos.isEmpty
-        return VStack(alignment: .leading, spacing: 8) {
-            // ChatGPT-style floating Scroll-to-Bottom (↓) button — auto-hides when keyboard opens
+        let isEmpty = draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && pendingPhotos.isEmpty
+        return VStack(spacing: 6) {
+            // ChatGPT-style floating Scroll-to-Bottom (↓) button — floats cleanly above the blurred composer tray & hides when keyboard opens
             if showScrollToBottom && !inputFocused && !server.messages.isEmpty {
                 HStack {
                     Spacer()
@@ -457,183 +466,195 @@ struct ChatView: View {
                     .accessibilityLabel("En Alta İn")
                     Spacer()
                 }
+                .padding(.bottom, 2)
                 .transition(.scale(scale: 0.75).combined(with: .opacity))
             }
 
-            if !pendingPhotos.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 10) {
-                        ForEach(pendingPhotos) { ph in
-                            if let uiImg = UIImage(data: ph.data) {
-                                ZStack(alignment: .topTrailing) {
-                                    Image(uiImage: uiImg)
-                                        .resizable()
-                                        .scaledToFill()
-                                        .frame(width: 66, height: 66)
-                                        .clipShape(.rect(cornerRadius: 14))
-                                        .overlay {
-                                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                                .strokeBorder(.white.opacity(0.26), lineWidth: 0.9)
+            // Opaque/Blurred Composer Tray (prevents underlying chat text from ever bleeding through Araştır × or input box!)
+            VStack(alignment: .leading, spacing: 8) {
+                if !pendingPhotos.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 10) {
+                            ForEach(pendingPhotos) { ph in
+                                if let uiImg = UIImage(data: ph.data) {
+                                    ZStack(alignment: .topTrailing) {
+                                        Image(uiImage: uiImg)
+                                            .resizable()
+                                            .scaledToFill()
+                                            .frame(width: 66, height: 66)
+                                            .clipShape(.rect(cornerRadius: 14))
+                                            .overlay {
+                                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                                    .strokeBorder(.white.opacity(0.26), lineWidth: 0.9)
+                                            }
+                                        Button {
+                                            SenHaptics.light()
+                                            withAnimation(.snappy(duration: 0.22)) {
+                                                pendingPhotos.removeAll { $0.id == ph.id }
+                                            }
+                                        } label: {
+                                            Image(systemName: "xmark.circle.fill")
+                                                .font(.system(size: 19))
+                                                .foregroundStyle(.white, Color.black.opacity(0.75))
                                         }
-                                    Button {
-                                        SenHaptics.light()
-                                        withAnimation(.snappy(duration: 0.22)) {
-                                            pendingPhotos.removeAll { $0.id == ph.id }
-                                        }
-                                    } label: {
-                                        Image(systemName: "xmark.circle.fill")
-                                            .font(.system(size: 19))
-                                            .foregroundStyle(.white, Color.black.opacity(0.75))
+                                        .offset(x: 6, y: -6)
                                     }
-                                    .offset(x: 6, y: -6)
+                                    .padding(.top, 8)
+                                    .padding(.trailing, 8)
                                 }
-                                .padding(.top, 8)
-                                .padding(.trailing, 8)
                             }
                         }
+                        .padding(.horizontal, 16)
+                    }
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+
+                if server.webSearchEnabled {
+                    HStack {
+                        Button {
+                            SenHaptics.light()
+                            server.webSearchEnabled = false
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "globe")
+                                    .foregroundStyle(.blue)
+                                Text("Araştır")
+                                    .foregroundStyle(.primary)
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 11)
+                            .padding(.vertical, 6)
+                        }
+                        .buttonStyle(.plain)
+                        .senGlassCapsule(interactive: true)
+                        Spacer()
                     }
                     .padding(.horizontal, 16)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
 
-            if server.webSearchEnabled {
-                HStack {
-                    Button {
-                        SenHaptics.light()
-                        server.webSearchEnabled = false
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "globe")
-                                .foregroundStyle(.blue)
-                            Text("Araştır")
-                                .foregroundStyle(.primary)
-                            Image(systemName: "xmark")
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundStyle(.secondary)
-                        }
-                        .font(.caption.weight(.semibold))
-                        .padding(.horizontal, 11)
-                        .padding(.vertical, 6)
-                    }
-                    .buttonStyle(.plain)
-                    .senGlassCapsule(interactive: true)
-                    Spacer()
-                }
-                .padding(.horizontal, 16)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
-
-            SenGlassContainer(spacing: 8) {
-                HStack(alignment: .bottom, spacing: 8) {
-                    Menu {
-                        Button {
-                            SenHaptics.light()
-                            showCamera = true
-                        } label: {
-                            Label("Fotoğraf Çek (Anlık)", systemImage: "camera.fill")
-                        }
-                        Button {
-                            SenHaptics.light()
-                            showPhotoPicker = true
-                        } label: {
-                            Label("Galeriden Fotoğraf Seç", systemImage: "photo.on.rectangle")
-                        }
-                        Divider()
-                        Button {
-                            server.webSearchEnabled.toggle()
-                        } label: {
-                            Label(
-                                server.webSearchEnabled ? "Web Araştırmasını Kapat" : "Web Araştırmasını Aç",
-                                systemImage: "globe"
-                            )
-                        }
-                        Button {
-                            showSettings = true
-                        } label: {
-                            Label("Ayarlar", systemImage: "gearshape")
-                        }
-                    } label: {
-                        Image(systemName: "plus")
-                            .font(.system(size: 17, weight: .semibold))
-                            .frame(width: 38, height: 38)
-                    }
-                    .senGlassCircle(interactive: true)
-
-                    HStack(alignment: .bottom, spacing: 6) {
-                        TextField("SEN.AI'ye sor...", text: $draft, axis: .vertical)
-                            .lineLimit(1...5)
-                            .font(.body)
-                            .focused($inputFocused)
-                            .padding(.vertical, isExpanded ? 9 : 7)
-                            .padding(.leading, 12)
-
-                        Button {
-                            voice.toggleRecording { text in
-                                draft = text
+                SenGlassContainer(spacing: 8) {
+                    HStack(alignment: .bottom, spacing: 8) {
+                        Menu {
+                            Button {
+                                SenHaptics.light()
+                                showCamera = true
+                            } label: {
+                                Label("Fotoğraf Çek (Anlık)", systemImage: "camera.fill")
+                            }
+                            Button {
+                                SenHaptics.light()
+                                showPhotoPicker = true
+                            } label: {
+                                Label("Galeriden Fotoğraf Seç", systemImage: "photo.on.rectangle")
+                            }
+                            Divider()
+                            Button {
+                                server.webSearchEnabled.toggle()
+                            } label: {
+                                Label(
+                                    server.webSearchEnabled ? "Web Araştırmasını Kapat" : "Web Araştırmasını Aç",
+                                    systemImage: "globe"
+                                )
+                            }
+                            Button {
+                                showSettings = true
+                            } label: {
+                                Label("Ayarlar", systemImage: "gearshape")
                             }
                         } label: {
-                            Image(systemName: voice.isRecording ? "waveform.circle.fill" : "mic")
-                                .font(.system(size: 17))
-                                .foregroundStyle(voice.isRecording ? .red : .secondary)
-                                .frame(width: 32, height: 34)
+                            Image(systemName: "plus")
+                                .font(.system(size: 17, weight: .semibold))
+                                .frame(width: 38, height: 38)
                         }
-                        .padding(.bottom, 2)
+                        .senGlassCircle(interactive: true)
 
-                        if !isExpanded || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        HStack(alignment: .bottom, spacing: 6) {
+                            TextField("SEN.AI'ye sor...", text: $draft, axis: .vertical)
+                                .lineLimit(1...5)
+                                .font(.body)
+                                .focused($inputFocused)
+                                .padding(.vertical, 8)
+                                .padding(.leading, 12)
+
+                            Button {
+                                voice.toggleRecording { text in
+                                    draft = text
+                                }
+                            } label: {
+                                Image(systemName: voice.isRecording ? "waveform.circle.fill" : "mic")
+                                    .font(.system(size: 17))
+                                    .foregroundStyle(voice.isRecording ? Color.red : Color.secondary)
+                                    .frame(width: 32, height: 34)
+                            }
+                            .padding(.bottom, 2)
+                            .padding(.trailing, 6)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .senGlassCapsule(interactive: false)
+
+                        // Fixed 38x38 Right Action Slot (Stop / Send / Voice Mode — never shifts or clips!)
+                        if server.isGenerating {
+                            Button {
+                                server.stopGeneration()
+                            } label: {
+                                Image(systemName: "stop.fill")
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 38, height: 38)
+                                    .background { Circle().fill(Color.red) }
+                            }
+                            .accessibilityLabel("Durdur")
+                        } else if !isEmpty {
+                            Button {
+                                let text = draft
+                                let imgs = pendingPhotos.map(\.data)
+                                draft = ""
+                                pendingPhotos = []
+                                inputFocused = false
+                                server.sendMessage(text, images: imgs, userCity: location.currentCity)
+                            } label: {
+                                Image(systemName: "arrow.up")
+                                    .font(.system(size: 16, weight: .bold))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 38, height: 38)
+                            }
+                            .buttonStyle(.plain)
+                            .senGlassCircle(interactive: true, tint: .blue)
+                            .accessibilityLabel("Gönder")
+                        } else {
                             Button {
                                 SenHaptics.light()
                                 showVoiceMode = true
                             } label: {
                                 Image(systemName: "waveform")
-                                    .font(.system(size: 16, weight: .semibold))
-                                    .foregroundStyle(.blue)
-                                    .frame(width: 32, height: 34)
+                                    .font(.system(size: 16, weight: .bold))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 38, height: 38)
                             }
-                            .padding(.bottom, 2)
-                            .padding(.trailing, 4)
+                            .buttonStyle(.plain)
+                            .senGlassCircle(interactive: true, tint: .blue)
                             .accessibilityLabel("Canlı Sesli Sohbet")
                         }
                     }
-                    .senGlassCapsule(interactive: false)
-
-                    if server.isGenerating {
-                        Button {
-                            server.stopGeneration()
-                        } label: {
-                            Image(systemName: "stop.fill")
-                                .font(.system(size: 14, weight: .bold))
-                                .foregroundStyle(.white)
-                                .frame(width: 38, height: 38)
-                                .background { Circle().fill(Color.red) }
-                        }
-                        .accessibilityLabel("Durdur")
-                    } else if isExpanded {
-                        let isEmpty = draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && pendingPhotos.isEmpty
-                        Button {
-                            let text = draft
-                            let imgs = pendingPhotos.map(\.data)
-                            draft = ""
-                            pendingPhotos = []
-                            inputFocused = false
-                            server.sendMessage(text, images: imgs, userCity: location.currentCity)
-                        } label: {
-                            Image(systemName: "arrow.up")
-                                .font(.system(size: 16, weight: .bold))
-                                .foregroundStyle(isEmpty ? Color.secondary : Color.white)
-                                .frame(width: 38, height: 38)
-                        }
-                        .buttonStyle(.plain)
-                        .senGlassCircle(interactive: true, tint: isEmpty ? nil : .blue)
-                        .disabled(isEmpty)
-                        .animation(.spring(response: 0.28, dampingFraction: 0.78), value: isEmpty)
-                        .accessibilityLabel("Gönder")
-                    }
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 8)
+                    .padding(.top, 4)
                 }
-                .padding(.horizontal, isExpanded ? 10 : 18)
-                .padding(.bottom, 8)
-                .padding(.top, 4)
-                .animation(.spring(response: 0.34, dampingFraction: 0.84), value: isExpanded)
+            }
+            .padding(.top, 6)
+            .background {
+                Rectangle()
+                    .fill(.ultraThinMaterial)
+                    .ignoresSafeArea()
+                    .overlay(alignment: .top) {
+                        Rectangle()
+                            .fill(Color.primary.opacity(0.08))
+                            .frame(height: 0.6)
+                    }
             }
         }
     }
@@ -884,7 +905,38 @@ struct MessageRowView: View {
     }
 
     private func markdownAttributed(_ text: String) -> AttributedString {
-        (try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(text)
+        // Normalize block-level Markdown (* bullets, - bullets, ### headings, *** horizontal rules)
+        // so raw '*', '###', or '***' characters NEVER show up on screen!
+        let normalizedLines: [String] = text
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .components(separatedBy: "\n")
+            .compactMap { rawLine in
+                let trimmed = rawLine.trimmingCharacters(in: .whitespaces)
+                if trimmed == "***" || trimmed == "---" || trimmed == "___" {
+                    return nil
+                }
+                if trimmed.hasPrefix("### ") {
+                    let h = String(trimmed.dropFirst(4)).trimmingCharacters(in: .whitespaces)
+                    return "**\(h)**"
+                }
+                if trimmed.hasPrefix("## ") {
+                    let h = String(trimmed.dropFirst(3)).trimmingCharacters(in: .whitespaces)
+                    return "**\(h)**"
+                }
+                if trimmed.hasPrefix("# ") {
+                    let h = String(trimmed.dropFirst(2)).trimmingCharacters(in: .whitespaces)
+                    return "**\(h)**"
+                }
+                if trimmed.hasPrefix("* ") {
+                    return "• " + String(trimmed.dropFirst(2))
+                }
+                if trimmed.hasPrefix("- ") {
+                    return "• " + String(trimmed.dropFirst(2))
+                }
+                return rawLine
+            }
+        let cleaned = normalizedLines.joined(separator: "\n")
+        return (try? AttributedString(markdown: cleaned, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(cleaned)
     }
 }
 

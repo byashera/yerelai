@@ -708,13 +708,16 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
             ]
         } else if screen == "media_list" {
             let moviesMd = """
-            Gizem, psikolojik derinlik ve ters köşe seviyorsan tam senlik 3 film seçtim: 🎬
+            ### 🎬 Seçtiğim Yerli & Psikolojik Gerilim Filmleri
+            Gizem, psikolojik derinlik ve ters köşe seviyorsan tam senlik 3 film seçtim:
 
             ```sen_card
             {"kind":"media_list","title":"Sana önereceğim filmler","items":[{"title":"Shutter Island","year":"2010","subtitle":"Gizem, psikoloji ve akıl oyunları. Sonuna kadar merak ettirir.","badge":"İlk önerim","score":"8.2","image_query":"Shutter Island movie poster"},{"title":"Se7en","year":"1995","subtitle":"Karanlık suç hikâyesi, psikolojik gerilim ve unutulmaz final.","score":"8.6","image_query":"Se7en movie poster"},{"title":"Gone Girl","year":"2014","subtitle":"Manipülasyon, sırlar ve sürekli değişen şüpheler.","score":"8.1","image_query":"Gone Girl movie poster"}]}
             ```
 
-            **Benim ilk tercihim Shutter Island.** İzlemediysen konusunu hiç araştırmadan aç; spoiler yemek insanlığın en gereksiz icatlarından biri. 🍿
+            ***
+            * **Benim ilk tercihim Shutter Island:** İzlemediysen konusunu hiç araştırmadan aç.
+            * **Polisiye alternatifi:** Yerli istersen *Av Mevsimi* ve *Eşkıya* da harika seçimlerdir. 🍿
             """
             messages = [
                 ChatMessage(id: "um1", role: "user", content: "Psikolojik gerilim ve ters köşe film önerir misin?"),
@@ -722,15 +725,24 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
             ]
         } else if screen == "image_compare" {
             let cmpMd = """
-            Kısaca temel fark **terletme, temizlik ve uzun vadeli kullanımda** ortaya çıkıyor.
+            Hem oyun hem yazı için mekanik klavye boyut farkı **masa alanı ve numerik tuş ihtiyacında** ortaya çıkıyor:
 
             ```sen_card
-            {"kind":"image_compare","title":"Kadife Kumaş vs Suni Deri","left":{"name":"Kadife kumaş","emoji":"🛋️","subtitle":"Yumuşak ve nefes alan","image_query":"dark velvet fabric texture","points":["Deriye göre daha az terletir","Yazın daha konforludur","Toz ve tüyü biraz daha tutar"]},"right":{"name":"Suni deri","emoji":"✨","subtitle":"Şık ve kolay silinen","image_query":"black faux leather texture","points":["Nemli bezle kolay temizlenir","Daha şık ve düzgün görünür","Sıcak havada terletebilir"]},"verdict":"Günde 4-6 saat oturuyorsan kadife kumaş çok daha rahat ettirir."}
+            {"kind":"image_compare","title":"Klavye Boyut Karşılaştırması","left":{"name":"Tam Boyut (Full Size)","emoji":"⌨️","subtitle":"%100 · Numerik tuş takımlı","image_query":"full size mechanical keyboard","points":["Numerik tuşlar mevcut","Excel ve veri girişi için ideal","Masada daha fazla yer kaplar"]},"right":{"name":"TKL (Tenkeyless)","emoji":"🚀","subtitle":"%80 · Kompakt ve ergonomik","image_query":"TKL tenkeyless mechanical keyboard","points":["Fare hareketi için geniş alan","Kolay taşınır ve minimalist","Oyun ve kodlama için favori"]},"verdict":"Oyun ve günlük kodlama için TKL (%80) çok daha ergonomik bir seçimdir."}
             ```
             """
             messages = [
-                ChatMessage(id: "uc1", role: "user", content: "Kadife kumaş ile suni deri farkı nedir kısaca?"),
-                ChatMessage(id: "ac1", role: "assistant", content: cmpMd, rating: "like"),
+                ChatMessage(id: "uc1", role: "user", content: "Bana mekanik klavye önerisi ve boyut farkını gösterir misin?"),
+                ChatMessage(
+                    id: "ac1",
+                    role: "assistant",
+                    content: cmpMd,
+                    webSources: [
+                        WebSource(title: "Mekanik Klavye Rehberi", url: "https://itopya.com", domain: "itopya.com", snippet: nil),
+                        WebSource(title: "Keychron & Akko Modelleri", url: "https://trendyol.com", domain: "trendyol.com", snippet: nil),
+                    ],
+                    rating: "like"
+                ),
             ]
         } else if screen == "chat_more" {
             let richMd = """

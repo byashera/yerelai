@@ -1913,7 +1913,8 @@ def _fetch_single_city_weather(city_guess: str) -> Tuple[Optional[Dict[str, Any]
         lat = place["latitude"]
         lon = place["longitude"]
         city_name = place.get("name") or city_guess
-        country = place.get("country") or ""
+        raw_country = place.get("country") or ""
+        country = "Türkiye" if "türkiye" in raw_country.lower() else raw_country
 
         fc = httpx.get(
             "https://api.open-meteo.com/v1/forecast",
@@ -2450,9 +2451,10 @@ _IMG_CACHE_TTL_SEC = 21600  # 6 hours
 
 
 def _fetch_resolved_image_sync(query: str) -> Optional[Tuple[bytes, str]]:
-    key = re.sub(r"\s+", " ", (query or "").strip().lower())[:120]
-    if not key:
+    raw_q = re.sub(r"\s+", " ", (query or "").strip())[:120]
+    if not raw_q:
         return None
+    key = raw_q.lower()
     now = time.time()
     cached = _IMG_RESOLVE_CACHE.get(key)
     if cached and (now - cached[0]) < _IMG_CACHE_TTL_SEC:
@@ -2460,24 +2462,53 @@ def _fetch_resolved_image_sync(query: str) -> Optional[Tuple[bytes, str]]:
 
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-        "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9,tr-TR;q=0.8",
+        "Cookie": "SRCHHPGUSR=ADLT=STRICT",
     }
+
+    def _cache_and_return(data: bytes, ctype: str) -> Tuple[bytes, str]:
+        if len(_IMG_RESOLVE_CACHE) >= 300:
+            oldest_k = min(_IMG_RESOLVE_CACHE.keys(), key=lambda k: _IMG_RESOLVE_CACHE[k][0])
+            _IMG_RESOLVE_CACHE.pop(oldest_k, None)
+        _IMG_RESOLVE_CACHE[key] = (now, data, ctype)
+        return data, ctype
+
+    # Enrich ambiguous short labels so search always has specific product/topic context
+    search_q = raw_q
+    if re.search(r"\b(?:tkl|tenkeyless)\b", key) and "keyboard" not in key and "klavye" not in key:
+        search_q = "TKL tenkeyless mechanical keyboard"
+    elif re.search(r"\b(?:tam\s+boyut|full\s*size)\b", key) and "keyboard" not in key and "klavye" not in key:
+        search_q = "full size mechanical keyboard"
+
+    blocked_ext = (".svg", ".gif", ".ico", ".webp.html")
+    blocked_domains = (
+        "ytimg.com", "youtube.com", "dailymotion.com", "tiktok.com", "fbcdn.net",
+        "instagram.com", "kizlarsoruyor.com", "onedio.com", "ensonhaber.com",
+        "takvim.com.tr", "sabah.com.tr", "milliyet.com.tr", "haberturk.com", "hurriyet.com.tr",
+    )
+    blocked_text_re = re.compile(r"(?:cinsel|rüya\s+tabir|ruya\s+tabir|\+18|erotik|porno|kumar|bahis|dunya-gunu)", re.I)
+
     try:
+        # Use /images/async fragment endpoint — returns pure query results without Bing homepage trending carousel!
         r = httpx.get(
-            "https://www.bing.com/images/search",
-            params={"q": query, "first": 1, "adlt": "moderate"},
+            "https://www.bing.com/images/async",
+            params={"q": search_q, "first": "0", "count": "12", "adlt": "strict"},
             headers=headers,
             timeout=6.0,
             follow_redirects=True,
         )
         if r.status_code != 200:
             return None
-        urls = re.findall(r'murl&quot;:&quot;(https?://[^&]+?)&quot;', r.text)
-        blocked_ext = (".svg", ".gif", ".ico", ".webp.html")
-        for raw_u in urls[:8]:
-            u = html_lib.unescape(raw_u)
+        candidates = [html_lib.unescape(u) for u in re.findall(r'murl&quot;:&quot;(https?://[^&]+?)&quot;', r.text)]
+
+        for u in candidates[:10]:
             u_low = u.lower()
             if any(u_low.endswith(ext) for ext in blocked_ext):
+                continue
+            if any(d in u_low for d in blocked_domains):
+                continue
+            if blocked_text_re.search(u_low):
                 continue
             if not _is_safe_public_url(u):
                 continue
@@ -2489,13 +2520,9 @@ def _fetch_resolved_image_sync(query: str) -> Optional[Tuple[bytes, str]]:
                 if not ctype.startswith("image/") or "svg" in ctype:
                     continue
                 data = ir.content
-                if len(data) < 2048 or len(data) > 4_000_000:
+                if len(data) < 3072 or len(data) > 4_000_000:
                     continue
-                if len(_IMG_RESOLVE_CACHE) >= 300:
-                    oldest_k = min(_IMG_RESOLVE_CACHE.keys(), key=lambda k: _IMG_RESOLVE_CACHE[k][0])
-                    _IMG_RESOLVE_CACHE.pop(oldest_k, None)
-                _IMG_RESOLVE_CACHE[key] = (now, data, ctype)
-                return data, ctype
+                return _cache_and_return(data, ctype)
             except Exception:
                 continue
     except Exception:
@@ -3081,11 +3108,14 @@ async def api_chat(req: ChatRequest, request: Request):
                 "İLETİŞİM VE ONAY KURALI: Kullanıcı yalnızca 'yapabilir misin / oluşturabilir misin?' gibi kısa bir yetenek sorusu soruyorsa veya konu/veri/sütun belirtmediyse "
                 "ASLA kendiliğinden uzun kod veya uydurma örnek dökme; 2-3 cümlede yapabileceğini söyle ve hangi konu/verileri istediğini kısaca sor. "
                 "Kod veya HTML dosyası ürettiğin yanıtlarında, kod bloğunu (```) kapattıktan sonra MUTLAKA 2-4 maddelik kısa Türkçe özet (öne çıkan özellikler ve yapılanlar) yaz; yanıtı asla sadece kod bloğuyla açıklaması olmadan bırakma. "
-                "Excel tablosu veya .xlsx dosyası istendiğinde ASLA HTML yazma; doğrudan temiz Markdown tablosu oluştur. "
-                "YERLEŞİK DOSYA ÜRETİCİ KURALI: SEN.AI oluşturduğun Markdown tablolarını otomatik olarak gerçek, formüllü .xlsx Excel dosyasına dönüştürüp kullanıcıya indirme kartı sunar! "
-                "Bu yüzden ASLA 'Ben metin tabanlı yapay zekâyım, Excel dosyası oluşturamam' veya 'Bu tabloyu Excel'e kopyalayıp yapıştırabilirsin' gibi ifadeler KULLANMA; doğrudan veriyi düzenli Markdown tablosu olarak sun ve dosyanın hazır olduğunu belirt. "
+                "Kullanıcı açıkça Excel/CSV dosyası istemedikçe ASLA 'Bu şablonu Excel dosyası olarak hazırladım, indirme kartı aşağıdadır' deme! "
                 "Kullanıcıya ASLA 'LocalAI Studio', 'kopyalayıp çalıştırın' gibi yapay teknik yönergeler söyleme; uygulama adı her zaman SEN.AI'dır."
             ).strip()
+            if is_excel_context and not _is_native_ios_client(request):
+                eff_system_prompt = (
+                    f"{eff_system_prompt}\n\n"
+                    "YERLEŞİK EXCEL ÜRETİCİ KURALI: Kullanıcı açıkça Excel tablosu istedi; veriyi düzenli Markdown tablosu olarak sun, arayüz otomatik .xlsx indirme kartı oluşturacaktır."
+                ).strip()
 
             if is_consultative_q:
                 eff_system_prompt = (
@@ -3132,9 +3162,14 @@ async def api_chat(req: ChatRequest, request: Request):
             if 0.64 <= eff_temp <= 0.82:
                 eff_temp = 0.68 if is_technical_turn else 0.73
 
+            user_msgs_list = [m.content.strip() for m in req.messages if m.role == "user" and m.content.strip()]
+            user_turns_count = len(user_msgs_list)
+            recent_user_context = " ".join(user_msgs_list[-3:])
+
             is_brief_request = bool(last_user_msg and re.search(r"\b(?:kısaca|kisaca|kısa\s+özet|tek\s+cümle|özetçe)\b", last_user_msg, re.I))
             is_broad_clarify_request = bool(
-                last_user_msg
+                user_turns_count == 1
+                and last_user_msg
                 and re.search(
                     r"^(?:bana\s+film\s+önerisi\s+yapar\s+mısın\??|film\s+öner(?:isi)?\??|burç\s+uyumu\s+karşılaştırmak\s+istiyorum|günlük\s+veya\s+haftalık\s+plan\s+oluşturmak\s+istiyorum|plan\s+yap(?:ar\s+mısın)?\??)$",
                     last_user_msg.strip(),
@@ -3143,54 +3178,65 @@ async def api_chat(req: ChatRequest, request: Request):
             )
 
             if not is_technical_turn:
-                eff_system_prompt = (
-                    f"{eff_system_prompt}\n\n"
-                    "[SOHBET VE RİTİM KURALI — CHATGPT SEVİYESİ DOĞALLIK]:\n"
-                    "1) İçten, zeki, net ve akıcı Türkçe konuş. ASLA abartılı yapay metaforlar, robotik yapay zekâ uyarıları veya kullanıcının söylemediği varsayımlar üretme.\n"
-                    "2) BELİRSİZ / GENEL İSTEKLERDE ÖNCE SOR: Kullanıcı tercih belirtmeden 'Film öner', 'Burç uyumu karşılaştırmak istiyorum', 'Günlük/haftalık plan oluşturmak istiyorum' veya 'Tarot/Arcana bak' dediyse rastgele liste boşaltma! Önce sıcak 1 cümleyle gir, ardından konuya uygun tek emojili 4–6 kısa şıkla tek netleştirme sorusu sor (ör. filmde tür + son beğendiği 1-2 film; burçta hangi burçlar/yükselenler; planda günlük mü haftalık mı + hedefi).\n"
-                    "3) 4 ADIMLI AKICI RİTİM: Kısa sıcak giriş (1–2 cümle) → kalın başlık + tek emojili kısa maddeler (her madde max 1 cümle) → net kişisel fikir satırı ('**Benim yorumum:**' veya '**Benim ilk tercihim:**') → derinleşmeye uygun konularda sonda merak uyandıran 3–4 şıklı kısa yönlendirme sorusu ('Biraz daha derine inelim: Hangisini merak ediyorsun?').\n"
-                    "4) UZUNLUK UYUMU: Kullanıcı 'kısaca' dediyse gereksiz uzatma; 5–6 net madde ve 1 kısa yorumla bitir.\n"
-                    "5) EMOJİ DİSİPLİNİ: Cümle ortasına rastgele emoji serpiştirme; emojileri yalnızca başlık veya liste maddesi başında tek ve anlamlı biçimde kullan."
-                ).strip()
+                if is_broad_clarify_request:
+                    eff_system_prompt = (
+                        f"{eff_system_prompt}\n\n"
+                        "[İLK TUR NETLEŞTİRME KURALI]: Kullanıcı henüz tür/burç/hedef belirtmeden genel bir başlangıç kartına tıkladı. "
+                        "Rastgele liste boşaltma; sıcak 1 cümleyle gir, ardından konuya uygun tek emojili 4–5 kısa şıkla tek bir netleştirme sorusu sor (ör. filmde hangi tarzı sevdiği; burçta hangi burçları karşılaştırmak istediği; planda günlük mü haftalık mı ve odak alanı). Bu turda ```sen_card üretme."
+                    ).strip()
+                else:
+                    eff_system_prompt = (
+                        f"{eff_system_prompt}\n\n"
+                        "[SOHBET VE RİTİM KURALI — SOMUT VE DOĞRUDAN CEVAP]:\n"
+                        "1) İçten, zeki, net ve akıcı Türkçe konuş. ASLA abartılı yapay metaforlar, robotik uyarılar veya kullanıcının söylemediği varsayımlar üretme.\n"
+                        "2) SONSÜZ SORU DÖNGÜSÜ YASAĞI (ÇOK KRİTİK): Kullanıcı tercihini belirttiyse ('Yerli olsun', 'Fark etmez sen seç', 'Aksiyon olsun', 'Polis suç temalı olsun', 'Spor ve iş odaklı olsun' vb.) veya ürün/öneri istediyse ('mekanik klavye öner' vb.), ASLA tekrar netleştirme sorusu sorup öneriyi erteleme! ASLA 'Bir Dram Örneği', 'Yüksek Tempolu', 'Soruşturma Odaklı' gibi İSİMSİZ kategori şablonları yazma! Doğrudan GERÇEK ve SOMUT film/ürün/plan isimlerini (ör. Eşkıya, Kış Uykusu, Organize İşler, Behzat Ç. Seni Kalbime Gömdüm, Av Mevsimi, Mad Max: Fury Road, Keychron K6, Akko 5075B vb.) ver!\n"
+                        "3) AKICI RİTİM: Kısa sıcak giriş (1–2 cümle) → görsel kart veya net maddeler → '**Benim yorumum:**' veya '**Benim ilk tercihim:**' satırı → gerekirse sonda konuyu derinleştiren tek kısa soru.\n"
+                        "4) TEKRAR YASAĞI: Görsel kart (```sen_card) kullandığın yanıtta kartın içindeki filmleri, ürünleri veya maddeleri kartın üstünde ya da altında düz metin listesi olarak TEKRAR YAZMA.\n"
+                        "5) EMOJİ VE MARKDOWN DİSİPLİNİ: Madde başlarında '*' yerine '-' kullan; cümle ortasına rastgele emoji serpiştirme."
+                    ).strip()
             else:
                 eff_system_prompt = (
                     f"{eff_system_prompt}\n\n"
                     "[TEKNİK SUNUM TONU]: Kod, tablo ve teknik analizleri hatasız, öz ve tertemiz sun; giriş/özet başlıklarında gerekirse sade tek bir emoji (✨, 📊, ⚡) kullanabilirsin."
                 ).strip()
 
-            # Contextual Rich Visual Cards (sen_card: media_list / image_compare / scorecard / compatibility / checklist / rating)
+            # Contextual Rich Visual Cards (checks recent 3 user turns so follow-ups like 'Yerli olsun' or 'Spor ve iş odaklı olsun' ALWAYS trigger cards!)
             is_visual_card_turn = bool(
-                last_user_msg
+                recent_user_context
                 and not is_technical_turn
                 and not is_brief_request
                 and not is_broad_clarify_request
                 and re.search(
                     r"(?:uyum|uyumlu\s+mu|karşılaştır|kıyasla|\bvs\b|hangisi\s+daha\s+iyi|farkı\s+ne|burç.*uyum|aşk\s+uyumu|arcana|tarot|"
-                    r"öner\w*|tavsiye|film|dizi|kitap|oyun|mekan|mekân|gezi|rota|plan\w*|program|rutin|tarif|liste\s+yap|puanla|incele|koltuk|kumaş|ürün)",
-                    last_user_msg,
+                    r"öner\w*|tavsiye|film|dizi|kitap|oyun|mekan|mekân|gezi|rota|plan\w*|program|rutin|tarif|liste\s+yap|puanla|incele|koltuk|kumaş|klavye|kulaklık|telefon|laptop|ürün)",
+                    recent_user_context,
                     re.I,
                 )
             )
             if is_visual_card_turn:
                 eff_system_prompt = (
                     f"{eff_system_prompt}\n\n"
-                    "[GÖRSEL KART YETENEĞİ]: Yanıtı görsel olarak zenginleştirmek için uygunsa TAM OLARAK BİR TANE geçerli ```sen_card JSON bloğu ekle (arayüz gerçek HD görselleri 'image_query' alanından otomatik çeker; ASLA URL uydurma):\n"
-                    "1) Görselli Liste (film, dizi, kitap, ürün, tarot/arcana): "
-                    '```sen_card\n{"kind":"media_list","title":"Sana önereceğim filmler","items":[{"title":"Shutter Island","year":"2010","subtitle":"Gizem, psikoloji ve akıl oyunları. Sonuna kadar merak ettirir.","badge":"İlk önerim","image_query":"Shutter Island movie poster"},{"title":"Se7en","year":"1995","subtitle":"Karanlık suç hikâyesi ve unutulmaz final.","image_query":"Se7en 1995 movie poster"}]}\n```\n'
-                    "2) 2'li Görselli Karşılaştırma (ürün, kumaş, burç, cihaz): "
-                    '```sen_card\n{"kind":"image_compare","title":"Kadife Kumaş vs Suni Deri","left":{"name":"Kadife kumaş","emoji":"🛋️","subtitle":"Yumuşak ve nefes alan","image_query":"velvet fabric texture dark","points":["Daha az terletir","Yazın konforludur"]},"right":{"name":"Suni deri","emoji":"✨","subtitle":"Şık ve kolay silinen","image_query":"faux leather texture black","points":["Nemli bezle kolay temizlenir","Daha şık görünür"]},"verdict":"Günde 4+ saat oturuyorsan kadife kumaş daha rahat eder."}\n```\n'
-                    "3) Skor & Uyumluluk Kartı (burç, ilişki, analiz): "
+                    "[GÖRSEL KART ZORUNLULUĞU]: Bu yanıtta önerilerini veya analizini düz '*' maddeleri yerine MUTLAKA TAM OLARAK BİR TANE geçerli ```sen_card JSON bloğu içinde sun! "
+                    "ÖNEMLİ: 'image_query' alanına her zaman nesnenin tam adını ve türünü İngilizce/Türkçe açık yaz (ör. 'Eskiya 1996 Turkish movie poster', 'Keychron K6 mechanical keyboard', 'full size mechanical keyboard', 'TKL tenkeyless mechanical keyboard'); ASLA sadece 'Tam Boyut' veya 'TKL' gibi tek kelime bırakma ve ASLA URL uydurma:\n"
+                    "1) Görselli Film / Dizi / Ürün / Tarot Listesi (somut gerçek isimlerle!): "
+                    '```sen_card\n{"kind":"media_list","title":"Seçtiğim Öneriler","items":[{"title":"Eşkıya","year":"1996","subtitle":"Türk sinemasının unutulmaz suç, dram ve intikam klasiği.","badge":"İlk önerim","score":"8.2","image_query":"Eskiya 1996 movie poster"},{"title":"Av Mevsimi","year":"2010","subtitle":"Şener Şen ve Cem Yılmaz\'dan sürükleyici polisiye cinayet soruşturması.","score":"7.4","image_query":"Av Mevsimi 2010 film poster"}]}\n```\n'
+                    "2) 2'li Görselli Karşılaştırma (iki ürün, kumaş, burç, klavye): "
+                    '```sen_card\n{"kind":"image_compare","title":"Karşılaştırma","left":{"name":"Seçenek A","emoji":"🔥","subtitle":"Kısa özellik","image_query":"specific product photo A","points":["Artı 1","Artı 2"]},"right":{"name":"Seçenek B","emoji":"⚡","subtitle":"Kısa özellik","image_query":"specific product photo B","points":["Artı 1","Artı 2"]},"verdict":"Net seçim tavsiyesi."}\n```\n'
+                    "3) Skor & Uyumluluk Kartı (burç, ilişki): "
                     '```sen_card\n{"kind":"scorecard","title":"AKREP ♏ × OĞLAK ♑","badge":"Yüksek uyum","score":"9/10","subtitle":"Genel uyum puanı","metrics":[{"emoji":"❤️","label":"Aşk","value":"9/10"},{"emoji":"🔥","label":"Tutku","value":"9,5/10"},{"emoji":"🛡️","label":"Güven ve sadakat","value":"10/10"}],"strengths":["Karşılıklı sadakat ve güven"],"challenges":["İki tarafın da inatçı olması"],"summary":"Birbirlerine alan tanıdıklarında çok sağlam bir bağ kurarlar."}\n```\n'
-                    "4) İnteraktif Günlük/Haftalık Plan: "
-                    '```sen_card\n{"kind":"checklist","title":"Verimli Gün Planı","badge":"5 Adım","steps":[{"label":"Sabah yürüyüşü ve kahve","meta":"08:30"},{"label":"Derin odak çalışma bloğu","meta":"10:00"}]}\n```\n'
-                    "JSON tek parça ve hatasız olsun; kartın altında kısa kişisel yorumunu ve gerekirse derinleştirme sorunu ekle."
+                    "4) İnteraktif Günlük/Haftalık Plan (plan/rutin istendiğinde Markdown tablosu yerine bu kartı kullan!): "
+                    '```sen_card\n{"kind":"checklist","title":"Spor & İş Dengesi Planı","badge":"5 Adım","steps":[{"label":"Sabah 30 dk kardiyo veya esneme","meta":"07:30"},{"label":"Derin odak iş bloğu (en zor görev)","meta":"09:00"},{"label":"Öğle molası ve 15 dk açık hava yürüyüşü","meta":"13:00"},{"label":"Akşam ana kuvvet antrenmanı","meta":"18:30"},{"label":"Ekransız dinlenme ve uyku hazırlığı","meta":"22:30"}]}\n```\n'
+                    "Kartın içindeki maddeleri kartın dışında tekrar listeleme; kartın altında yalnızca 1-2 cümlelik '**Benim ilk tercihim / yorumum:**' satırını yaz."
                 ).strip()
 
-            # Keep quick weather/finance checks crisp without forced therapist follow-ups
+            # Keep quick weather/finance checks crisp without parroting card numbers or asking weird questions
             if web_result and (web_result.get("rich_cards") or web_result.get("rich_card")):
                 eff_system_prompt = (
                     f"{eff_system_prompt}\n\n"
-                    "[KISA BİLGİ KURALI]: Kullanıcı hızlı bir hava durumu veya döviz bilgisi istedi. 2-3 kısa, doğal ve faydalı cümleyle özetle; sonunda 'kendini nasıl hissediyorsun?' gibi yapay terapist soruları sorma."
+                    "[KESİN HAVA DURUMU / DÖVİZ KURALI]: Üstteki görsel kartta sıcaklık, nem, rüzgar ve 5 günlük tahmin zaten kullanıcıya gösterildi. "
+                    "Metinde sıcaklık derecesini, nem yüzdesini ve rüzgar hızını TEKRAR SAYMA! "
+                    "Sonunda ASLA 'Bu hafta genel olarak nasıl bir hava beklentisi var sence?' veya 'Kendini nasıl hissediyorsun?' gibi soru SORMA! "
+                    "Yalnızca 1-2 kısa cümlelik pratik giyim/plan tavsiyesi verip yanıtı doğrudan bitir."
                 ).strip()
 
             # Active Claude Project Instructions (if session belongs to a project)

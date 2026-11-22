@@ -161,10 +161,11 @@ struct RichCardPayload: Identifiable, Codable, Hashable {
         let rawCity = try? c.decodeIfPresent(String.self, forKey: .city)
         let rawCountry = try? c.decodeIfPresent(String.self, forKey: .country)
         if let rawLoc, !rawLoc.isEmpty {
-            location = rawLoc
+            location = rawLoc.replacingOccurrences(of: "Türkiye Cumhuriyeti", with: "Türkiye")
         } else if let rawCity, !rawCity.isEmpty {
             if let rawCountry, !rawCountry.isEmpty {
-                location = "\(rawCity), \(rawCountry)"
+                let cleanCountry = rawCountry.replacingOccurrences(of: "Türkiye Cumhuriyeti", with: "Türkiye")
+                location = "\(rawCity), \(cleanCountry)"
             } else {
                 location = rawCity
             }

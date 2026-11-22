@@ -132,6 +132,8 @@ struct WeatherCardView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(card.location ?? "Hava Durumu")
                         .font(.subheadline.weight(.bold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
                     if let upd = card.updated_at {
                         let cleanUpd = upd.hasPrefix("Canlı") ? upd : "Canlı · \(upd)"
                         Text(cleanUpd)
@@ -357,7 +359,9 @@ struct CompatibilityCardView: View {
                 Text(card.title ?? "Uyum Analizi")
                     .font(.subheadline.weight(.bold))
                     .foregroundStyle(.primary)
-                Spacer()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                Spacer(minLength: 6)
                 if let badge = card.badge, !badge.isEmpty {
                     Text(badge)
                         .font(.caption2.weight(.semibold))
@@ -683,7 +687,9 @@ struct ResolvedRemoteImageView: View {
     let fallbackIcon: String
 
     var body: some View {
-        if let url {
+        if let url, url.host == "preview.sen.ai" {
+            simulatorArtwork(for: url.query ?? "")
+        } else if let url {
             AsyncImage(url: url) { phase in
                 switch phase {
                 case .success(let img):
@@ -703,6 +709,49 @@ struct ResolvedRemoteImageView: View {
             }
         } else {
             placeholder
+        }
+    }
+
+    private func simulatorArtwork(for query: String) -> some View {
+        let q = (query.removingPercentEncoding ?? query).lowercased()
+        let colors: [Color]
+        let symbol: String
+        let caption: String
+        if q.contains("shutter") || q.contains("eskiya") {
+            colors = [Color(red: 0.10, green: 0.22, blue: 0.45), Color(red: 0.22, green: 0.42, blue: 0.78)]
+            symbol = "film.stack.fill"
+            caption = "AFİŞ"
+        } else if q.contains("se7en") || q.contains("av mevsimi") {
+            colors = [Color(red: 0.36, green: 0.18, blue: 0.08), Color(red: 0.72, green: 0.38, blue: 0.14)]
+            symbol = "Clapperboard" == "" ? "film.fill" : "film.fill"
+            caption = "SİNEMA"
+        } else if q.contains("gone") {
+            colors = [Color(red: 0.12, green: 0.30, blue: 0.38), Color(red: 0.28, green: 0.54, blue: 0.66)]
+            symbol = "sparkles.tv.fill"
+            caption = "FİLM"
+        } else if q.contains("velvet") || q.contains("kadife") || q.contains("full size") {
+            colors = [Color(red: 0.18, green: 0.22, blue: 0.34), Color(red: 0.32, green: 0.38, blue: 0.56)]
+            symbol = q.contains("keyboard") ? "keyboard.fill" : "square.grid.3x3.fill"
+            caption = q.contains("keyboard") ? "100% TAM" : "DOKU"
+        } else {
+            colors = [Color(red: 0.14, green: 0.16, blue: 0.20), Color(red: 0.28, green: 0.32, blue: 0.40)]
+            symbol = q.contains("keyboard") ? "keyboard" : "sparkles"
+            caption = q.contains("keyboard") ? "TKL %80" : "DETAY"
+        }
+        return ZStack {
+            LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing)
+            Circle()
+                .fill(Color.white.opacity(0.14))
+                .frame(width: 54, height: 54)
+                .offset(x: 16, y: -14)
+            VStack(spacing: 4) {
+                Image(systemName: symbol)
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.92))
+                Text(caption)
+                    .font(.system(size: 9, weight: .heavy, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.78))
+            }
         }
     }
 
@@ -1169,8 +1218,37 @@ struct MarkdownTableCardView: View {
                     .padding(.vertical, 9)
                     Divider().opacity(0.30)
                 }
+            } else if headers.count <= 4 {
+                // 3-4 column table: fits 100% inside iPhone screen width with clean multi-line wrapping (zero right-edge clipping!)
+                HStack(alignment: .bottom, spacing: 8) {
+                    ForEach(Array(headers.enumerated()), id: \.offset) { cIdx, h in
+                        Text(h)
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.primary)
+                            .frame(maxWidth: .infinity, alignment: cIdx == headers.count - 1 ? .trailing : .leading)
+                    }
+                }
+                .padding(.vertical, 8)
+
+                Divider().opacity(0.55)
+
+                ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                    HStack(alignment: .top, spacing: 8) {
+                        ForEach(0..<headers.count, id: \.self) { cIdx in
+                            Text(cIdx < row.count ? row[cIdx] : "")
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(cIdx == headers.count - 1 ? Color.primary : Color.primary.opacity(0.88))
+                                .fontWeight(cIdx == headers.count - 1 ? .semibold : .regular)
+                                .multilineTextAlignment(cIdx == headers.count - 1 ? .trailing : .leading)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .frame(maxWidth: .infinity, alignment: cIdx == headers.count - 1 ? .trailing : .leading)
+                        }
+                    }
+                    .padding(.vertical, 9)
+                    Divider().opacity(0.30)
+                }
             } else {
-                // Multi-column minimalist horizontal-scroll hairline table
+                // 5+ column table: horizontal scroll
                 ScrollView(.horizontal, showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 0) {
                         HStack(spacing: 0) {
@@ -1178,8 +1256,8 @@ struct MarkdownTableCardView: View {
                                 Text(h)
                                     .font(.caption.weight(.bold))
                                     .foregroundStyle(.primary)
-                                    .frame(minWidth: 94, alignment: .leading)
-                                    .padding(.trailing, 14)
+                                    .frame(minWidth: 84, alignment: .leading)
+                                    .padding(.trailing, 12)
                                     .padding(.vertical, 8)
                             }
                         }
@@ -1192,8 +1270,8 @@ struct MarkdownTableCardView: View {
                                         .font(.caption.monospacedDigit())
                                         .foregroundStyle(cIdx == headers.count - 1 ? Color.primary : Color.primary.opacity(0.88))
                                         .fontWeight(cIdx == headers.count - 1 ? .semibold : .regular)
-                                        .frame(minWidth: 94, alignment: .leading)
-                                        .padding(.trailing, 14)
+                                        .frame(minWidth: 84, alignment: .leading)
+                                        .padding(.trailing, 12)
                                         .padding(.vertical, 9)
                                 }
                             }
@@ -1204,7 +1282,7 @@ struct MarkdownTableCardView: View {
             }
 
             HStack {
-                if headers.count >= 4 {
+                if headers.count >= 5 {
                     Text("Kaydır →")
                         .font(.caption2)
                         .foregroundStyle(.secondary.opacity(0.7))
