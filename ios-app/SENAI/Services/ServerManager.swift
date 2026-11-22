@@ -108,7 +108,7 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
     }
 
     private func probeHealth(_ base: String, timeout: TimeInterval) async -> Bool {
-        guard let url = URL(string: "\(base)/api/auth/status") else { return false }
+        guard let url = URL(string: "\(base)/api/auth/state") else { return false }
         var req = URLRequest(url: url)
         req.timeoutInterval = timeout
         do {
@@ -141,7 +141,7 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
     // MARK: - Auth & Sessions
 
     private func checkAuthAndLoad() async {
-        guard let url = URL(string: "\(activeBaseURL)/api/auth/status") else { return }
+        guard let url = URL(string: "\(activeBaseURL)/api/auth/state") else { return }
         do {
             let (data, _) = try await urlSession.data(from: url)
             if let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
@@ -330,7 +330,7 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
                 messages[idx].isStreaming = false
             }
             Task {
-                guard let url = URL(string: "\(activeBaseURL)/api/stop") else { return }
+                guard let url = URL(string: "\(activeBaseURL)/api/chat/stop") else { return }
                 var req = URLRequest(url: url)
                 req.httpMethod = "POST"
                 _ = try? await urlSession.data(for: req)
@@ -439,7 +439,7 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
 
     private func saveCurrentSession() async {
         guard !activeBaseURL.isEmpty, !messages.isEmpty,
-              let url = URL(string: "\(activeBaseURL)/api/sessions/\(activeSessionId)") else { return }
+              let url = URL(string: "\(activeBaseURL)/api/sessions") else { return }
         let title = messages.first(where: { $0.role == "user" })?.content.prefix(48) ?? "Yeni Sohbet"
         let serialized: [[String: Any]] = messages.map { m in
             var dict: [String: Any] = ["id": m.id, "role": m.role, "content": m.content, "thinking": m.thinking]
@@ -448,9 +448,9 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
             return dict
         }
         var req = URLRequest(url: url)
-        req.httpMethod = "PUT"
+        req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = try? JSONSerialization.data(withJSONObject: ["title": String(title), "messages": serialized])
+        req.httpBody = try? JSONSerialization.data(withJSONObject: ["id": activeSessionId, "title": String(title), "messages": serialized])
         _ = try? await urlSession.data(for: req)
         await fetchSessions()
     }

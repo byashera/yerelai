@@ -17,6 +17,7 @@ struct ChatView: View {
     @State private var selectedPhotoItems: [PhotosPickerItem] = []
     @State private var pendingPhotos: [PendingPhoto] = []
     @State private var activeSources: [WebSource]? = nil
+    @State private var bentoAppeared: Bool = false
     @FocusState private var inputFocused: Bool
 
     var body: some View {
@@ -216,38 +217,49 @@ struct ChatView: View {
                     subtitle: "5 günlük canlı tahmin",
                     icon: "cloud.sun.fill",
                     tint: .blue,
-                    prompt: "Manisa hava durumu nasıl?"
+                    prompt: "Manisa hava durumu nasıl?",
+                    delay: 0.04
                 )
                 bentoCard(
                     title: "Film Önerisi",
                     subtitle: "Puanlı görsel liste",
                     icon: "film.fill",
                     tint: .orange,
-                    prompt: "Bana sürükleyici bir bilim kurgu filmi öner"
+                    prompt: "Bana sürükleyici bir bilim kurgu filmi öner",
+                    delay: 0.09
                 )
                 bentoCard(
                     title: "Burç Uyumu",
                     subtitle: "Yüzdelik analiz kartı",
                     icon: "heart.fill",
                     tint: .pink,
-                    prompt: "Oğlak ve Akrep uyumu nasıl olur?"
+                    prompt: "Oğlak ve Akrep uyumu nasıl olur?",
+                    delay: 0.14
                 )
                 bentoCard(
                     title: "Hızlı Plan",
                     subtitle: "Tıklanabilir adımlar",
                     icon: "checklist",
                     tint: .green,
-                    prompt: "Hafta sonu için 1 günlük verimli rutin planı yap"
+                    prompt: "Hafta sonu için 1 günlük verimli rutin planı yap",
+                    delay: 0.19
                 )
             }
             .padding(.horizontal, 16)
+            .onAppear {
+                if !bentoAppeared {
+                    withAnimation(.spring(duration: 0.50, bounce: 0.16)) {
+                        bentoAppeared = true
+                    }
+                }
+            }
 
             Spacer()
         }
         .onTapGesture { inputFocused = false }
     }
 
-    private func bentoCard(title: String, subtitle: String, icon: String, tint: Color, prompt: String) -> some View {
+    private func bentoCard(title: String, subtitle: String, icon: String, tint: Color, prompt: String, delay: Double) -> some View {
         Button {
             server.sendMessage(prompt)
         } label: {
@@ -275,6 +287,9 @@ struct ChatView: View {
         }
         .buttonStyle(SenSpringButtonStyle())
         .senGlassRounded(radius: 18, interactive: true)
+        .opacity(bentoAppeared ? 1 : 0)
+        .offset(y: bentoAppeared ? 0 : 14)
+        .animation(.spring(duration: 0.48, bounce: 0.18).delay(delay), value: bentoAppeared)
     }
 
     // MARK: - Messages Stream
@@ -289,6 +304,7 @@ struct ChatView: View {
                             onShowSources: { srcs in activeSources = srcs }
                         )
                         .id(msg.id)
+                        .transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity), removal: .opacity))
                     }
                     if !server.statusLine.isEmpty {
                         HStack(spacing: 7) {
@@ -886,6 +902,7 @@ struct ModelBadgeIcon: View {
 struct ThinkingEffortSliderView: View {
     @Binding var effort: ThinkingEffort
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var dragFraction: CGFloat? = nil
 
     private let levels: [ThinkingEffort] = [.off, .low, .medium, .high]
 
@@ -893,12 +910,16 @@ struct ThinkingEffortSliderView: View {
         levels.firstIndex(of: effort) ?? 0
     }
 
+    private var displayFraction: CGFloat {
+        dragFraction ?? (CGFloat(currentIndex) / CGFloat(levels.count - 1))
+    }
+
     private var accentColor: Color {
         switch effort {
         case .off: return .secondary
         case .low: return .green
         case .medium: return .blue
-        case .high: return Color(red: 0.62, green: 0.36, blue: 0.98)
+        case .high: return Color(red: 0.96, green: 0.30, blue: 0.56)
         }
     }
 
@@ -918,9 +939,11 @@ struct ThinkingEffortSliderView: View {
                     .font(.headline.weight(.bold))
                     .foregroundStyle(accentColor)
                     .contentTransition(.numericText())
+                    .animation(.snappy(duration: 0.22), value: effort)
                 Text(subtitleText)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .animation(.easeInOut(duration: 0.2), value: effort)
             }
             .frame(maxWidth: .infinity)
 
@@ -928,47 +951,71 @@ struct ThinkingEffortSliderView: View {
                 let trackW = max(geo.size.width, 120)
                 let thumbD: CGFloat = 36
                 let usableW = max(trackW - thumbD, 1)
-                let frac = CGFloat(currentIndex) / CGFloat(levels.count - 1)
+                let frac = min(max(displayFraction, 0), 1)
                 let thumbX = frac * usableW
+                let isDragging = dragFraction != nil
 
                 ZStack(alignment: .leading) {
                     // Base Track
                     Capsule()
                         .fill(Color.primary.opacity(0.09))
                         .overlay {
-                            Capsule().strokeBorder(Color.primary.opacity(0.10), lineWidth: 0.8)
+                            Capsule().strokeBorder(Color.primary.opacity(0.11), lineWidth: 0.8)
                         }
 
-                    // Active Filled Track (Cosmic Animated Particle Gradient on Ultra/High!)
-                    if currentIndex > 0 {
-                        let fillW = thumbX + thumbD
+                    // Smooth Continuous Active Fill (Faster Crimson/Rose Particles Flowing Right -> Left on High!)
+                    if frac > 0.01 {
+                        let fillW = max(thumbX + thumbD, thumbD)
                         ZStack {
-                            if effort == .high {
-                                TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: reduceMotion)) { timeline in
+                            if effort == .high || frac > 0.82 {
+                                TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: reduceMotion)) { timeline in
                                     let t = timeline.date.timeIntervalSinceReferenceDate
-                                    let shift = sin(t * 1.4) * 0.18
+                                    let shift = sin(t * 2.1) * 0.16
                                     ZStack {
                                         LinearGradient(
                                             colors: [
-                                                Color(red: 0.16, green: 0.38, blue: 0.98),
-                                                Color(red: 0.50, green: 0.32, blue: 0.98),
-                                                Color(red: 0.72, green: 0.34, blue: 0.96),
+                                                Color(red: 0.24, green: 0.26, blue: 0.94),
+                                                Color(red: 0.62, green: 0.22, blue: 0.86),
+                                                Color(red: 0.95, green: 0.24, blue: 0.46),
                                             ],
                                             startPoint: UnitPoint(x: 0.0 + shift, y: 0.5),
                                             endPoint: UnitPoint(x: 1.0 + shift, y: 0.5)
                                         )
                                         Canvas { ctx, size in
-                                            let seeds: [(CGFloat, CGFloat, CGFloat, Double)] = [
-                                                (0.12, 0.32, 2.2, 0.0), (0.20, 0.68, 1.8, 1.1), (0.28, 0.42, 2.6, 2.3),
-                                                (0.39, 0.72, 1.9, 0.7), (0.48, 0.28, 2.4, 1.9), (0.56, 0.62, 2.8, 3.1),
-                                                (0.65, 0.35, 1.8, 2.6), (0.74, 0.66, 2.5, 0.4), (0.82, 0.40, 2.1, 1.5),
+                                            // 18 glowing crimson/rose & bright spark particles streaming RIGHT -> LEFT from the thumb
+                                            let seeds: [(Double, CGFloat, CGFloat, Double, Bool)] = [
+                                                (0.03, 0.28, 2.3, 0.52, true),  (0.11, 0.72, 1.9, 0.68, false),
+                                                (0.18, 0.45, 2.8, 0.60, true),  (0.24, 0.22, 1.7, 0.78, false),
+                                                (0.31, 0.64, 2.4, 0.55, true),  (0.38, 0.36, 2.1, 0.72, false),
+                                                (0.45, 0.78, 2.6, 0.64, true),  (0.52, 0.26, 1.8, 0.82, false),
+                                                (0.59, 0.54, 2.9, 0.58, true),  (0.66, 0.70, 2.0, 0.74, false),
+                                                (0.73, 0.32, 2.5, 0.62, true),  (0.80, 0.60, 1.9, 0.80, false),
+                                                (0.86, 0.24, 2.2, 0.66, true),  (0.92, 0.48, 2.7, 0.54, true),
+                                                (0.15, 0.52, 1.6, 0.86, false), (0.42, 0.42, 2.0, 0.70, true),
+                                                (0.68, 0.46, 2.3, 0.65, true),  (0.89, 0.74, 1.8, 0.76, false),
                                             ]
-                                            for (px, py, rad, phase) in seeds {
-                                                let alpha = 0.45 + 0.55 * abs(sin(t * 2.2 + phase))
-                                                let dx = CGFloat(sin(t * 0.9 + phase)) * 4.0
-                                                let pt = CGPoint(x: px * size.width + dx, y: py * size.height)
-                                                let rect = CGRect(x: pt.x - rad, y: pt.y - rad, width: rad * 2, height: rad * 2)
-                                                ctx.fill(Path(ellipseIn: rect), with: .color(.white.opacity(alpha)))
+                                            for (phase, py, rad, speed, isCrimson) in seeds {
+                                                // Travel smoothly from right (1.0) to left (0.0)
+                                                let prog = (t * speed + phase).truncatingRemainder(dividingBy: 1.0)
+                                                let xNorm = CGFloat(1.0 - prog)
+                                                let px = xNorm * max(size.width - 14, 1)
+                                                let pyJitter = py * size.height + CGFloat(sin(t * 3.2 + phase * 10.0)) * 2.2
+                                                // Fade in right next to thumb, stay bright in middle, fade out at far left
+                                                let edgeFade = min(xNorm * 4.0, (1.0 - xNorm) * 6.0, 1.0)
+                                                let twinkle = 0.65 + 0.35 * abs(sin(t * 4.5 + phase * 8.0))
+                                                let alpha = Double(edgeFade) * twinkle
+
+                                                let coreColor: Color = isCrimson
+                                                    ? Color(red: 1.0, green: 0.42, blue: 0.58)
+                                                    : Color(red: 1.0, green: 0.86, blue: 0.90)
+
+                                                // Soft crimson halo + crisp bright core
+                                                let haloR = rad * 2.1
+                                                let haloRect = CGRect(x: px - haloR, y: pyJitter - haloR, width: haloR * 2, height: haloR * 2)
+                                                ctx.fill(Path(ellipseIn: haloRect), with: .color(Color(red: 1.0, green: 0.22, blue: 0.42).opacity(alpha * 0.45)))
+
+                                                let coreRect = CGRect(x: px - rad, y: pyJitter - rad, width: rad * 2, height: rad * 2)
+                                                ctx.fill(Path(ellipseIn: coreRect), with: .color(coreColor.opacity(alpha)))
                                             }
                                         }
                                     }
@@ -986,34 +1033,43 @@ struct ThinkingEffortSliderView: View {
                     // Detent Dots
                     HStack {
                         ForEach(0..<levels.count, id: \.self) { i in
+                            let dotFrac = CGFloat(i) / CGFloat(levels.count - 1)
                             Circle()
-                                .fill(i <= currentIndex ? Color.white.opacity(0.65) : Color.primary.opacity(0.28))
+                                .fill(dotFrac <= frac ? Color.white.opacity(0.70) : Color.primary.opacity(0.28))
                                 .frame(width: 5, height: 5)
                             if i < levels.count - 1 { Spacer() }
                         }
                     }
                     .padding(.horizontal, thumbD / 2 - 2.5)
 
-                    // Tactile White Thumb
+                    // Tactile Smooth Thumb (scales subtly while dragging)
                     Circle()
                         .fill(Color.white)
                         .frame(width: thumbD, height: thumbD)
-                        .shadow(color: .black.opacity(0.26), radius: 6, y: 2)
+                        .scaleEffect(isDragging ? 1.10 : 1.0)
+                        .shadow(color: (effort == .high ? Color.pink : Color.black).opacity(isDragging ? 0.42 : 0.26), radius: isDragging ? 10 : 6, y: 2)
                         .offset(x: thumbX)
+                        .animation(.spring(response: 0.24, dampingFraction: 0.72), value: isDragging)
                 }
                 .frame(height: 40)
                 .contentShape(Capsule())
                 .gesture(
                     DragGesture(minimumDistance: 0)
                         .onChanged { val in
-                            let clamped = min(max(val.location.x - thumbD / 2, 0), usableW)
-                            let idx = Int(round((clamped / usableW) * CGFloat(levels.count - 1)))
+                            let clamped = min(max((val.location.x - thumbD / 2) / usableW, 0), 1)
+                            dragFraction = clamped
+                            let idx = Int(round(clamped * CGFloat(levels.count - 1)))
                             let target = levels[min(max(idx, 0), levels.count - 1)]
                             if target != effort {
                                 if target == .high { SenHaptics.medium() } else { SenHaptics.light() }
-                                withAnimation(.spring(response: 0.30, dampingFraction: 0.76)) {
+                                withAnimation(.snappy(duration: 0.22)) {
                                     effort = target
                                 }
+                            }
+                        }
+                        .onEnded { _ in
+                            withAnimation(.spring(response: 0.34, dampingFraction: 0.74)) {
+                                dragFraction = nil
                             }
                         }
                 )
@@ -1026,7 +1082,7 @@ struct ThinkingEffortSliderView: View {
                 .fill(Color.primary.opacity(0.05))
                 .overlay {
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .strokeBorder(effort == .high ? Color.purple.opacity(0.38) : Color.primary.opacity(0.08), lineWidth: 1)
+                        .strokeBorder(effort == .high ? Color(red: 0.95, green: 0.28, blue: 0.52).opacity(0.42) : Color.primary.opacity(0.08), lineWidth: 1)
                 }
         }
     }

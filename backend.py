@@ -2405,6 +2405,7 @@ async def pin_auth_middleware(request: Request, call_next):
     return await call_next(request)
 
 
+@app.get("/api/auth/status")
 @app.get("/api/auth/state")
 async def api_auth_state(request: Request):
     cfg = load_json(CONFIG_PATH, {})
