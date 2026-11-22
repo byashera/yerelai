@@ -90,9 +90,7 @@ struct PinLockView: View {
         ZStack {
             SenAmbientBackground()
             VStack(spacing: 20) {
-                Image(systemName: "lock.shield.fill")
-                    .font(.system(size: 42))
-                    .foregroundStyle(.blue)
+                SenPrismOrb(size: 62)
                 Text("SEN.AI Kilitli")
                     .font(.title2.weight(.bold))
                 Text("Devam etmek için erişim PIN kodunu girin.")
@@ -118,8 +116,9 @@ struct PinLockView: View {
                         .font(.headline)
                         .foregroundStyle(.white)
                         .frame(width: 200, height: 46)
-                        .background { Capsule().fill(Color.blue) }
                 }
+                .buttonStyle(SenSpringButtonStyle())
+                .senGlassCapsule(interactive: true, tint: .blue)
                 .disabled(pin.isEmpty)
             }
             .padding(28)

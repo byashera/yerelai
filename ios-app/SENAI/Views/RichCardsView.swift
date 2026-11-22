@@ -276,6 +276,7 @@ struct CardLoadingPlaceholder: View {
 
 struct CompatibilityCardView: View {
     let card: SenVisualCard
+    @State private var animatedProgress: CGFloat = 0
 
     var body: some View {
         let score = min(max(card.score ?? 80, 0), 100)
@@ -300,7 +301,7 @@ struct CompatibilityCardView: View {
                     Circle()
                         .stroke(Color.primary.opacity(0.10), lineWidth: 5.5)
                     Circle()
-                        .trim(from: 0, to: CGFloat(score) / 100.0)
+                        .trim(from: 0, to: animatedProgress * (CGFloat(score) / 100.0))
                         .stroke(
                             LinearGradient(colors: [.blue, .indigo], startPoint: .topLeading, endPoint: .bottomTrailing),
                             style: StrokeStyle(lineWidth: 5.5, lineCap: .round)
@@ -329,7 +330,7 @@ struct CompatibilityCardView: View {
                                     Capsule().fill(Color.primary.opacity(0.08))
                                     Capsule()
                                         .fill(c)
-                                        .frame(width: geo.size.width * CGFloat(min(max(m.value, 0), 100)) / 100.0)
+                                        .frame(width: geo.size.width * animatedProgress * CGFloat(min(max(m.value, 0), 100)) / 100.0)
                                 }
                             }
                             .frame(height: 6)
@@ -361,6 +362,11 @@ struct CompatibilityCardView: View {
                             lineWidth: 0.9
                         )
                 }
+        }
+        .onAppear {
+            withAnimation(.spring(duration: 0.78, bounce: 0.14)) {
+                animatedProgress = 1.0
+            }
         }
     }
 

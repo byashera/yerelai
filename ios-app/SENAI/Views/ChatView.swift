@@ -82,7 +82,7 @@ struct ChatView: View {
             }
             .sheet(isPresented: $showModelSheet) {
                 ModelPickerSheetView(showSettings: $showSettings)
-                    .presentationDetents([.height(360), .medium])
+                    .presentationDetents([.height(400), .medium])
                     .presentationDragIndicator(.visible)
             }
             .sheet(item: Binding(
@@ -224,7 +224,7 @@ struct ChatView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(13)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(SenSpringButtonStyle())
         .senGlassRounded(radius: 18, interactive: true)
     }
 
@@ -292,7 +292,9 @@ struct ChatView: View {
                     .senGlassCapsule(interactive: true)
                     Spacer()
                 }
-                    .padding(.horizontal, 58)
+                .padding(.horizontal, 58)
+                .padding(.bottom, 2)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
             SenGlassContainer(spacing: 8) {
@@ -412,6 +414,7 @@ struct MessageRowView: View {
     let msg: ChatMessage
     let onShowSources: ([WebSource]) -> Void
     @State private var showThinking: Bool = false
+    @State private var copied: Bool = false
 
     var body: some View {
         if msg.role == "user" {
@@ -525,9 +528,14 @@ struct MessageRowView: View {
                         Button {
                             UIPasteboard.general.string = msg.content
                             SenHaptics.light()
+                            withAnimation(.snappy(duration: 0.2)) { copied = true }
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                                withAnimation(.snappy(duration: 0.2)) { copied = false }
+                            }
                         } label: {
-                            Image(systemName: "doc.on.doc")
-                                .foregroundStyle(.secondary)
+                            Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                                .foregroundStyle(copied ? .green : .secondary)
+                                .contentTransition(.symbolEffect(.replace))
                         }
 
                         Button {
@@ -553,19 +561,21 @@ struct MessageRowView: View {
                             } label: {
                                 HStack(spacing: 5) {
                                     Image(systemName: "globe")
+                                        .foregroundStyle(.blue)
                                     Text("\(msg.webSources.count) kaynak")
+                                        .foregroundStyle(.primary)
                                 }
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.blue)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 5)
+                                .font(.caption.weight(.semibold))
+                                .padding(.horizontal, 11)
+                                .padding(.vertical, 6)
                             }
-                            .buttonStyle(.plain)
-                            .senGlassCapsule(interactive: true, tint: .blue)
+                            .buttonStyle(SenSpringButtonStyle())
+                            .senGlassCapsule(interactive: true)
                         }
                     }
                     .font(.system(size: 15))
-                    .padding(.top, 2)
+                    .padding(.top, 4)
+                    .padding(.bottom, 6)
                 }
             }
         }
@@ -614,7 +624,7 @@ struct SourcesSheetView: View {
     }
 }
 
-// MARK: - Dedicated iOS 26 Liquid Glass Model & Thinking Picker Sheet
+// MARK: - Dedicated iOS 26 Liquid Glass Model & Cosmic Thinking Effort Slider Sheet
 
 struct ModelPickerSheetView: View {
     @EnvironmentObject private var server: ServerManager
@@ -623,62 +633,31 @@ struct ModelPickerSheetView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(alignment: .leading, spacing: 18) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Düşünme Seviyesi")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 4)
+            VStack(alignment: .leading, spacing: 20) {
+                ThinkingEffortSliderView(effort: Binding(
+                    get: { server.thinkingEffort },
+                    set: { server.thinkingEffort = $0 }
+                ))
 
-                    HStack(spacing: 6) {
-                        ForEach(ThinkingEffort.allCases) { eff in
-                            let active = server.thinkingEffort == eff
-                            Button {
-                                SenHaptics.light()
-                                server.thinkingEffort = eff
-                            } label: {
-                                VStack(spacing: 4) {
-                                    Image(systemName: eff.icon)
-                                        .font(.caption.weight(.semibold))
-                                    Text(eff.label)
-                                        .font(.caption2.weight(.semibold))
-                                }
-                                .foregroundStyle(active ? .white : .primary)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 9)
-                                .background {
-                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                        .fill(active ? Color.blue : Color.primary.opacity(0.06))
-                                }
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                }
-
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 9) {
                     Text("Aktif Yerel Model")
                         .font(.caption.weight(.bold))
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 4)
 
-                    VStack(spacing: 8) {
+                    VStack(spacing: 9) {
                         ForEach(server.availableModels) { m in
                             let selected = server.selectedModelId == m.id
+                            let isE4B = m.id.contains("e4b")
                             Button {
                                 SenHaptics.light()
-                                server.selectedModelId = m.id
-                                dismiss()
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
+                                    server.selectedModelId = m.id
+                                }
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) { dismiss() }
                             } label: {
-                                HStack(spacing: 12) {
-                                    Image(systemName: m.id.contains("e4b") ? "sparkles" : "bolt.fill")
-                                        .font(.body.weight(.semibold))
-                                        .foregroundStyle(m.id.contains("e4b") ? .indigo : .blue)
-                                        .frame(width: 36, height: 36)
-                                        .background {
-                                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                                .fill((m.id.contains("e4b") ? Color.indigo : Color.blue).opacity(0.14))
-                                        }
+                                HStack(spacing: 13) {
+                                    ModelBadgeIcon(isDeep: isE4B, isSelected: selected)
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(m.name)
                                             .font(.subheadline.weight(.bold))
@@ -691,20 +670,21 @@ struct ModelPickerSheetView: View {
                                     if selected {
                                         Image(systemName: "checkmark.circle.fill")
                                             .font(.title3)
-                                            .foregroundStyle(.blue)
+                                            .foregroundStyle(isE4B ? .indigo : .blue)
+                                            .transition(.scale.combined(with: .opacity))
                                     }
                                 }
                                 .padding(12)
                                 .background {
-                                    RoundedRectangle(cornerRadius: 15, style: .continuous)
-                                        .fill(selected ? Color.blue.opacity(0.10) : Color.primary.opacity(0.05))
+                                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                        .fill(selected ? (isE4B ? Color.indigo : Color.blue).opacity(0.12) : Color.primary.opacity(0.05))
                                         .overlay {
-                                            RoundedRectangle(cornerRadius: 15, style: .continuous)
-                                                .strokeBorder(selected ? Color.blue.opacity(0.45) : Color.clear, lineWidth: 1)
+                                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                                .strokeBorder(selected ? (isE4B ? Color.indigo : Color.blue).opacity(0.45) : Color.primary.opacity(0.08), lineWidth: 1)
                                         }
                                 }
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(SenSpringButtonStyle())
                         }
                     }
                 }
@@ -730,6 +710,188 @@ struct ModelPickerSheetView: View {
                         .fontWeight(.semibold)
                 }
             }
+        }
+    }
+}
+
+struct ModelBadgeIcon: View {
+    let isDeep: Bool
+    let isSelected: Bool
+    @State private var glow = false
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: isDeep
+                            ? [Color(red: 0.36, green: 0.26, blue: 0.96), Color(red: 0.64, green: 0.28, blue: 0.94)]
+                            : [Color(red: 0.08, green: 0.56, blue: 0.98), Color(red: 0.16, green: 0.36, blue: 0.94)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .frame(width: 40, height: 40)
+                .shadow(color: (isDeep ? Color.purple : Color.blue).opacity(isSelected ? 0.42 : 0.16), radius: isSelected ? 10 : 4, y: 3)
+
+            Image(systemName: isDeep ? "sparkles" : "bolt.fill")
+                .font(.system(size: 17, weight: .bold))
+                .foregroundStyle(.white)
+                .scaleEffect(glow && isSelected ? 1.12 : 1.0)
+        }
+        .onAppear {
+            withAnimation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true)) {
+                glow = true
+            }
+        }
+    }
+}
+
+struct ThinkingEffortSliderView: View {
+    @Binding var effort: ThinkingEffort
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private let levels: [ThinkingEffort] = [.off, .low, .medium, .high]
+
+    private var currentIndex: Int {
+        levels.firstIndex(of: effort) ?? 0
+    }
+
+    private var accentColor: Color {
+        switch effort {
+        case .off: return .secondary
+        case .low: return .green
+        case .medium: return .blue
+        case .high: return Color(red: 0.62, green: 0.36, blue: 0.98)
+        }
+    }
+
+    private var subtitleText: String {
+        switch effort {
+        case .off: return "Doğrudan anlık yanıt"
+        case .low: return "Hafif ve hızlı akıl yürütme"
+        case .medium: return "Dengeli derin analiz"
+        case .high: return "Maksimum akıl yürütme ✨"
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: 12) {
+            VStack(spacing: 3) {
+                Text(effort.label)
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(accentColor)
+                    .contentTransition(.numericText())
+                Text(subtitleText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity)
+
+            GeometryReader { geo in
+                let trackW = max(geo.size.width, 120)
+                let thumbD: CGFloat = 36
+                let usableW = max(trackW - thumbD, 1)
+                let frac = CGFloat(currentIndex) / CGFloat(levels.count - 1)
+                let thumbX = frac * usableW
+
+                ZStack(alignment: .leading) {
+                    // Base Track
+                    Capsule()
+                        .fill(Color.primary.opacity(0.09))
+                        .overlay {
+                            Capsule().strokeBorder(Color.primary.opacity(0.10), lineWidth: 0.8)
+                        }
+
+                    // Active Filled Track (Cosmic Animated Particle Gradient on Ultra/High!)
+                    if currentIndex > 0 {
+                        let fillW = thumbX + thumbD
+                        ZStack {
+                            if effort == .high {
+                                TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: reduceMotion)) { timeline in
+                                    let t = timeline.date.timeIntervalSinceReferenceDate
+                                    let shift = sin(t * 1.4) * 0.18
+                                    ZStack {
+                                        LinearGradient(
+                                            colors: [
+                                                Color(red: 0.16, green: 0.38, blue: 0.98),
+                                                Color(red: 0.50, green: 0.32, blue: 0.98),
+                                                Color(red: 0.72, green: 0.34, blue: 0.96),
+                                            ],
+                                            startPoint: UnitPoint(x: 0.0 + shift, y: 0.5),
+                                            endPoint: UnitPoint(x: 1.0 + shift, y: 0.5)
+                                        )
+                                        Canvas { ctx, size in
+                                            let seeds: [(CGFloat, CGFloat, CGFloat, Double)] = [
+                                                (0.12, 0.32, 2.2, 0.0), (0.20, 0.68, 1.8, 1.1), (0.28, 0.42, 2.6, 2.3),
+                                                (0.39, 0.72, 1.9, 0.7), (0.48, 0.28, 2.4, 1.9), (0.56, 0.62, 2.8, 3.1),
+                                                (0.65, 0.35, 1.8, 2.6), (0.74, 0.66, 2.5, 0.4), (0.82, 0.40, 2.1, 1.5),
+                                            ]
+                                            for (px, py, rad, phase) in seeds {
+                                                let alpha = 0.45 + 0.55 * abs(sin(t * 2.2 + phase))
+                                                let dx = CGFloat(sin(t * 0.9 + phase)) * 4.0
+                                                let pt = CGPoint(x: px * size.width + dx, y: py * size.height)
+                                                let rect = CGRect(x: pt.x - rad, y: pt.y - rad, width: rad * 2, height: rad * 2)
+                                                ctx.fill(Path(ellipseIn: rect), with: .color(.white.opacity(alpha)))
+                                            }
+                                        }
+                                    }
+                                }
+                            } else if effort == .medium {
+                                LinearGradient(colors: [Color.blue, Color.indigo], startPoint: .leading, endPoint: .trailing)
+                            } else {
+                                LinearGradient(colors: [Color.green, Color.teal], startPoint: .leading, endPoint: .trailing)
+                            }
+                        }
+                        .frame(width: fillW)
+                        .clipShape(Capsule())
+                    }
+
+                    // Detent Dots
+                    HStack {
+                        ForEach(0..<levels.count, id: \.self) { i in
+                            Circle()
+                                .fill(i <= currentIndex ? Color.white.opacity(0.65) : Color.primary.opacity(0.28))
+                                .frame(width: 5, height: 5)
+                            if i < levels.count - 1 { Spacer() }
+                        }
+                    }
+                    .padding(.horizontal, thumbD / 2 - 2.5)
+
+                    // Tactile White Thumb
+                    Circle()
+                        .fill(Color.white)
+                        .frame(width: thumbD, height: thumbD)
+                        .shadow(color: .black.opacity(0.26), radius: 6, y: 2)
+                        .offset(x: thumbX)
+                }
+                .frame(height: 40)
+                .contentShape(Capsule())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { val in
+                            let clamped = min(max(val.location.x - thumbD / 2, 0), usableW)
+                            let idx = Int(round((clamped / usableW) * CGFloat(levels.count - 1)))
+                            let target = levels[min(max(idx, 0), levels.count - 1)]
+                            if target != effort {
+                                if target == .high { SenHaptics.medium() } else { SenHaptics.light() }
+                                withAnimation(.spring(response: 0.30, dampingFraction: 0.76)) {
+                                    effort = target
+                                }
+                            }
+                        }
+                )
+            }
+            .frame(height: 42)
+        }
+        .padding(14)
+        .background {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color.primary.opacity(0.05))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .strokeBorder(effort == .high ? Color.purple.opacity(0.38) : Color.primary.opacity(0.08), lineWidth: 1)
+                }
         }
     }
 }

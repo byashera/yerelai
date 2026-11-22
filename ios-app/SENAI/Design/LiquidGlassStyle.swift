@@ -199,18 +199,26 @@ struct SenAmbientBackground: View {
     var body: some View {
         ZStack {
             if colorScheme == .dark {
-                Color(red: 0.08, green: 0.09, blue: 0.11)
-                RadialGradient(
-                    colors: [Color.blue.opacity(0.12), Color.clear],
-                    center: .topLeading,
-                    startRadius: 20,
-                    endRadius: 420
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.055, green: 0.086, blue: 0.155),
+                        Color(red: 0.075, green: 0.112, blue: 0.205),
+                        Color(red: 0.050, green: 0.078, blue: 0.140),
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
                 )
                 RadialGradient(
-                    colors: [Color.indigo.opacity(0.10), Color.clear],
+                    colors: [Color(red: 0.20, green: 0.45, blue: 1.0).opacity(0.18), Color.clear],
+                    center: .topLeading,
+                    startRadius: 20,
+                    endRadius: 440
+                )
+                RadialGradient(
+                    colors: [Color(red: 0.48, green: 0.30, blue: 0.96).opacity(0.15), Color.clear],
                     center: .bottomTrailing,
                     startRadius: 20,
-                    endRadius: 380
+                    endRadius: 400
                 )
             } else {
                 Color(red: 0.969, green: 0.961, blue: 0.941) // Warm studio cream
@@ -305,5 +313,13 @@ struct SenStreamingDot: View {
                     pulse = true
                 }
             }
+    }
+}
+
+struct SenSpringButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
+            .animation(.spring(response: 0.26, dampingFraction: 0.72), value: configuration.isPressed)
     }
 }

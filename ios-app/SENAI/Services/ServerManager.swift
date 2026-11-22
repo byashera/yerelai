@@ -489,6 +489,9 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
             ChatSessionSummary(id: "p4", title: "Envanter Excel tablosu", updated_at: "Dün"),
         ]
         activeSessionId = "p2"
+        if screen == "models" {
+            thinkingEffort = .high
+        }
 
         if screen == "chat" || screen == "sources" {
             let sampleWeather = RichCardPayload(
