@@ -4,6 +4,8 @@ struct ChatView: View {
     @EnvironmentObject private var server: ServerManager
     @StateObject private var voice = VoiceInputManager()
 
+    var initialPreviewScreen: String? = nil
+
     @State private var draft: String = ""
     @State private var showSidebar: Bool = false
     @State private var showSettings: Bool = false
@@ -16,8 +18,8 @@ struct ChatView: View {
                 SenAmbientBackground()
 
                 VStack(spacing: 0) {
-                    if let err = server.connectionError, server.connectionRoute == .disconnected {
-                        connectionBanner(err)
+                    if server.connectionRoute == .disconnected && !server.isConnecting {
+                        floatingOfflinePill
                     }
 
                     if server.messages.isEmpty {
@@ -27,6 +29,13 @@ struct ChatView: View {
                     }
 
                     floatingComposer
+                }
+            }
+            .onAppear {
+                if initialPreviewScreen == "sidebar" {
+                    showSidebar = true
+                } else if initialPreviewScreen == "settings" {
+                    showSettings = true
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
@@ -115,7 +124,10 @@ struct ChatView: View {
                 }
             }
         } label: {
-            HStack(spacing: 5) {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(statusDotColor)
+                    .frame(width: 7, height: 7)
                 Text("SEN.AI")
                     .font(.headline.weight(.bold))
                 Image(systemName: "chevron.down")
@@ -127,56 +139,112 @@ struct ChatView: View {
         }
     }
 
-    // MARK: - Welcome Hero
+    private var statusDotColor: Color {
+        switch server.connectionRoute {
+        case .lan: return .green
+        case .cloudflare, .custom: return .blue
+        case .disconnected: return .orange
+        }
+    }
+
+    private var turkishGreeting: String {
+        let h = Calendar.current.component(.hour, from: Date())
+        if h >= 5 && h < 12 { return "Günaydın," }
+        if h >= 12 && h < 18 { return "İyi günler," }
+        if h >= 18 && h < 23 { return "İyi akşamlar," }
+        return "İyi geceler,"
+    }
+
+    // MARK: - Flagship 2x2 Bento Welcome Hero
 
     private var welcomeHero: some View {
-        VStack(spacing: 18) {
+        VStack(spacing: 22) {
             Spacer()
 
-            ZStack {
-                Circle()
-                    .fill(LinearGradient(colors: [.blue.opacity(0.22), .indigo.opacity(0.14)], startPoint: .topLeading, endPoint: .bottomTrailing))
-                    .frame(width: 72, height: 72)
-                Image(systemName: "sparkles")
-                    .font(.system(size: 30, weight: .semibold))
-                    .foregroundStyle(.blue)
-            }
+            SenPrismOrb(size: 64)
 
             VStack(spacing: 6) {
-                Text("Merhaba, birlikte ne çözelim?")
-                    .font(.title2.weight(.bold))
+                Text(turkishGreeting)
+                    .font(.title2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text("birlikte ne çözelim?")
+                    .font(.title.weight(.bold))
+                    .foregroundStyle(
+                        LinearGradient(colors: [.primary, .blue], startPoint: .leading, endPoint: .trailing)
+                    )
                     .multilineTextAlignment(.center)
-                Text(server.connectionRoute == .disconnected ? "Sunucu bekleniyor..." : "\(server.connectionRoute.rawValue) · \(server.activeModelName)")
+                Text(server.connectionRoute == .disconnected ? "Sunucu bekleniyor · Ayarlar'dan bağlanın" : "\(server.connectionRoute.rawValue) · \(server.activeModelName)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .padding(.top, 2)
             }
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    starterPill("Hava Durumu", icon: "cloud.sun.fill", prompt: "Manisa hava durumu nasıl?")
-                    starterPill("Film Önerisi", icon: "film.fill", prompt: "Bana sürükleyici bir bilim kurgu filmi öner")
-                    starterPill("Burç Uyumu", icon: "heart.fill", prompt: "Oğlak ve Akrep uyumu nasıl olur?")
-                    starterPill("Hızlı Plan", icon: "checklist", prompt: "Hafta sonu için 1 günlük verimli rutin planı yap")
-                }
-                .padding(.horizontal, 16)
+            let cols = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
+            LazyVGrid(columns: cols, spacing: 10) {
+                bentoCard(
+                    title: "Hava Durumu",
+                    subtitle: "5 günlük canlı tahmin",
+                    icon: "cloud.sun.fill",
+                    tint: .blue,
+                    prompt: "Manisa hava durumu nasıl?"
+                )
+                bentoCard(
+                    title: "Film Önerisi",
+                    subtitle: "Puanlı görsel liste",
+                    icon: "film.fill",
+                    tint: .orange,
+                    prompt: "Bana sürükleyici bir bilim kurgu filmi öner"
+                )
+                bentoCard(
+                    title: "Burç Uyumu",
+                    subtitle: "Yüzdelik analiz kartı",
+                    icon: "heart.fill",
+                    tint: .pink,
+                    prompt: "Oğlak ve Akrep uyumu nasıl olur?"
+                )
+                bentoCard(
+                    title: "Hızlı Plan",
+                    subtitle: "Tıklanabilir adımlar",
+                    icon: "checklist",
+                    tint: .green,
+                    prompt: "Hafta sonu için 1 günlük verimli rutin planı yap"
+                )
             }
+            .padding(.horizontal, 16)
 
             Spacer()
         }
         .onTapGesture { inputFocused = false }
     }
 
-    private func starterPill(_ title: String, icon: String, prompt: String) -> some View {
+    private func bentoCard(title: String, subtitle: String, icon: String, tint: Color, prompt: String) -> some View {
         Button {
             server.sendMessage(prompt)
         } label: {
-            Label(title, systemImage: icon)
-                .font(.caption.weight(.semibold))
-                .padding(.horizontal, 13)
-                .padding(.vertical, 9)
+            VStack(alignment: .leading, spacing: 8) {
+                Image(systemName: icon)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(tint)
+                    .frame(width: 32, height: 32)
+                    .background {
+                        Circle().fill(tint.opacity(0.14))
+                    }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Text(subtitle)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(13)
         }
         .buttonStyle(.plain)
-        .senGlassCapsule(interactive: true)
+        .senGlassRounded(radius: 18, interactive: true)
     }
 
     // MARK: - Messages Stream
@@ -226,19 +294,21 @@ struct ChatView: View {
                         SenHaptics.light()
                         server.webSearchEnabled = false
                     } label: {
-                        HStack(spacing: 5) {
+                        HStack(spacing: 6) {
                             Image(systemName: "globe")
+                                .foregroundStyle(.blue)
                             Text("Araştır")
+                                .foregroundStyle(.primary)
                             Image(systemName: "xmark")
                                 .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(.secondary)
                         }
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.blue)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
+                        .font(.caption.weight(.semibold))
+                        .padding(.horizontal, 11)
+                        .padding(.vertical, 6)
                     }
                     .buttonStyle(.plain)
-                    .senGlassCapsule(interactive: true, tint: .blue)
+                    .senGlassCapsule(interactive: true)
                     Spacer()
                 }
                 .padding(.horizontal, 14)
@@ -302,6 +372,7 @@ struct ChatView: View {
                         }
                         .accessibilityLabel("Durdur")
                     } else {
+                        let isEmpty = draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                         Button {
                             let text = draft
                             draft = ""
@@ -312,11 +383,10 @@ struct ChatView: View {
                                 .font(.system(size: 16, weight: .bold))
                                 .foregroundStyle(.white)
                                 .frame(width: 38, height: 38)
-                                .background {
-                                    Circle().fill(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Color.blue.opacity(0.45) : Color.blue)
-                                }
                         }
-                        .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .buttonStyle(.plain)
+                        .senGlassCircle(interactive: true, tint: isEmpty ? .gray : .blue)
+                        .disabled(isEmpty)
                         .accessibilityLabel("Gönder")
                     }
                 }
@@ -327,19 +397,29 @@ struct ChatView: View {
         }
     }
 
-    private func connectionBanner(_ err: String) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: "wifi.exclamationmark").foregroundStyle(.orange)
-            Text(err).font(.caption2).lineLimit(2)
-            Spacer()
-            Button("Tekrar Dene") {
+    private var floatingOfflinePill: some View {
+        HStack {
+            Button {
+                SenHaptics.light()
                 Task { await server.bootstrap() }
+            } label: {
+                HStack(spacing: 7) {
+                    Image(systemName: "wifi.exclamationmark")
+                        .foregroundStyle(.orange)
+                    Text("Çevrimdışı")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    Text("· Bağlan")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.blue)
+                }
+                .padding(.horizontal, 13)
+                .padding(.vertical, 7)
             }
-            .font(.caption2.weight(.bold))
+            .buttonStyle(.plain)
+            .senGlassCapsule(interactive: true)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .background { Color.orange.opacity(0.12) }
+        .padding(.top, 6)
     }
 }
 

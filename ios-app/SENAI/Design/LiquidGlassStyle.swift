@@ -243,3 +243,42 @@ enum SenHaptics {
         UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
 }
+
+struct SenPrismOrb: View {
+    var size: CGFloat = 68
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [Color.blue.opacity(0.32), Color.indigo.opacity(0.14), Color.clear],
+                        center: .center,
+                        startRadius: 4,
+                        endRadius: size * 0.72
+                    )
+                )
+                .frame(width: size * 1.38, height: size * 1.38)
+
+            Circle()
+                .fill(
+                    LinearGradient(
+                        colors: [Color(red: 0.14, green: 0.36, blue: 0.92), Color(red: 0.32, green: 0.22, blue: 0.84)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .frame(width: size, height: size)
+                .overlay {
+                    Circle().strokeBorder(.white.opacity(0.28), lineWidth: 1)
+                }
+                .shadow(color: Color.blue.opacity(0.32), radius: 16, y: 6)
+
+            Image(systemName: "diamond.fill")
+                .font(.system(size: size * 0.42, weight: .semibold))
+                .foregroundStyle(
+                    LinearGradient(colors: [.white, Color.cyan.opacity(0.85)], startPoint: .top, endPoint: .bottom)
+                )
+        }
+    }
+}

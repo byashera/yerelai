@@ -68,9 +68,11 @@ jobs:
           (cd build-sim/Build/Products/Release-iphonesimulator && zip -qry "$OUT_ZIP" SENAI.app)
           ls -lh "$OUT_ZIP"
 
-      - name: Capture Light & Dark iPhone Simulator Screenshots
+      - name: Capture Multi-Screen & Live Tunnel iPhone Simulator Screenshots
         working-directory: ios-app
         continue-on-error: true
+        env:
+          SENAI_PIN: ${{ secrets.SENAI_PIN }}
         run: |
           mkdir -p dist-shots
           UDID=$(xcrun simctl list devices available | grep -E "iPhone 16 Pro|iPhone 16|iPhone 15" | head -n 1 | sed -E 's/.*\(([0-9A-F-]+)\).*/\1/')
@@ -79,13 +81,48 @@ jobs:
             xcrun simctl boot "$UDID" || true
             xcrun simctl bootstatus "$UDID" -b
             xcrun simctl install "$UDID" build-sim/Build/Products/Release-iphonesimulator/SENAI.app
+
+            # 1 & 2: Flagship 2x2 Bento Welcome (Light & Dark)
             xcrun simctl ui "$UDID" appearance light
-            xcrun simctl launch "$UDID" com.senai.app
-            sleep 4
-            xcrun simctl io "$UDID" screenshot dist-shots/senai-ios-light.png
+            xcrun simctl launch "$UDID" com.senai.app --preview-screen welcome
+            sleep 3
+            xcrun simctl io "$UDID" screenshot dist-shots/01-welcome-light.png
             xcrun simctl ui "$UDID" appearance dark
             sleep 2
-            xcrun simctl io "$UDID" screenshot dist-shots/senai-ios-dark.png
+            xcrun simctl io "$UDID" screenshot dist-shots/02-welcome-dark.png
+
+            # 3 & 4: Rich Chat Screen with Weather + Compatibility Ring + Sources Pill (Light & Dark)
+            xcrun simctl terminate "$UDID" com.senai.app || true
+            xcrun simctl ui "$UDID" appearance light
+            xcrun simctl launch "$UDID" com.senai.app --preview-screen chat
+            sleep 3
+            xcrun simctl io "$UDID" screenshot dist-shots/03-chat-cards-light.png
+            xcrun simctl ui "$UDID" appearance dark
+            sleep 2
+            xcrun simctl io "$UDID" screenshot dist-shots/04-chat-cards-dark.png
+
+            # 5: History Sidebar Sheet (Dark)
+            xcrun simctl terminate "$UDID" com.senai.app || true
+            xcrun simctl launch "$UDID" com.senai.app --preview-screen sidebar
+            sleep 3
+            xcrun simctl io "$UDID" screenshot dist-shots/05-sidebar-dark.png
+
+            # 6: Native iOS Settings Form (Light)
+            xcrun simctl terminate "$UDID" com.senai.app || true
+            xcrun simctl ui "$UDID" appearance light
+            xcrun simctl launch "$UDID" com.senai.app --preview-screen settings
+            sleep 3
+            xcrun simctl io "$UDID" screenshot dist-shots/06-settings-light.png
+
+            # 7: Real LIVE Tunnel Chat Test (if SENAI_PIN secret is set)
+            if [ -n "$SENAI_PIN" ]; then
+              xcrun simctl terminate "$UDID" com.senai.app || true
+              xcrun simctl ui "$UDID" appearance dark
+              xcrun simctl launch "$UDID" com.senai.app --auto-pin "$SENAI_PIN" --auto-prompt "Manisa hava durumu nasıl?"
+              sleep 16
+              xcrun simctl io "$UDID" screenshot dist-shots/07-live-tunnel-chat-dark.png
+            fi
+
             xcrun simctl shutdown "$UDID" || true
             ls -lh dist-shots
           fi

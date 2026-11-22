@@ -6,7 +6,7 @@ import SwiftUI
 final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
     // Persistent User Preferences
     @AppStorage("senai_lan_url") var lanURL: String = "http://192.168.1.22:8070"
-    @AppStorage("senai_gist_url") var gistJsonURL: String = ""
+    @AppStorage("senai_gist_url") var gistJsonURL: String = "https://gist.githubusercontent.com/byashera/a2d7ef6a838e83f17d72860b91d9458c/raw/yerelai_tunnel.json"
     @AppStorage("senai_custom_url") var customURL: String = ""
     @AppStorage("senai_tts_voice") var ttsVoice: String = "tr-TR-AhmetNeural"
     @AppStorage("senai_web_search") var webSearchEnabled: Bool = true
@@ -467,6 +467,72 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
     nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
         Task { @MainActor in
             self.speakingMessageId = nil
+        }
+    }
+
+    // MARK: - Simulator Preview State (Used ONLY when launched with --preview-screen)
+
+    func applyPreviewState(screen: String) {
+        activeBaseURL = "https://preview.sen.ai"
+        connectionRoute = .cloudflare
+        connectionError = nil
+        requiresPin = false
+        sessions = [
+            ChatSessionSummary(id: "p1", title: "Manisa hava durumu ve hafta sonu planı", updated_at: "Bugün"),
+            ChatSessionSummary(id: "p2", title: "Oğlak ve Akrep uyumu", updated_at: "Bugün"),
+            ChatSessionSummary(id: "p3", title: "SwiftUI Liquid Glass mimarisi", updated_at: "Dün"),
+            ChatSessionSummary(id: "p4", title: "Envanter Excel tablosu", updated_at: "Dün"),
+        ]
+        activeSessionId = "p2"
+
+        if screen == "chat" {
+            let sampleWeather = RichCardPayload(
+                kind: "weather",
+                title: nil,
+                location: "Manisa, Türkiye",
+                updated_at: "Canlı · 02:45",
+                temp_c: 12.4,
+                feels_like_c: 11.2,
+                humidity: 73,
+                wind_kmh: 3.1,
+                precip_mm: 0,
+                condition: "Parçalı Bulutlu",
+                daily: [
+                    WeatherDay(day: "Bugün", date: nil, condition: "Parçalı Bulutlu", t_max: 19, t_min: 10, rain_prob: 0),
+                    WeatherDay(day: "Yarın", date: nil, condition: "Açık", t_max: 22, t_min: 8, rain_prob: 5),
+                    WeatherDay(day: "Sal", date: nil, condition: "Yağmur", t_max: 17, t_min: 7, rain_prob: 40),
+                    WeatherDay(day: "Çar", date: nil, condition: "Güneşli", t_max: 14, t_min: 4, rain_prob: 0),
+                    WeatherDay(day: "Per", date: nil, condition: "Bulutlu", t_max: 15, t_min: 5, rain_prob: 10),
+                ],
+                items: nil
+            )
+            let compatMd = """
+            İki burç arasında hem duygusal derinlik hem de güçlü bir güven bağı oluşur.
+
+            ```sen_card
+            {"kind":"compatibility","title":"Oğlak ♑ × Akrep ♏","score":88,"badge":"Güçlü Bağ","summary":"Sağlam adımlar ile yüksek sadakatin birleşimi uzun soluklu bir denge kurar.","metrics":[{"label":"💖 Aşk","value":89},{"label":"🛡️ Güven","value":94},{"label":"💬 İletişim","value":82}]}
+            ```
+
+            **⚡ Güçlü Yönler:** Birbirlerinin hedeflerini sessizce ama kararlılıkla desteklerler. ✨
+            """
+            messages = [
+                ChatMessage(id: "u1", role: "user", content: "Manisa hava durumu nasıl ve Oğlak Akrep uyumu?"),
+                ChatMessage(
+                    id: "a1",
+                    role: "assistant",
+                    content: compatMd,
+                    thinking: "Kullanıcı hem Manisa canlı hava durumunu hem de Oğlak–Akrep uyumunu sordu. Önce hava kartını, ardından net uyum kartını ve kısa özeti sunuyorum.",
+                    webSources: [
+                        WebSource(title: "Manisa Canlı Hava Durumu — 12.4°C", url: "https://open-meteo.com", domain: "open-meteo.com", snippet: nil),
+                        WebSource(title: "Meteoroloji Genel Müdürlüğü", url: "https://mgm.gov.tr", domain: "mgm.gov.tr", snippet: nil),
+                    ],
+                    richCards: [sampleWeather],
+                    rating: "like",
+                    thinkingSeconds: 1.4
+                ),
+            ]
+        } else {
+            messages = []
         }
     }
 }
