@@ -59,15 +59,18 @@ SEN.AI, NVIDIA GPU sürücünüzün CUDA sürümünü (`cu124` / `cu121` / `cu11
 git clone https://github.com/byashera/yerelai.git
 cd yerelai
 
-# 2. Otomatik kurulum ve başlatıcıyı çalıştırın (İzole Python 3.11 + CUDA PyTorch + tüm paketleri kurar ve http://127.0.0.1:8070 adresini açar)
+# 2. Otomatik kurulum ve başlatıcıyı çalıştırın:
+#    - İzole Python 3.11 + CUDA PyTorch + tüm paketleri kurar
+#    - Electron Masaüstü Uygulamasını kurar ve Windows Masaüstüne "SEN.AI Studio" kısayolu ekler
+#    - Uygulamayı doğrudan masaüstü penceresinde (veya Node.js yoksa http://127.0.0.1:8070 tarayıcıda) açar
 .\Baslat.bat
 ```
 
-> **İpucu:** `.\Baslat.bat` (veya `powershell -NoProfile -ExecutionPolicy Bypass -File .\kurulum.ps1`) ilk çalıştırmada eksik CUDA/Python paketlerini otomatik indirir. Doğrudan `python backend.py` komutunu çalıştırsanız bile sistem otomatik olarak kurulu CUDA ortamına (`venv` / `.unsloth`) geçiş yapar veya `kurulum.ps1` betiğini tetikler.
+> **İpucu:** `.\Baslat.bat` (veya `powershell -NoProfile -ExecutionPolicy Bypass -File .\kurulum.ps1`) ilk çalıştırmada hem Python/CUDA hem de Electron masaüstü bağımlılıklarını otomatik kurar ve masaüstünüze **SEN.AI Studio** kısayolu oluşturur. Doğrudan `python backend.py` veya `cd desktop && npm install && npm start` komutlarını çalıştırsanız bile sistem otomatik olarak kurulu CUDA ortamına (`venv` / `.unsloth`) geçiş yapar.
 >
-> **İlk Model İndirme:** `.gguf` model ağırlıkları (3.4 GB – 5.6 GB) Git deposunda yer almaz. Bilgisayarınızda daha önce indirilmiş `models/gguf` varsa otomatik tanınır; ilk kez kuruyorsanız açılan web arayüzünde **Ayarlar → Modeller** sekmesinden **Gemma 4 E2B / E4B (GGUF Turbo)** modelini tek tıkla indirebilirsiniz.
+> **İlk Model İndirme:** `.gguf` model ağırlıkları (3.4 GB – 5.6 GB) Git deposunda yer almaz. Bilgisayarınızda daha önce indirilmiş `models/gguf` varsa otomatik tanınır; ilk kez kuruyorsanız açılan arayüzde **Ayarlar → Modeller** sekmesinden **Gemma 4 E2B / E4B (GGUF Turbo)** modelini tek tıkla indirebilirsiniz.
 
-- **Masaüstü Uygulaması (Electron):** `desktop/` klasöründe `npm install && npm start` (veya `YerelAI_Masaustu.vbs`)
+- **Masaüstü Uygulaması (Electron):** `.\Baslat.bat` veya `YerelAI_Masaustu.vbs` (manuel başlatma için `cd desktop && npm install && npm start`)
 - **Yerel Wi-Fi (LAN) Erişimi:** `lan_ac.bat` dosyasına sağ tıklayıp **Yönetici olarak çalıştır** seçin.
 
 ## iPhone'a Kurulum

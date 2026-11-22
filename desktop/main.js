@@ -172,8 +172,10 @@ async function ensureBackendStarted() {
     return false;
   }
 
-  for (let i = 0; i < 45; i++) {
+  for (let i = 0; i < 300; i++) {
     if (i === 4) sendSplashStep(2, "Donanım & kütüphaneler doğrulanıyor...");
+    if (i === 35) sendSplashStep(2, "CUDA & Gemma 4 bileşenleri hazırlanıyor...");
+    if (i === 90) sendSplashStep(2, "İlk kurulum paketleri tamamlanıyor...");
     if (await checkBackendAlive()) {
       sendSplashStep(3, "Stüdyo arayüzü hazırlanıyor...");
       return true;

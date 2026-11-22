@@ -102,9 +102,69 @@ if (-not $PyExe) {
   $ErrorActionPreference = "Stop"
 }
 
-Write-Host "[3/3] YerelAI Studio baslatiliyor (http://127.0.0.1:$Port)..." -ForegroundColor Green
-$Backend = Join-Path $Root "backend.py"
-Start-Process -FilePath $PyExe -ArgumentList "`"$Backend`"" -WorkingDirectory $Root -WindowStyle Minimized
-Start-Sleep -Seconds 2
-Start-Process "http://127.0.0.1:$Port"
+Write-Host "[3/4] Electron Masaustu Uygulamasi kontrol ediliyor..." -ForegroundColor Cyan
+$DesktopAppDir = Join-Path $Root "desktop"
+$ElectronExe = Join-Path $DesktopAppDir "node_modules\electron\dist\electron.exe"
+$SharedNodeModules = Join-Path $env:USERPROFILE "Desktop\yerelai\desktop\node_modules"
+$LocalNodeModules = Join-Path $DesktopAppDir "node_modules"
+
+if (-not (Test-Path $ElectronExe)) {
+  if ((Test-Path (Join-Path $SharedNodeModules "electron\dist\electron.exe")) -and ($SharedNodeModules -ne $LocalNodeModules) -and (-not (Test-Path $LocalNodeModules))) {
+    try {
+      New-Item -ItemType Junction -Path $LocalNodeModules -Target $SharedNodeModules -ErrorAction Stop | Out-Null
+      Write-Host "Mevcut Electron paketi otomatik baglandi." -ForegroundColor Green
+    } catch {}
+  }
+}
+
+if (-not (Test-Path $ElectronExe)) {
+  $npmCmd = Get-Command npm -ErrorAction SilentlyContinue
+  if ($npmCmd -and (Test-Path (Join-Path $DesktopAppDir "package.json"))) {
+    Write-Host "Electron masaustu paketleri kuruluyor (npm install)..." -ForegroundColor Cyan
+    $ErrorActionPreference = "Continue"
+    Push-Location $DesktopAppDir
+    & npm install --no-audit --no-fund 2>&1 | Out-Host
+    $installJs = Join-Path $DesktopAppDir "node_modules\electron\install.js"
+    if ((-not (Test-Path $ElectronExe)) -and (Test-Path $installJs)) {
+      & node $installJs 2>&1 | Out-Host
+    }
+    Pop-Location
+    $ErrorActionPreference = "Stop"
+  }
+}
+
+# Windows Masaustune "SEN.AI Studio" kisayolu olustur
+try {
+  $UserDesktop = [Environment]::GetFolderPath("Desktop")
+  $ShortcutPath = Join-Path $UserDesktop "SEN.AI Studio.lnk"
+  $VbsLauncher = Join-Path $Root "YerelAI_Masaustu.vbs"
+  $IconPath = Join-Path $DesktopAppDir "icon.ico"
+  if ((Test-Path $VbsLauncher) -and (-not (Test-Path $ShortcutPath))) {
+    $WshShell = New-Object -ComObject WScript.Shell
+    $Shortcut = $WshShell.CreateShortcut($ShortcutPath)
+    $Shortcut.TargetPath = "wscript.exe"
+    $Shortcut.Arguments = "`"$VbsLauncher`""
+    $Shortcut.WorkingDirectory = $Root
+    if (Test-Path $IconPath) { $Shortcut.IconLocation = $IconPath }
+    $Shortcut.Description = "SEN.AI Studio - Yerel GPU Yapay Zeka Studyosu"
+    $Shortcut.Save()
+    Write-Host "Masaustu kisayolu olusturuldu: $ShortcutPath" -ForegroundColor Green
+  }
+} catch {}
+
+Write-Host "[4/4] SEN.AI Studio baslatiliyor (http://127.0.0.1:$Port)..." -ForegroundColor Green
+if (Test-Path $ElectronExe) {
+  Start-Process -FilePath $ElectronExe -ArgumentList "." -WorkingDirectory $DesktopAppDir
+} else {
+  $Backend = Join-Path $Root "backend.py"
+  Start-Process -FilePath $PyExe -ArgumentList "`"$Backend`"" -WorkingDirectory $Root -WindowStyle Minimized
+  for ($i = 0; $i -lt 40; $i++) {
+    Start-Sleep -Milliseconds 500
+    try {
+      $resp = Invoke-WebRequest -Uri "http://127.0.0.1:$Port/api/status" -TimeoutSec 1 -UseBasicParsing -ErrorAction Stop
+      if ($resp.StatusCode -eq 200) { break }
+    } catch {}
+  }
+  Start-Process "http://127.0.0.1:$Port"
+}
 try { Stop-Transcript | Out-Null } catch {}
