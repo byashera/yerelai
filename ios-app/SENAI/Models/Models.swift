@@ -145,6 +145,11 @@ struct SenVisualCard: Identifiable, Codable, Hashable {
     }
 }
 
+struct PendingPhoto: Identifiable, Hashable {
+    let id = UUID()
+    let data: Data
+}
+
 struct ChatMessage: Identifiable, Hashable {
     let id: String
     let role: String // "user" | "assistant"
@@ -153,6 +158,7 @@ struct ChatMessage: Identifiable, Hashable {
     var autoPersona: String? = nil
     var webSources: [WebSource] = []
     var richCards: [RichCardPayload] = []
+    var attachedImages: [Data] = []
     var rating: String? = nil // "like" | "dislike"
     var isStreaming: Bool = false
     var thinkingSeconds: Double = 0

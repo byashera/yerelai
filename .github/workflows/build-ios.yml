@@ -82,79 +82,35 @@ jobs:
             xcrun simctl bootstatus "$UDID" -b
             xcrun simctl install "$UDID" build-sim/Build/Products/Release-iphonesimulator/SENAI.app
 
-            # 1 & 2: Flagship 2x2 Bento Welcome (Light & Dark)
-            xcrun simctl ui "$UDID" appearance light
-            xcrun simctl launch "$UDID" com.senai.app --preview-screen welcome
-            sleep 3
-            xcrun simctl io "$UDID" screenshot dist-shots/01-welcome-light.png
+            # Focused New-Feature Screenshots (Voice Mode, Code & Table Cards, Photo Composer, Instant Camera)
             xcrun simctl ui "$UDID" appearance dark
-            sleep 2
-            xcrun simctl io "$UDID" screenshot dist-shots/02-welcome-dark.png
-
-            # 3 & 4: Rich Chat Screen with Weather + Compatibility Ring + Thinking (Light & Dark)
-            xcrun simctl terminate "$UDID" com.senai.app || true
-            xcrun simctl ui "$UDID" appearance light
-            xcrun simctl launch "$UDID" com.senai.app --preview-screen chat
+            xcrun simctl launch "$UDID" com.senai.app --preview-screen voice
             sleep 3
-            xcrun simctl io "$UDID" screenshot dist-shots/03-chat-cards-light.png
-            xcrun simctl ui "$UDID" appearance dark
-            sleep 2
-            xcrun simctl io "$UDID" screenshot dist-shots/04-chat-cards-dark.png
-
-            # 5: Film Rating + Interactive Checklist Plan Cards + Sources Pill (Dark)
-            xcrun simctl terminate "$UDID" com.senai.app || true
-            xcrun simctl launch "$UDID" com.senai.app --preview-screen chat_more
-            sleep 3
-            xcrun simctl io "$UDID" screenshot dist-shots/05-chat-more-cards-dark.png
-
-            # 6: Web Sources Bottom Sheet (Dark)
-            xcrun simctl terminate "$UDID" com.senai.app || true
-            xcrun simctl launch "$UDID" com.senai.app --preview-screen sources
-            sleep 3
-            xcrun simctl io "$UDID" screenshot dist-shots/06-sources-sheet-dark.png
-
-            # 7 & 8: Liquid Glass Model & Thinking Picker Sheet (Dark & Light)
-            xcrun simctl terminate "$UDID" com.senai.app || true
-            xcrun simctl ui "$UDID" appearance dark
-            xcrun simctl launch "$UDID" com.senai.app --preview-screen models
-            sleep 3
-            xcrun simctl io "$UDID" screenshot dist-shots/07-model-picker-dark.png
+            xcrun simctl io "$UDID" screenshot dist-shots/01-voice-mode-dark.png
             xcrun simctl ui "$UDID" appearance light
             sleep 2
-            xcrun simctl io "$UDID" screenshot dist-shots/08-model-picker-light.png
+            xcrun simctl io "$UDID" screenshot dist-shots/02-voice-mode-light.png
 
-            # 9 & 10: History Sidebar Sheet (Light & Dark)
             xcrun simctl terminate "$UDID" com.senai.app || true
-            xcrun simctl ui "$UDID" appearance light
-            xcrun simctl launch "$UDID" com.senai.app --preview-screen sidebar
-            sleep 3
-            xcrun simctl io "$UDID" screenshot dist-shots/09-sidebar-light.png
             xcrun simctl ui "$UDID" appearance dark
+            xcrun simctl launch "$UDID" com.senai.app --preview-screen code_table
+            sleep 3
+            xcrun simctl io "$UDID" screenshot dist-shots/03-code-table-cards-dark.png
+            xcrun simctl ui "$UDID" appearance light
             sleep 2
-            xcrun simctl io "$UDID" screenshot dist-shots/10-sidebar-dark.png
+            xcrun simctl io "$UDID" screenshot dist-shots/04-code-table-cards-light.png
 
-            # 11: Native iOS Settings Form (Light)
-            xcrun simctl terminate "$UDID" com.senai.app || true
-            xcrun simctl ui "$UDID" appearance light
-            xcrun simctl launch "$UDID" com.senai.app --preview-screen settings
-            sleep 3
-            xcrun simctl io "$UDID" screenshot dist-shots/11-settings-light.png
-
-            # 12: PIN Lock Screen (Dark)
             xcrun simctl terminate "$UDID" com.senai.app || true
             xcrun simctl ui "$UDID" appearance dark
-            xcrun simctl launch "$UDID" com.senai.app --preview-screen pin
+            xcrun simctl launch "$UDID" com.senai.app --preview-screen photo_composer
             sleep 3
-            xcrun simctl io "$UDID" screenshot dist-shots/12-pin-lock-dark.png
+            xcrun simctl io "$UDID" screenshot dist-shots/05-photo-composer-dark.png
 
-            # 13: Real LIVE Tunnel Chat Test (if SENAI_PIN secret is set)
-            if [ -n "$SENAI_PIN" ]; then
-              xcrun simctl terminate "$UDID" com.senai.app || true
-              xcrun simctl ui "$UDID" appearance dark
-              xcrun simctl launch "$UDID" com.senai.app --auto-pin "$SENAI_PIN" --auto-prompt "Manisa hava durumu nasıl?"
-              sleep 22
-              xcrun simctl io "$UDID" screenshot dist-shots/13-live-tunnel-chat-dark.png
-            fi
+            xcrun simctl terminate "$UDID" com.senai.app || true
+            xcrun simctl ui "$UDID" appearance dark
+            xcrun simctl launch "$UDID" com.senai.app --preview-screen camera
+            sleep 3
+            xcrun simctl io "$UDID" screenshot dist-shots/06-instant-camera-dark.png
 
             xcrun simctl shutdown "$UDID" || true
             ls -lh dist-shots

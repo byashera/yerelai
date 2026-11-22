@@ -31,6 +31,10 @@
 	</dict>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>SEN.AI ev Wi-Fi ağındaki bilgisayarınıza hızlı bağlanmak için yerel ağ izni kullanır.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>SEN.AI anlık fotoğraf çekip görsel analiz yapabilmek için kameranızı kullanır.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>SEN.AI galerinizden seçtiğiniz fotoğrafları analiz edebilmek için fotoğraf arşivinize erişir.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>SEN.AI sesli mesaj göndermek için mikrofonunuzu kullanır.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>

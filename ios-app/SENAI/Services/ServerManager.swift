@@ -239,41 +239,84 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
         SenHaptics.light()
     }
 
-    // MARK: - Live SSE Streaming (/api/chat)
+    // MARK: - Live SSE Streaming (/api/chat) + Image Upload (/api/upload)
 
-    func sendMessage(_ rawText: String) {
+    func uploadImage(_ data: Data, filename: String = "photo.jpg") async -> [String: Any]? {
+        guard !activeBaseURL.isEmpty, let url = URL(string: "\(activeBaseURL)/api/upload") else { return nil }
+        let boundary = "Boundary-\(UUID().uuidString)"
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+
+        var body = Data()
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
+        body.append(data)
+        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+        req.httpBody = body
+
+        do {
+            let (respData, resp) = try await urlSession.data(for: req)
+            guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else { return nil }
+            return try JSONSerialization.jsonObject(with: respData) as? [String: Any]
+        } catch {
+            return nil
+        }
+    }
+
+    func sendMessage(_ rawText: String, images: [Data] = [], autoSpeak: Bool = false) {
         let trimmed = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, !isGenerating else { return }
+        guard (!trimmed.isEmpty || !images.isEmpty), !isGenerating else { return }
         guard !activeBaseURL.isEmpty else {
             connectionError = "Önce sunucuya bağlanın."
             return
         }
 
+        let finalPrompt = trimmed.isEmpty ? "Bu görseli incele ve kısaca Türkçe açıkla." : trimmed
         SenHaptics.light()
-        let userMsg = ChatMessage(id: UUID().uuidString, role: "user", content: trimmed)
+        let userMsg = ChatMessage(id: UUID().uuidString, role: "user", content: finalPrompt, attachedImages: images)
         let assistantId = UUID().uuidString
         let assistantMsg = ChatMessage(id: assistantId, role: "assistant", content: "", isStreaming: true)
         messages.append(userMsg)
         messages.append(assistantMsg)
 
         isGenerating = true
-        statusLine = "Bağlanıyor..."
-
-        let historyPayload: [[String: Any]] = messages.dropLast().map { m in
-            ["role": m.role, "content": m.content, "thinking": m.thinking, "attachments": []]
-        }
-
-        let bodyObj: [String: Any] = [
-            "session_id": activeSessionId,
-            "model_id": selectedModelId,
-            "thinking_effort": thinkingEffort.rawValue,
-            "web_search": webSearchEnabled,
-            "use_library": false,
-            "messages": historyPayload,
-        ]
+        statusLine = images.isEmpty ? "Bağlanıyor..." : "Görsel yükleniyor..."
 
         streamTask = Task {
-            await performSSEStream(bodyObj: bodyObj, assistantId: assistantId)
+            var uploadedAtts: [[String: Any]] = []
+            for (idx, imgData) in images.enumerated() {
+                if let meta = await uploadImage(imgData, filename: "ios_photo_\(idx + 1).jpg") {
+                    uploadedAtts.append([
+                        "id": meta["id"] ?? "",
+                        "name": meta["name"] ?? "photo.jpg",
+                        "kind": "image",
+                    ])
+                }
+            }
+            if !images.isEmpty { statusLine = "Görsel analiz ediliyor..." }
+
+            let historyPayload: [[String: Any]] = messages.dropLast().enumerated().map { idx, m in
+                let isLatestUser = (idx == messages.count - 2)
+                return [
+                    "role": m.role,
+                    "content": m.content,
+                    "thinking": m.thinking,
+                    "attachments": isLatestUser ? uploadedAtts : [],
+                ]
+            }
+
+            let bodyObj: [String: Any] = [
+                "session_id": activeSessionId,
+                "model_id": selectedModelId,
+                "thinking_effort": thinkingEffort.rawValue,
+                "web_search": webSearchEnabled,
+                "use_library": false,
+                "messages": historyPayload,
+            ]
+
+            await performSSEStream(bodyObj: bodyObj, assistantId: assistantId, autoSpeak: autoSpeak)
         }
     }
 
@@ -295,15 +338,20 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
         }
     }
 
-    private func performSSEStream(bodyObj: [String: Any], assistantId: String) async {
+    private func performSSEStream(bodyObj: [String: Any], assistantId: String, autoSpeak: Bool = false) async {
         let startTime = Date()
         defer {
             isGenerating = false
             statusLine = ""
+            var finalSpokenText = ""
             if let idx = messages.firstIndex(where: { $0.id == assistantId }) {
                 messages[idx].isStreaming = false
+                finalSpokenText = messages[idx].content
             }
             Task { await saveCurrentSession() }
+            if autoSpeak, !finalSpokenText.isEmpty {
+                Task { await toggleSpeak(messageId: assistantId, text: finalSpokenText) }
+            }
         }
 
         guard let url = URL(string: "\(activeBaseURL)/api/chat") else { return }
@@ -561,6 +609,34 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
                         WebSource(title: "Interstellar — IMDb (8.7)", url: "https://imdb.com", domain: "imdb.com", snippet: nil),
                         WebSource(title: "Bilim Kurgu En İyiler", url: "https://rottentomatoes.com", domain: "rottentomatoes.com", snippet: nil),
                     ],
+                    rating: "like"
+                ),
+            ]
+        } else if screen == "code_table" {
+            let codeTableMd = """
+            İşte hem temiz bir **Python stok hesaplayıcı** hem de karşılaştırmalı **envanter tablosu**:
+
+            ```python
+            def stok_degeri(urunler):
+                toplam = sum(u["adet"] * u["fiyat"] for u in urunler)
+                return f"{toplam:,.2f} TL"
+            ```
+
+            | Ürün Kodu | Ürün Adı | Stok | Birim Fiyat | Toplam |
+            | --- | --- | --- | --- | --- |
+            | ELK-01 | Mavi Tişört | 150 | 240 TL | 36.000 TL |
+            | ELK-02 | Keten Gömlek | 85 | 490 TL | 41.650 TL |
+            | ELK-03 | Spor Şapka | 210 | 180 TL | 37.800 TL |
+
+            Tek dokunuşla kodu veya tabloyu kopyalayabilirsin. ✨
+            """
+            messages = [
+                ChatMessage(id: "u3", role: "user", content: "Python stok hesaplama kodu ve örnek envanter tablosu yazar mısın?"),
+                ChatMessage(
+                    id: "a3",
+                    role: "assistant",
+                    content: codeTableMd,
+                    autoPersona: "Veri & Excel Analisti",
                     rating: "like"
                 ),
             ]

@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 
 struct ChatView: View {
@@ -10,6 +11,11 @@ struct ChatView: View {
     @State private var showSidebar: Bool = false
     @State private var showSettings: Bool = false
     @State private var showModelSheet: Bool = false
+    @State private var showCamera: Bool = false
+    @State private var showVoiceMode: Bool = false
+    @State private var showPhotoPicker: Bool = false
+    @State private var selectedPhotoItems: [PhotosPickerItem] = []
+    @State private var pendingPhotos: [PendingPhoto] = []
     @State private var activeSources: [WebSource]? = nil
     @FocusState private var inputFocused: Bool
 
@@ -39,6 +45,22 @@ struct ChatView: View {
                     showSettings = true
                 } else if initialPreviewScreen == "models" {
                     showModelSheet = true
+                } else if initialPreviewScreen == "voice" {
+                    showVoiceMode = true
+                } else if initialPreviewScreen == "camera" {
+                    showCamera = true
+                } else if initialPreviewScreen == "photo_composer" {
+                    let renderer = UIGraphicsImageRenderer(size: CGSize(width: 240, height: 180))
+                    let sampleImg = renderer.image { ctx in
+                        UIColor(red: 0.14, green: 0.36, blue: 0.88, alpha: 1).setFill()
+                        ctx.fill(CGRect(x: 0, y: 0, width: 240, height: 180))
+                        UIColor(red: 0.45, green: 0.72, blue: 1.0, alpha: 0.85).setFill()
+                        ctx.cgContext.fillEllipse(in: CGRect(x: 70, y: 40, width: 100, height: 100))
+                    }
+                    if let d = sampleImg.jpegData(compressionQuality: 0.85) {
+                        pendingPhotos = [PendingPhoto(data: d)]
+                        draft = "Bu görselde ne görüyorsun?"
+                    }
                 } else if initialPreviewScreen == "sources" {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
                         activeSources = server.messages.last?.webSources
@@ -84,6 +106,33 @@ struct ChatView: View {
                 ModelPickerSheetView(showSettings: $showSettings)
                     .presentationDetents([.height(400), .medium])
                     .presentationDragIndicator(.visible)
+            }
+            .fullScreenCover(isPresented: $showCamera) {
+                InstantCameraView { jpegData in
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
+                        pendingPhotos.append(PendingPhoto(data: jpegData))
+                    }
+                }
+            }
+            .fullScreenCover(isPresented: $showVoiceMode) {
+                VoiceModeView()
+            }
+            .photosPicker(isPresented: $showPhotoPicker, selection: $selectedPhotoItems, maxSelectionCount: 4, matching: .images)
+            .onChange(of: selectedPhotoItems) { _, items in
+                guard !items.isEmpty else { return }
+                Task {
+                    for item in items {
+                        if let raw = try? await item.loadTransferable(type: Data.self) {
+                            let finalData = UIImage(data: raw)?.jpegData(compressionQuality: 0.78) ?? raw
+                            await MainActor.run {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
+                                    pendingPhotos.append(PendingPhoto(data: finalData))
+                                }
+                            }
+                        }
+                    }
+                    await MainActor.run { selectedPhotoItems = [] }
+                }
             }
             .sheet(item: Binding(
                 get: { activeSources.map { SourcesSheetWrapper(sources: $0) } },
@@ -269,6 +318,42 @@ struct ChatView: View {
 
     private var floatingComposer: some View {
         VStack(spacing: 6) {
+            if !pendingPhotos.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(pendingPhotos) { ph in
+                            if let uiImg = UIImage(data: ph.data) {
+                                ZStack(alignment: .topTrailing) {
+                                    Image(uiImage: uiImg)
+                                        .resizable()
+                                        .scaledToFill()
+                                        .frame(width: 64, height: 64)
+                                        .clipShape(.rect(cornerRadius: 14))
+                                        .overlay {
+                                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                                .strokeBorder(.white.opacity(0.25), lineWidth: 0.8)
+                                        }
+                                    Button {
+                                        SenHaptics.light()
+                                        withAnimation(.snappy(duration: 0.22)) {
+                                            pendingPhotos.removeAll { $0.id == ph.id }
+                                        }
+                                    } label: {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .font(.system(size: 18))
+                                            .foregroundStyle(.white, Color.black.opacity(0.7))
+                                    }
+                                    .offset(x: 5, y: -5)
+                                }
+                                .padding(.top, 5)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+
             if server.webSearchEnabled {
                 HStack {
                     Button {
@@ -300,6 +385,19 @@ struct ChatView: View {
             SenGlassContainer(spacing: 8) {
                 HStack(alignment: .bottom, spacing: 8) {
                     Menu {
+                        Button {
+                            SenHaptics.light()
+                            showCamera = true
+                        } label: {
+                            Label("Fotoğraf Çek (Anlık)", systemImage: "camera.fill")
+                        }
+                        Button {
+                            SenHaptics.light()
+                            showPhotoPicker = true
+                        } label: {
+                            Label("Galeriden Fotoğraf Seç", systemImage: "photo.on.rectangle")
+                        }
+                        Divider()
                         Button {
                             server.webSearchEnabled.toggle()
                         } label: {
@@ -334,12 +432,24 @@ struct ChatView: View {
                             }
                         } label: {
                             Image(systemName: voice.isRecording ? "waveform.circle.fill" : "mic")
-                                .font(.system(size: 18))
+                                .font(.system(size: 17))
                                 .foregroundStyle(voice.isRecording ? .red : .secondary)
-                                .frame(width: 34, height: 34)
+                                .frame(width: 32, height: 34)
+                        }
+                        .padding(.bottom, 2)
+
+                        Button {
+                            SenHaptics.light()
+                            showVoiceMode = true
+                        } label: {
+                            Image(systemName: "waveform")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(.blue)
+                                .frame(width: 32, height: 34)
                         }
                         .padding(.bottom, 2)
                         .padding(.trailing, 4)
+                        .accessibilityLabel("Canlı Sesli Sohbet")
                     }
                     .senGlassCapsule(interactive: false)
 
@@ -355,12 +465,14 @@ struct ChatView: View {
                         }
                         .accessibilityLabel("Durdur")
                     } else {
-                        let isEmpty = draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        let isEmpty = draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && pendingPhotos.isEmpty
                         Button {
                             let text = draft
+                            let imgs = pendingPhotos.map(\.data)
                             draft = ""
+                            pendingPhotos = []
                             inputFocused = false
-                            server.sendMessage(text)
+                            server.sendMessage(text, images: imgs)
                         } label: {
                             Image(systemName: "arrow.up")
                                 .font(.system(size: 16, weight: .bold))
@@ -418,26 +530,46 @@ struct MessageRowView: View {
 
     var body: some View {
         if msg.role == "user" {
-            HStack {
-                Spacer(minLength: 52)
-                Text(msg.content)
-                    .font(.body)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .background {
-                        RoundedRectangle(cornerRadius: 20, style: .continuous)
-                            .fill(
-                                LinearGradient(
-                                    colors: [Color.blue.opacity(0.16), Color.indigo.opacity(0.11)],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                                    .strokeBorder(Color.blue.opacity(0.18), lineWidth: 0.6)
+            VStack(alignment: .trailing, spacing: 6) {
+                if !msg.attachedImages.isEmpty {
+                    HStack(spacing: 6) {
+                        Spacer(minLength: 52)
+                        ForEach(Array(msg.attachedImages.enumerated()), id: \.offset) { _, imgData in
+                            if let uiImg = UIImage(data: imgData) {
+                                Image(uiImage: uiImg)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: 120, height: 120)
+                                    .clipShape(.rect(cornerRadius: 16))
+                                    .overlay {
+                                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                            .strokeBorder(.white.opacity(0.22), lineWidth: 0.8)
+                                    }
                             }
+                        }
                     }
+                }
+                HStack {
+                    Spacer(minLength: 52)
+                    Text(msg.content)
+                        .font(.body)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .background {
+                            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                .fill(
+                                    LinearGradient(
+                                        colors: [Color.blue.opacity(0.16), Color.indigo.opacity(0.11)],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                        .strokeBorder(Color.blue.opacity(0.18), lineWidth: 0.6)
+                                }
+                        }
+                }
             }
         } else {
             VStack(alignment: .leading, spacing: 10) {
@@ -503,6 +635,10 @@ struct MessageRowView: View {
                             .font(.body)
                             .lineSpacing(4)
                             .textSelection(.enabled)
+                    case .codeBlock(let lang, let code):
+                        CodeBlockCardView(lang: lang, code: code)
+                    case .table(let headers, let rows):
+                        MarkdownTableCardView(headers: headers, rows: rows)
                     case .cardLoading:
                         CardLoadingPlaceholder()
                     case .visualCard(let card):

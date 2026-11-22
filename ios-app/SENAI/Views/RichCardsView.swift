@@ -4,12 +4,16 @@ import SwiftUI
 
 enum MessageSegment: Identifiable {
     case markdown(String)
+    case codeBlock(lang: String, code: String)
+    case table(headers: [String], rows: [[String]])
     case cardLoading
     case visualCard(SenVisualCard)
 
     var id: String {
         switch self {
         case .markdown(let s): return "md_\(s.hashValue)"
+        case .codeBlock(let l, let c): return "code_\(l)_\(c.hashValue)"
+        case .table(let h, let r): return "tbl_\(h.joined().hashValue)_\(r.count)"
         case .cardLoading: return "card_loading"
         case .visualCard(let c): return "card_\(c.id)"
         }
@@ -25,12 +29,12 @@ enum MarkdownCardParser {
         while cursor < src.endIndex {
             guard let fenceStart = src.range(of: "```", range: cursor..<src.endIndex) else {
                 let tail = String(src[cursor...]).trimmingCharacters(in: .whitespacesAndNewlines)
-                if !tail.isEmpty { segments.append(.markdown(tail)) }
+                if !tail.isEmpty { segments.append(contentsOf: splitTables(tail)) }
                 break
             }
 
             let before = String(src[cursor..<fenceStart.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
-            if !before.isEmpty { segments.append(.markdown(before)) }
+            if !before.isEmpty { segments.append(contentsOf: splitTables(before)) }
 
             let afterTicks = fenceStart.upperBound
             let lineEnd = src[afterTicks...].firstIndex(of: "\n") ?? src.endIndex
@@ -49,8 +53,7 @@ enum MarkdownCardParser {
                    let card = try? JSONDecoder().decode(SenVisualCard.self, from: data) {
                     segments.append(.visualCard(card))
                 } else {
-                    let fullFence = String(src[fenceStart.lowerBound..<fenceEnd.upperBound])
-                    segments.append(.markdown(fullFence))
+                    segments.append(.codeBlock(lang: lang.isEmpty ? "kod" : lang, code: body))
                 }
                 cursor = fenceEnd.upperBound
             } else {
@@ -58,13 +61,63 @@ enum MarkdownCardParser {
                 if isCardLang || isCardPrefix {
                     segments.append(.cardLoading)
                 } else {
-                    let rest = String(src[fenceStart.lowerBound...])
-                    segments.append(.markdown(rest))
+                    let partialCode = String(src[bodyStart...]).trimmingCharacters(in: .newlines)
+                    segments.append(.codeBlock(lang: lang.isEmpty ? "kod" : lang, code: partialCode))
                 }
                 break
             }
         }
         return segments
+    }
+
+    private static func splitTables(_ text: String) -> [MessageSegment] {
+        let lines = text.components(separatedBy: "\n")
+        var out: [MessageSegment] = []
+        var buf: [String] = []
+        var i = 0
+
+        func flushBuf() {
+            let joined = buf.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+            if !joined.isEmpty { out.append(.markdown(joined)) }
+            buf.removeAll()
+        }
+
+        func parseRow(_ line: String) -> [String] {
+            var trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("|") { trimmed.removeFirst() }
+            if trimmed.hasSuffix("|") { trimmed.removeLast() }
+            return trimmed.split(separator: "|", omittingEmptySubsequences: false)
+                .map { String($0).trimmingCharacters(in: .whitespaces) }
+        }
+
+        func isSeparator(_ line: String) -> Bool {
+            let t = line.trimmingCharacters(in: .whitespaces)
+            guard t.contains("|") && t.contains("-") else { return false }
+            let allowed = CharacterSet(charactersIn: "|:- ")
+            return t.unicodeScalars.allSatisfy { allowed.contains($0) }
+        }
+
+        while i < lines.count {
+            if i + 1 < lines.count && lines[i].contains("|") && isSeparator(lines[i + 1]) {
+                let headers = parseRow(lines[i])
+                var rows: [[String]] = []
+                var j = i + 2
+                while j < lines.count && lines[j].contains("|") && !lines[j].trimmingCharacters(in: .whitespaces).isEmpty {
+                    rows.append(parseRow(lines[j]))
+                    j += 1
+                }
+                if headers.count >= 2 && !rows.isEmpty {
+                    flushBuf()
+                    out.append(.table(headers: headers, rows: rows))
+                    i = j
+                    continue
+                }
+            }
+            buf.append(lines[i])
+            i += 1
+        }
+        flushBuf()
+        return out
     }
 }
 
@@ -577,5 +630,161 @@ struct ChecklistCardView: View {
                         .strokeBorder(Color.blue.opacity(0.18), lineWidth: 0.8)
                 }
         }
+    }
+}
+
+
+// MARK: - Native SwiftUI Code Block & Markdown Table Cards
+
+struct CodeBlockCardView: View {
+    let lang: String
+    let code: String
+    @State private var copied: Bool = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                HStack(spacing: 6) {
+                    Image(systemName: "chevron.left.forwardslash.chevron.right")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.blue)
+                    Text(lang.uppercased())
+                        .font(.caption2.weight(.bold).monospaced())
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button {
+                    UIPasteboard.general.string = code
+                    SenHaptics.light()
+                    withAnimation(.snappy(duration: 0.2)) { copied = true }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                        withAnimation(.snappy(duration: 0.2)) { copied = false }
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                            .contentTransition(.symbolEffect(.replace))
+                        Text(copied ? "Kopyalandı" : "Kopyala")
+                    }
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(copied ? .green : .secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background { Capsule().fill(Color.primary.opacity(0.07)) }
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
+            .background { Color.primary.opacity(0.05) }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                Text(code)
+                    .font(.system(size: 13, weight: .regular, design: .monospaced))
+                    .foregroundStyle(.primary)
+                    .textSelection(.enabled)
+                    .padding(12)
+            }
+        }
+        .background {
+            RoundedRectangle(cornerRadius: 15, style: .continuous)
+                .fill(.background.opacity(0.65))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 15, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.8)
+                }
+        }
+        .clipShape(.rect(cornerRadius: 15))
+    }
+}
+
+struct MarkdownTableCardView: View {
+    let headers: [String]
+    let rows: [[String]]
+    @State private var copied: Bool = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                HStack(spacing: 6) {
+                    Image(systemName: "tablecells")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.blue)
+                    Text("Veri Tablosu")
+                        .font(.caption.weight(.bold))
+                    Text("\(rows.count)×\(headers.count)")
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background { Capsule().fill(Color.primary.opacity(0.07)) }
+                }
+                Spacer()
+                Button {
+                    let tsv = ([headers] + rows).map { $0.joined(separator: "\t") }.joined(separator: "\n")
+                    UIPasteboard.general.string = tsv
+                    SenHaptics.light()
+                    withAnimation(.snappy(duration: 0.2)) { copied = true }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                        withAnimation(.snappy(duration: 0.2)) { copied = false }
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                            .contentTransition(.symbolEffect(.replace))
+                        Text(copied ? "Kopyalandı" : "Kopyala")
+                    }
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(copied ? .green : .secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background { Capsule().fill(Color.primary.opacity(0.07)) }
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
+            .background { Color.primary.opacity(0.05) }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack(spacing: 0) {
+                        ForEach(Array(headers.enumerated()), id: \.offset) { _, h in
+                            Text(h)
+                                .font(.caption.weight(.bold))
+                                .frame(minWidth: 92, alignment: .leading)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 8)
+                        }
+                    }
+                    .background { Color.blue.opacity(0.09) }
+
+                    ForEach(Array(rows.enumerated()), id: \.offset) { rIdx, row in
+                        HStack(spacing: 0) {
+                            ForEach(0..<headers.count, id: \.self) { cIdx in
+                                Text(cIdx < row.count ? row[cIdx] : "")
+                                    .font(.caption.monospacedDigit())
+                                    .foregroundStyle(.primary)
+                                    .frame(minWidth: 92, alignment: .leading)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 8)
+                            }
+                        }
+                        .background {
+                            rIdx % 2 == 1 ? Color.primary.opacity(0.03) : Color.clear
+                        }
+                    }
+                }
+            }
+        }
+        .background {
+            RoundedRectangle(cornerRadius: 15, style: .continuous)
+                .fill(.background.opacity(0.65))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 15, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.8)
+                }
+        }
+        .clipShape(.rect(cornerRadius: 15))
     }
 }

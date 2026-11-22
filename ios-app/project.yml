@@ -41,6 +41,8 @@ targets:
           NSAllowsArbitraryLoads: true
           NSAllowsLocalNetworking: true
         NSLocalNetworkUsageDescription: "SEN.AI ev Wi-Fi ağındaki bilgisayarınıza hızlı bağlanmak için yerel ağ izni kullanır."
+        NSCameraUsageDescription: "SEN.AI anlık fotoğraf çekip görsel analiz yapabilmek için kameranızı kullanır."
+        NSPhotoLibraryUsageDescription: "SEN.AI galerinizden seçtiğiniz fotoğrafları analiz edebilmek için fotoğraf arşivinize erişir."
         NSMicrophoneUsageDescription: "SEN.AI sesli mesaj göndermek için mikrofonunuzu kullanır."
         NSSpeechRecognitionUsageDescription: "SEN.AI Türkçe sesli komutlarınızı metne çevirmek için konuşma tanıma izni kullanır."
     settings:
