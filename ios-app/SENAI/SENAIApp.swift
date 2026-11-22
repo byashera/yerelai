@@ -3,7 +3,7 @@ import SwiftUI
 @main
 struct SENAIApp: App {
     @StateObject private var server = ServerManager()
-    @AppStorage("senai_theme") private var themePref: String = "system"
+    @AppStorage("senai_theme") private var themePref: String = "light"
 
     private let previewScreen: String?
     private let autoPin: String?

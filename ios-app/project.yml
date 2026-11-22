@@ -29,6 +29,9 @@ targets:
       path: SENAI/Info.plist
       properties:
         CFBundleDisplayName: "SEN.AI"
+        CFBundleDevelopmentRegion: "tr"
+        CFBundleLocalizations:
+          - "tr"
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         UILaunchScreen:

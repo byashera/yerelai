@@ -23,182 +23,269 @@ struct ChatView: View {
     @State private var renameDraft: String = ""
     @State private var showScrollToBottom: Bool = false
     @State private var scrollToBottomTrigger: Int = 0
+    @State private var showPlusMenu: Bool = false
+    @State private var showTemporarySheet: Bool = false
     @FocusState private var inputFocused: Bool
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                SenAmbientBackground()
-                    .ignoresSafeArea(.keyboard)
+        GeometryReader { geo in
+            let drawerWidth = min(geo.size.width * 0.84, 340)
 
-                VStack(spacing: 0) {
-                    if server.connectionRoute == .disconnected && !server.isConnecting {
-                        floatingOfflinePill
-                    }
+            ZStack(alignment: .leading) {
+                NavigationStack {
+                    ZStack {
+                        SenAmbientBackground()
+                            .ignoresSafeArea(.keyboard)
 
-                    if server.messages.isEmpty {
-                        welcomeHero
-                    } else {
-                        messageStream
-                    }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .safeAreaInset(edge: .bottom, spacing: 0) {
-                    floatingComposer
-                }
-            }
-            .onAppear {
-                if initialPreviewScreen == "sidebar" {
-                    showSidebar = true
-                } else if initialPreviewScreen == "settings" {
-                    showSettings = true
-                } else if initialPreviewScreen == "models" {
-                    showModelSheet = true
-                } else if initialPreviewScreen == "voice" {
-                    showVoiceMode = true
-                } else if initialPreviewScreen == "camera" {
-                    showCamera = true
-                } else if initialPreviewScreen == "photo_composer" {
-                    let renderer = UIGraphicsImageRenderer(size: CGSize(width: 240, height: 180))
-                    let sampleImg = renderer.image { ctx in
-                        UIColor(red: 0.14, green: 0.36, blue: 0.88, alpha: 1).setFill()
-                        ctx.fill(CGRect(x: 0, y: 0, width: 240, height: 180))
-                        UIColor(red: 0.45, green: 0.72, blue: 1.0, alpha: 0.85).setFill()
-                        ctx.cgContext.fillEllipse(in: CGRect(x: 70, y: 40, width: 100, height: 100))
-                    }
-                    if let d = sampleImg.jpegData(compressionQuality: 0.85) {
-                        pendingPhotos = [PendingPhoto(data: d)]
-                        draft = "Bu görselde ne görüyorsun?"
-                    }
-                } else if initialPreviewScreen == "sources" {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                        activeSources = server.messages.last?.webSources
-                    }
-                }
-            }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        SenHaptics.light()
-                        showSidebar = true
-                    } label: {
-                        Image(systemName: "line.3.horizontal")
-                    }
-                    .accessibilityLabel("Sohbet Geçmişi")
-                }
+                        VStack(spacing: 0) {
+                            if server.connectionRoute == .disconnected && !server.isConnecting {
+                                floatingOfflinePill
+                            }
 
-                ToolbarItem(placement: .principal) {
-                    modelPickerMenu
-                }
-
-                ToolbarItem(placement: .topBarTrailing) {
-                    HStack(spacing: 4) {
-                        Button {
-                            server.startNewChat()
-                        } label: {
-                            Image(systemName: "square.and.pencil")
+                            if server.messages.isEmpty {
+                                if server.isTemporaryChat {
+                                    temporaryChatHero
+                                } else {
+                                    welcomeHero
+                                }
+                            } else {
+                                messageStream
+                            }
                         }
-                        .accessibilityLabel("Yeni Sohbet")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .safeAreaInset(edge: .bottom, spacing: 0) {
+                            floatingComposer
+                        }
 
-                        if !server.messages.isEmpty {
-                            Menu {
-                                Section(server.currentSessionTitle) {
-                                    ShareLink(item: server.currentTranscriptForShare) {
-                                        Label("Paylaş", systemImage: "square.and.arrow.up")
+                        // iOS 26 Floating Liquid Glass (+) Popover Menu
+                        if showPlusMenu {
+                            Color.black.opacity(0.08)
+                                .ignoresSafeArea()
+                                .onTapGesture {
+                                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                        showPlusMenu = false
                                     }
-                                    Button {
-                                        Task { await server.togglePinSession(server.activeSessionId) }
-                                    } label: {
-                                        Label(
-                                            server.isCurrentSessionPinned ? "Sabitlemeyi Kaldır" : "Sabitle",
-                                            systemImage: server.isCurrentSessionPinned ? "pin.slash" : "pin"
-                                        )
-                                    }
-                                    Button {
-                                        renameDraft = server.currentSessionTitle
-                                        showRenameAlert = true
-                                    } label: {
-                                        Label("Yeniden Adlandır", systemImage: "pencil")
-                                    }
-                                    Divider()
-                                    Button(role: .destructive) {
-                                        Task { await server.deleteSession(server.activeSessionId) }
-                                    } label: {
-                                        Label("Sil", systemImage: "trash")
-                                    }
+                                }
+                                .transition(.opacity)
+
+                            VStack {
+                                Spacer()
+                                HStack {
+                                    plusPopoverMenu
+                                        .padding(.leading, 14)
+                                        .padding(.bottom, 74)
+                                    Spacer()
+                                }
+                            }
+                            .transition(.scale(scale: 0.86, anchor: .bottomLeading).combined(with: .opacity))
+                        }
+                    }
+                    .onAppear {
+                        if initialPreviewScreen == "sidebar" {
+                            showSidebar = true
+                        } else if initialPreviewScreen == "settings" {
+                            showSettings = true
+                        } else if initialPreviewScreen == "models" {
+                            showModelSheet = true
+                        } else if initialPreviewScreen == "voice" {
+                            showVoiceMode = true
+                        } else if initialPreviewScreen == "camera" {
+                            showCamera = true
+                        } else if initialPreviewScreen == "temporary" {
+                            server.isTemporaryChat = true
+                        } else if initialPreviewScreen == "plus_menu" {
+                            server.webSearchEnabled = true
+                            server.useLibraryEnabled = true
+                            showPlusMenu = true
+                        } else if initialPreviewScreen == "composer_pills" {
+                            server.webSearchEnabled = true
+                            server.useLibraryEnabled = true
+                            draft = "Gassal dizisindeki imamın camisi nerede?"
+                        } else if initialPreviewScreen == "photo_composer" {
+                            let renderer = UIGraphicsImageRenderer(size: CGSize(width: 240, height: 180))
+                            let sampleImg = renderer.image { ctx in
+                                UIColor(red: 0.14, green: 0.36, blue: 0.88, alpha: 1).setFill()
+                                ctx.fill(CGRect(x: 0, y: 0, width: 240, height: 180))
+                                UIColor(red: 0.45, green: 0.72, blue: 1.0, alpha: 0.85).setFill()
+                                ctx.cgContext.fillEllipse(in: CGRect(x: 70, y: 40, width: 100, height: 100))
+                            }
+                            if let d = sampleImg.jpegData(compressionQuality: 0.85) {
+                                pendingPhotos = [PendingPhoto(data: d)]
+                                draft = "Bu görselde ne görüyorsun?"
+                            }
+                        } else if initialPreviewScreen == "sources" {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                                activeSources = server.messages.last?.webSources
+                            }
+                        }
+                    }
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button {
+                                SenHaptics.light()
+                                inputFocused = false
+                                showPlusMenu = false
+                                withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
+                                    showSidebar = true
                                 }
                             } label: {
-                                Image(systemName: "ellipsis")
+                                Image(systemName: "line.3.horizontal")
                             }
-                            .accessibilityLabel("Sohbet Seçenekleri")
+                            .accessibilityLabel("Sohbet Geçmişi")
                         }
-                    }
-                }
-            }
-            .alert("Sohbeti Yeniden Adlandır", isPresented: $showRenameAlert) {
-                TextField("Yeni başlık", text: $renameDraft)
-                Button("İptal", role: .cancel) {}
-                Button("Kaydet") {
-                    let next = renameDraft
-                    Task { await server.renameSession(server.activeSessionId, newTitle: next) }
-                }
-            }
-            .sheet(isPresented: $showSidebar) {
-                SidebarView(showSettings: $showSettings)
-                    .presentationDetents([.large])
-                    .presentationDragIndicator(.visible)
-            }
-            .sheet(isPresented: $showSettings) {
-                SettingsView()
-                    .presentationDetents([.large])
-                    .presentationDragIndicator(.visible)
-            }
-            .sheet(isPresented: $showModelSheet) {
-                ModelPickerSheetView(showSettings: $showSettings)
-                    .presentationDetents([.height(400), .medium])
-                    .presentationDragIndicator(.visible)
-            }
-            .fullScreenCover(isPresented: $showCamera) {
-                InstantCameraView(
-                    onCapture: { jpegData in
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
-                            pendingPhotos.append(PendingPhoto(data: jpegData))
+
+                        ToolbarItem(placement: .principal) {
+                            modelPickerMenu
                         }
-                    },
-                    onOpenGallery: {
-                        showPhotoPicker = true
-                    }
-                )
-            }
-            .fullScreenCover(isPresented: $showVoiceMode) {
-                VoiceModeView()
-            }
-            .photosPicker(isPresented: $showPhotoPicker, selection: $selectedPhotoItems, maxSelectionCount: 4, matching: .images)
-            .onChange(of: selectedPhotoItems) { _, items in
-                guard !items.isEmpty else { return }
-                Task {
-                    for item in items {
-                        if let raw = try? await item.loadTransferable(type: Data.self) {
-                            let finalData = UIImage(data: raw)?.jpegData(compressionQuality: 0.78) ?? raw
-                            await MainActor.run {
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
-                                    pendingPhotos.append(PendingPhoto(data: finalData))
+
+                        ToolbarItem(placement: .topBarTrailing) {
+                            HStack(spacing: 6) {
+                                if server.messages.isEmpty {
+                                    Button {
+                                        SenHaptics.light()
+                                        withAnimation(.spring(response: 0.3, dampingFraction: 0.82)) {
+                                            server.isTemporaryChat.toggle()
+                                        }
+                                    } label: {
+                                        Image(systemName: server.isTemporaryChat ? "bubble.left.fill" : "circle.dashed")
+                                            .font(.system(size: 16, weight: .semibold))
+                                            .foregroundStyle(server.isTemporaryChat ? Color.blue : Color.primary)
+                                    }
+                                    .accessibilityLabel(server.isTemporaryChat ? "Geçici Sohbeti Kapat" : "Geçici Sohbet")
+                                } else {
+                                    Button {
+                                        server.startNewChat()
+                                    } label: {
+                                        Image(systemName: "square.and.pencil")
+                                    }
+                                    .accessibilityLabel("Yeni Sohbet")
+
+                                    if !server.isTemporaryChat {
+                                        Menu {
+                                            Section(server.currentSessionTitle) {
+                                                ShareLink(item: server.currentTranscriptForShare) {
+                                                    Label("Paylaş", systemImage: "square.and.arrow.up")
+                                                }
+                                                Button {
+                                                    Task { await server.togglePinSession(server.activeSessionId) }
+                                                } label: {
+                                                    Label(
+                                                        server.isCurrentSessionPinned ? "Sabitlemeyi Kaldır" : "Sabitle",
+                                                        systemImage: server.isCurrentSessionPinned ? "pin.slash" : "pin"
+                                                    )
+                                                }
+                                                Button {
+                                                    renameDraft = server.currentSessionTitle
+                                                    showRenameAlert = true
+                                                } label: {
+                                                    Label("Yeniden Adlandır", systemImage: "pencil")
+                                                }
+                                                Divider()
+                                                Button(role: .destructive) {
+                                                    Task { await server.deleteSession(server.activeSessionId) }
+                                                } label: {
+                                                    Label("Sil", systemImage: "trash")
+                                                }
+                                            }
+                                        } label: {
+                                            Image(systemName: "ellipsis")
+                                        }
+                                        .accessibilityLabel("Sohbet Seçenekleri")
+                                    }
                                 }
                             }
                         }
                     }
-                    await MainActor.run { selectedPhotoItems = [] }
+                    .alert("Sohbeti Yeniden Adlandır", isPresented: $showRenameAlert) {
+                        TextField("Yeni başlık", text: $renameDraft)
+                        Button("İptal", role: .cancel) {}
+                        Button("Kaydet") {
+                            let next = renameDraft
+                            Task { await server.renameSession(server.activeSessionId, newTitle: next) }
+                        }
+                    }
+                    .sheet(isPresented: $showSettings) {
+                        SettingsView()
+                            .presentationDetents([.large])
+                            .presentationDragIndicator(.visible)
+                    }
+                    .sheet(isPresented: $showModelSheet) {
+                        ModelPickerSheetView(showSettings: $showSettings)
+                            .presentationDetents([.height(420), .medium])
+                            .presentationDragIndicator(.visible)
+                    }
+                    .sheet(isPresented: $showTemporarySheet) {
+                        TemporaryChatSettingsSheet(isPersonalized: $server.temporaryPersonalized)
+                            .presentationDetents([.height(320)])
+                            .presentationDragIndicator(.visible)
+                    }
+                    .fullScreenCover(isPresented: $showCamera) {
+                        InstantCameraView(
+                            onCapture: { jpegData in
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
+                                    pendingPhotos.append(PendingPhoto(data: jpegData))
+                                }
+                            },
+                            onOpenGallery: {
+                                showPhotoPicker = true
+                            }
+                        )
+                    }
+                    .fullScreenCover(isPresented: $showVoiceMode) {
+                        VoiceModeView()
+                    }
+                    .photosPicker(isPresented: $showPhotoPicker, selection: $selectedPhotoItems, maxSelectionCount: 4, matching: .images)
+                    .onChange(of: selectedPhotoItems) { _, items in
+                        guard !items.isEmpty else { return }
+                        Task {
+                            for item in items {
+                                if let raw = try? await item.loadTransferable(type: Data.self) {
+                                    let finalData = UIImage(data: raw)?.jpegData(compressionQuality: 0.78) ?? raw
+                                    await MainActor.run {
+                                        withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
+                                            pendingPhotos.append(PendingPhoto(data: finalData))
+                                        }
+                                    }
+                                }
+                            }
+                            await MainActor.run { selectedPhotoItems = [] }
+                        }
+                    }
+                    .sheet(item: Binding(
+                        get: { activeSources.map { SourcesSheetWrapper(sources: $0) } },
+                        set: { activeSources = $0?.sources }
+                    )) { wrapper in
+                        SourcesSheetView(sources: wrapper.sources)
+                            .presentationDetents([.medium, .large])
+                            .presentationDragIndicator(.visible)
+                    }
+                }
+                .disabled(showSidebar)
+
+                // ChatGPT-Style Slide-Over Left Sidebar Drawer
+                if showSidebar {
+                    Color.black.opacity(0.28)
+                        .ignoresSafeArea()
+                        .onTapGesture {
+                            withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
+                                showSidebar = false
+                            }
+                        }
+                        .transition(.opacity)
+
+                    SidebarView(
+                        isPresented: $showSidebar,
+                        showSettings: $showSettings,
+                        showModelSheet: $showModelSheet
+                    )
+                    .frame(width: drawerWidth)
+                    .shadow(color: Color.black.opacity(0.16), radius: 22, x: 6, y: 0)
+                    .transition(.move(edge: .leading))
                 }
             }
-            .sheet(item: Binding(
-                get: { activeSources.map { SourcesSheetWrapper(sources: $0) } },
-                set: { activeSources = $0?.sources }
-            )) { wrapper in
-                SourcesSheetView(sources: wrapper.sources)
-                    .presentationDetents([.medium, .large])
-                    .presentationDragIndicator(.visible)
-            }
+            .animation(.spring(response: 0.32, dampingFraction: 0.86), value: showSidebar)
         }
     }
 
@@ -240,6 +327,54 @@ struct ChatView: View {
         if h >= 12 && h < 18 { return "İyi günler," }
         if h >= 18 && h < 23 { return "İyi akşamlar," }
         return "İyi geceler,"
+    }
+
+    // MARK: - Temporary Chat Hero (ChatGPT-style)
+
+    private var temporaryChatHero: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(spacing: 14) {
+                Spacer(minLength: inputFocused ? 30 : 120)
+
+                Image(systemName: "bubble.left.and.text.bubble.right")
+                    .font(.system(size: 32, weight: .regular))
+                    .foregroundStyle(Color.secondary)
+                    .padding(.bottom, 2)
+
+                Text("Geçici sohbet")
+                    .font(.title2.weight(.bold))
+                    .foregroundStyle(Color.primary)
+
+                Text("Bu sohbet geçmişte görünmez veya yerel belleğinizi güncellemez.")
+                    .font(.subheadline)
+                    .foregroundStyle(Color.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 36)
+
+                Button {
+                    SenHaptics.light()
+                    showTemporarySheet = true
+                } label: {
+                    HStack(spacing: 5) {
+                        Text(server.temporaryPersonalized ? "Kişiselleştirilmiş" : "Kişiselleştirilmemiş")
+                            .font(.subheadline.weight(.semibold))
+                        Image(systemName: "chevron.down")
+                            .font(.caption.weight(.bold))
+                    }
+                    .foregroundStyle(Color.primary)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                }
+                .buttonStyle(.plain)
+                .senGlassCapsule(interactive: true)
+                .padding(.top, 4)
+
+                Spacer(minLength: 40)
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .scrollDismissesKeyboard(.interactively)
+        .onTapGesture { inputFocused = false }
     }
 
     // MARK: - Flagship 2x2 Bento Welcome Hero
@@ -379,7 +514,10 @@ struct ChatView: View {
                         .transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity), removal: .opacity))
                     }
                     if server.isSearchingWeb {
-                        LiveWebSearchStatusView(sitesCount: max(1, server.searchingSitesCount))
+                        LiveWebSearchStatusView(
+                            sitesCount: max(1, server.searchingSitesCount),
+                            domain: server.searchingDomain
+                        )
                             .padding(.horizontal, 2)
                             .transition(.opacity.combined(with: .move(edge: .bottom)))
                     } else if server.isGenerating,
@@ -443,12 +581,16 @@ struct ChatView: View {
         }
     }
 
-    // MARK: - Floating iOS 26 Liquid Glass Composer
+    // MARK: - Floating iOS 26 Unified White / Liquid Glass Composer (NO Full-Width Box!)
 
     private var floatingComposer: some View {
         let isEmpty = draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && pendingPhotos.isEmpty
-        return VStack(spacing: 6) {
-            // ChatGPT-style floating Scroll-to-Bottom (↓) button — floats cleanly above the blurred composer tray & hides when keyboard opens
+        let hasActivePills = server.webSearchEnabled || server.useLibraryEnabled
+        let isExpanded = hasActivePills || !pendingPhotos.isEmpty || draft.contains("\n") || draft.count > 26
+        let cornerRadius: CGFloat = isExpanded ? 24 : 26
+
+        return VStack(spacing: 8) {
+            // Soft White / Liquid Glass Scroll-to-Bottom (↓) button
             if showScrollToBottom && !inputFocused && !server.messages.isEmpty {
                 HStack {
                     Spacer()
@@ -458,20 +600,25 @@ struct ChatView: View {
                     } label: {
                         Image(systemName: "arrow.down")
                             .font(.system(size: 14, weight: .bold))
-                            .foregroundStyle(.primary)
-                            .frame(width: 34, height: 34)
+                            .foregroundStyle(Color.primary)
+                            .frame(width: 36, height: 36)
+                            .background {
+                                Circle()
+                                    .fill(colorScheme == .dark ? Color(.secondarySystemBackground).opacity(0.90) : Color.white.opacity(0.92))
+                            }
                     }
                     .buttonStyle(SenSpringButtonStyle())
                     .senGlassCircle(interactive: true)
+                    .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.28 : 0.10), radius: 10, y: 4)
                     .accessibilityLabel("En Alta İn")
                     Spacer()
                 }
-                .padding(.bottom, 2)
-                .transition(.scale(scale: 0.75).combined(with: .opacity))
+                .transition(.scale(scale: 0.78).combined(with: .opacity))
             }
 
-            // Opaque/Blurred Composer Tray (prevents underlying chat text from ever bleeding through Araştır × or input box!)
+            // Unified Floating Composer Card (White Liquid Glass + Soft Shadow, Tags INSIDE!)
             VStack(alignment: .leading, spacing: 8) {
+                // Pending Photos INSIDE top of card
                 if !pendingPhotos.isEmpty {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 10) {
@@ -481,11 +628,11 @@ struct ChatView: View {
                                         Image(uiImage: uiImg)
                                             .resizable()
                                             .scaledToFill()
-                                            .frame(width: 66, height: 66)
+                                            .frame(width: 64, height: 64)
                                             .clipShape(.rect(cornerRadius: 14))
                                             .overlay {
                                                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                                    .strokeBorder(.white.opacity(0.26), lineWidth: 0.9)
+                                                    .strokeBorder(Color.primary.opacity(0.14), lineWidth: 0.8)
                                             }
                                         Button {
                                             SenHaptics.light()
@@ -494,169 +641,302 @@ struct ChatView: View {
                                             }
                                         } label: {
                                             Image(systemName: "xmark.circle.fill")
-                                                .font(.system(size: 19))
-                                                .foregroundStyle(.white, Color.black.opacity(0.75))
+                                                .font(.system(size: 18))
+                                                .foregroundStyle(Color.white, Color.black.opacity(0.75))
                                         }
                                         .offset(x: 6, y: -6)
                                     }
-                                    .padding(.top, 8)
-                                    .padding(.trailing, 8)
+                                    .padding(.top, 6)
+                                    .padding(.trailing, 6)
                                 }
                             }
                         }
-                        .padding(.horizontal, 16)
+                        .padding(.horizontal, 12)
                     }
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
 
-                if server.webSearchEnabled {
-                    HStack {
-                        Button {
-                            SenHaptics.light()
-                            server.webSearchEnabled = false
-                        } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: "globe")
-                                    .foregroundStyle(.blue)
-                                Text("Araştır")
-                                    .foregroundStyle(.primary)
-                                Image(systemName: "xmark")
-                                    .font(.system(size: 9, weight: .bold))
-                                    .foregroundStyle(.secondary)
+                // Active Tool Pills INSIDE top of Composer Card (ChatGPT-style `Düşün ×` pill design)
+                if hasActivePills {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            if server.webSearchEnabled {
+                                composerInsidePill(
+                                    title: "Araştır",
+                                    icon: "globe",
+                                    tint: Color.blue
+                                ) {
+                                    SenHaptics.light()
+                                    withAnimation(.spring(response: 0.28, dampingFraction: 0.80)) {
+                                        server.webSearchEnabled = false
+                                    }
+                                }
                             }
-                            .font(.caption.weight(.semibold))
-                            .padding(.horizontal, 11)
-                            .padding(.vertical, 6)
+                            if server.useLibraryEnabled {
+                                composerInsidePill(
+                                    title: "Kütüphane",
+                                    icon: "books.vertical.fill",
+                                    tint: Color.indigo
+                                ) {
+                                    SenHaptics.light()
+                                    withAnimation(.spring(response: 0.28, dampingFraction: 0.80)) {
+                                        server.useLibraryEnabled = false
+                                    }
+                                }
+                            }
                         }
-                        .buttonStyle(.plain)
-                        .senGlassCapsule(interactive: true)
+                        .padding(.horizontal, 12)
+                        .padding(.top, pendingPhotos.isEmpty ? 10 : 2)
+                    }
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                }
+
+                if isExpanded {
+                    // Multi-row layout: TextField on top, controls (+ | mic | send) below
+                    TextField(
+                        server.isTemporaryChat ? "Geçici sohbete sor..." : "SEN.AI'ye sor...",
+                        text: $draft,
+                        axis: .vertical
+                    )
+                    .lineLimit(1...5)
+                    .font(.body)
+                    .focused($inputFocused)
+                    .padding(.horizontal, 14)
+                    .padding(.top, hasActivePills || !pendingPhotos.isEmpty ? 2 : 12)
+
+                    HStack(spacing: 8) {
+                        plusButton
                         Spacer()
+                        micButton
+                        trailingActionButton(isEmpty: isEmpty)
                     }
-                    .padding(.horizontal, 16)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                }
-
-                SenGlassContainer(spacing: 8) {
-                    HStack(alignment: .bottom, spacing: 8) {
-                        Menu {
-                            Button {
-                                SenHaptics.light()
-                                showCamera = true
-                            } label: {
-                                Label("Fotoğraf Çek (Anlık)", systemImage: "camera.fill")
-                            }
-                            Button {
-                                SenHaptics.light()
-                                showPhotoPicker = true
-                            } label: {
-                                Label("Galeriden Fotoğraf Seç", systemImage: "photo.on.rectangle")
-                            }
-                            Divider()
-                            Button {
-                                server.webSearchEnabled.toggle()
-                            } label: {
-                                Label(
-                                    server.webSearchEnabled ? "Web Araştırmasını Kapat" : "Web Araştırmasını Aç",
-                                    systemImage: "globe"
-                                )
-                            }
-                            Button {
-                                showSettings = true
-                            } label: {
-                                Label("Ayarlar", systemImage: "gearshape")
-                            }
-                        } label: {
-                            Image(systemName: "plus")
-                                .font(.system(size: 17, weight: .semibold))
-                                .frame(width: 38, height: 38)
-                        }
-                        .senGlassCircle(interactive: true)
-
-                        HStack(alignment: .bottom, spacing: 6) {
-                            TextField("SEN.AI'ye sor...", text: $draft, axis: .vertical)
-                                .lineLimit(1...5)
-                                .font(.body)
-                                .focused($inputFocused)
-                                .padding(.vertical, 8)
-                                .padding(.leading, 12)
-
-                            Button {
-                                voice.toggleRecording { text in
-                                    draft = text
-                                }
-                            } label: {
-                                Image(systemName: voice.isRecording ? "waveform.circle.fill" : "mic")
-                                    .font(.system(size: 17))
-                                    .foregroundStyle(voice.isRecording ? Color.red : Color.secondary)
-                                    .frame(width: 32, height: 34)
-                            }
-                            .padding(.bottom, 2)
-                            .padding(.trailing, 6)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .senGlassCapsule(interactive: false)
-
-                        // Fixed 38x38 Right Action Slot (Stop / Send / Voice Mode — never shifts or clips!)
-                        if server.isGenerating {
-                            Button {
-                                server.stopGeneration()
-                            } label: {
-                                Image(systemName: "stop.fill")
-                                    .font(.system(size: 14, weight: .bold))
-                                    .foregroundStyle(.white)
-                                    .frame(width: 38, height: 38)
-                                    .background { Circle().fill(Color.red) }
-                            }
-                            .accessibilityLabel("Durdur")
-                        } else if !isEmpty {
-                            Button {
-                                let text = draft
-                                let imgs = pendingPhotos.map(\.data)
-                                draft = ""
-                                pendingPhotos = []
-                                inputFocused = false
-                                server.sendMessage(text, images: imgs, userCity: location.currentCity)
-                            } label: {
-                                Image(systemName: "arrow.up")
-                                    .font(.system(size: 16, weight: .bold))
-                                    .foregroundStyle(.white)
-                                    .frame(width: 38, height: 38)
-                            }
-                            .buttonStyle(.plain)
-                            .senGlassCircle(interactive: true, tint: .blue)
-                            .accessibilityLabel("Gönder")
-                        } else {
-                            Button {
-                                SenHaptics.light()
-                                showVoiceMode = true
-                            } label: {
-                                Image(systemName: "waveform")
-                                    .font(.system(size: 16, weight: .bold))
-                                    .foregroundStyle(.white)
-                                    .frame(width: 38, height: 38)
-                            }
-                            .buttonStyle(.plain)
-                            .senGlassCircle(interactive: true, tint: .blue)
-                            .accessibilityLabel("Canlı Sesli Sohbet")
-                        }
-                    }
-                    .padding(.horizontal, 12)
+                    .padding(.horizontal, 10)
                     .padding(.bottom, 8)
-                    .padding(.top, 4)
+                } else {
+                    // Compact single-row Liquid Glass Pill
+                    HStack(alignment: .center, spacing: 6) {
+                        plusButton
+
+                        TextField(
+                            server.isTemporaryChat ? "Geçici sohbete sor..." : "SEN.AI'ye sor...",
+                            text: $draft,
+                            axis: .vertical
+                        )
+                        .lineLimit(1...5)
+                        .font(.body)
+                        .focused($inputFocused)
+                        .padding(.vertical, 9)
+
+                        micButton
+                        trailingActionButton(isEmpty: isEmpty)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
                 }
             }
-            .padding(.top, 6)
             .background {
-                Rectangle()
-                    .fill(.ultraThinMaterial)
-                    .ignoresSafeArea()
-                    .overlay(alignment: .top) {
-                        Rectangle()
-                            .fill(Color.primary.opacity(0.08))
-                            .frame(height: 0.6)
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(colorScheme == .dark ? Color(.secondarySystemBackground).opacity(0.88) : Color.white.opacity(0.92))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                            .strokeBorder(
+                                colorScheme == .dark ? Color.white.opacity(0.12) : Color.black.opacity(0.06),
+                                lineWidth: 0.8
+                            )
                     }
+            }
+            .clipShape(.rect(cornerRadius: cornerRadius))
+            .shadow(
+                color: Color.black.opacity(colorScheme == .dark ? 0.30 : 0.08),
+                radius: 16,
+                y: 5
+            )
+            .padding(.horizontal, 12)
+            .padding(.bottom, 8)
+            .animation(.spring(response: 0.30, dampingFraction: 0.84), value: isExpanded)
+        }
+    }
+
+    private func composerInsidePill(title: String, icon: String, tint: Color, onRemove: @escaping () -> Void) -> some View {
+        Button(action: onRemove) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(tint)
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(tint)
+                Image(systemName: "xmark")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(tint.opacity(0.82))
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background {
+                Capsule()
+                    .fill(colorScheme == .dark ? tint.opacity(0.18) : Color.white)
+                    .overlay {
+                        Capsule()
+                            .strokeBorder(tint.opacity(0.24), lineWidth: 0.8)
+                    }
+                    .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.22 : 0.07), radius: 6, y: 2)
             }
         }
+        .buttonStyle(SenSpringButtonStyle())
+    }
+
+    private var plusButton: some View {
+        Button {
+            SenHaptics.light()
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.80)) {
+                showPlusMenu.toggle()
+            }
+        } label: {
+            Image(systemName: showPlusMenu ? "xmark" : "plus")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(Color.primary)
+                .frame(width: 36, height: 36)
+                .contentTransition(.symbolEffect(.replace))
+        }
+        .buttonStyle(SenSpringButtonStyle())
+        .accessibilityLabel("Araçlar ve Ekler")
+    }
+
+    private var micButton: some View {
+        Button {
+            voice.toggleRecording { text in
+                draft = text
+            }
+        } label: {
+            Image(systemName: voice.isRecording ? "waveform.circle.fill" : "mic")
+                .font(.system(size: 17))
+                .foregroundStyle(voice.isRecording ? Color.red : Color.secondary)
+                .frame(width: 32, height: 34)
+        }
+        .accessibilityLabel("Sesle Yaz")
+    }
+
+    @ViewBuilder
+    private func trailingActionButton(isEmpty: Bool) -> some View {
+        if server.isGenerating {
+            Button {
+                server.stopGeneration()
+            } label: {
+                Image(systemName: "stop.fill")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(Color.white)
+                    .frame(width: 36, height: 36)
+                    .background { Circle().fill(Color.red) }
+            }
+            .accessibilityLabel("Durdur")
+        } else if !isEmpty {
+            Button {
+                let text = draft
+                let imgs = pendingPhotos.map(\.data)
+                draft = ""
+                pendingPhotos = []
+                inputFocused = false
+                showPlusMenu = false
+                server.sendMessage(text, images: imgs, userCity: location.currentCity)
+            } label: {
+                Image(systemName: "arrow.up")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(Color.white)
+                    .frame(width: 36, height: 36)
+                    .background { Circle().fill(Color.blue) }
+            }
+            .buttonStyle(SenSpringButtonStyle())
+            .accessibilityLabel("Gönder")
+        } else {
+            Button {
+                SenHaptics.light()
+                showPlusMenu = false
+                showVoiceMode = true
+            } label: {
+                Image(systemName: "waveform")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(Color.white)
+                    .frame(width: 36, height: 36)
+                    .background { Circle().fill(Color.blue) }
+            }
+            .buttonStyle(SenSpringButtonStyle())
+            .accessibilityLabel("Canlı Sesli Sohbet")
+        }
+    }
+
+    // MARK: - iOS 26 Floating Liquid Glass (+) Popover Menu (ChatGPT-style)
+
+    private var plusPopoverMenu: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            plusMenuRow(icon: "camera", title: "Kamera", tint: Color.primary, isActive: false) {
+                showPlusMenu = false
+                showCamera = true
+            }
+            plusMenuRow(icon: "photo.on.rectangle", title: "Fotoğraflar", tint: Color.primary, isActive: false) {
+                showPlusMenu = false
+                showPhotoPicker = true
+            }
+            plusMenuRow(icon: "globe", title: "Web'de Araştır", tint: Color.blue, isActive: server.webSearchEnabled) {
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.80)) {
+                    server.webSearchEnabled.toggle()
+                    showPlusMenu = false
+                }
+            }
+            plusMenuRow(icon: "books.vertical", title: "Kütüphane", tint: Color.indigo, isActive: server.useLibraryEnabled) {
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.80)) {
+                    server.useLibraryEnabled.toggle()
+                    showPlusMenu = false
+                }
+            }
+            plusMenuRow(icon: "gearshape", title: "Ayarlar", tint: Color.primary, isActive: false) {
+                showPlusMenu = false
+                showSettings = true
+            }
+        }
+        .padding(.vertical, 10)
+        .padding(.horizontal, 10)
+        .frame(width: 248)
+        .background {
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .fill(colorScheme == .dark ? Color(.secondarySystemBackground).opacity(0.94) : Color.white.opacity(0.95))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                        .strokeBorder(colorScheme == .dark ? Color.white.opacity(0.14) : Color.black.opacity(0.06), lineWidth: 0.8)
+                }
+        }
+        .senGlassRounded(radius: 28, interactive: true)
+        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.38 : 0.14), radius: 24, y: 10)
+    }
+
+    private func plusMenuRow(icon: String, title: String, tint: Color, isActive: Bool, action: @escaping () -> Void) -> some View {
+        Button {
+            SenHaptics.light()
+            action()
+        } label: {
+            HStack(spacing: 14) {
+                Image(systemName: icon)
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(isActive ? tint : Color.primary)
+                    .frame(width: 38, height: 38)
+                    .background {
+                        Circle()
+                            .fill(isActive ? tint.opacity(0.16) : Color.primary.opacity(0.06))
+                    }
+                Text(title)
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(isActive ? tint : Color.primary)
+                Spacer()
+                if isActive {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 16))
+                        .foregroundStyle(tint)
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(SenSpringButtonStyle())
     }
 
     private var floatingOfflinePill: some View {
@@ -715,24 +995,28 @@ struct MessageRowView: View {
                     }
                 }
                 HStack {
-                    Spacer(minLength: 52)
+                    Spacer(minLength: 48)
                     Text(msg.content)
                         .font(.body)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
+                        .foregroundStyle(Color.primary)
+                        .textSelection(.enabled)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 11)
                         .background {
-                            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                                .fill(
-                                    LinearGradient(
-                                        colors: [Color.blue.opacity(0.16), Color.indigo.opacity(0.11)],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                )
+                            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                                .fill(Color.primary.opacity(0.065))
                                 .overlay {
-                                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                                        .strokeBorder(Color.blue.opacity(0.18), lineWidth: 0.6)
+                                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.7)
                                 }
+                        }
+                        .contextMenu {
+                            Button {
+                                UIPasteboard.general.string = msg.content
+                                SenHaptics.light()
+                            } label: {
+                                Label("Kopyala", systemImage: "doc.on.doc")
+                            }
                         }
                 }
             }
@@ -868,18 +1152,9 @@ struct MessageRowView: View {
                                 HStack(spacing: 6) {
                                     HStack(spacing: -6) {
                                         ForEach(Array(msg.webSources.prefix(3).enumerated()), id: \.offset) { idx, src in
-                                            let initial = String(src.domain.prefix(1)).uppercased()
-                                            let colors: [Color] = [.blue, .orange, .indigo]
-                                            Circle()
-                                                .fill(colors[idx % colors.count])
-                                                .frame(width: 18, height: 18)
+                                            SiteFaviconView(domain: src.domain, fallbackIndex: idx, size: 18)
                                                 .overlay {
-                                                    Text(initial)
-                                                        .font(.system(size: 9, weight: .bold))
-                                                        .foregroundStyle(.white)
-                                                }
-                                                .overlay {
-                                                    Circle().strokeBorder(Color(.systemBackground), lineWidth: 1.2)
+                                                    Circle().strokeBorder(Color(.systemBackground), lineWidth: 1.3)
                                                 }
                                         }
                                     }
@@ -940,30 +1215,89 @@ struct MessageRowView: View {
     }
 }
 
+struct SiteFaviconView: View {
+    @EnvironmentObject private var server: ServerManager
+    let domain: String
+    let fallbackIndex: Int
+    var size: CGFloat = 20
+
+    private let palette: [Color] = [.blue, .orange, .indigo, .teal, .purple]
+
+    var body: some View {
+        let initial = String(domain.prefix(1)).uppercased()
+        let bg = palette[fallbackIndex % palette.count]
+        Group {
+            if let url = server.faviconURL(for: domain) {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let img):
+                        img
+                            .resizable()
+                            .scaledToFit()
+                            .padding(2)
+                            .background(Color.white)
+                    default:
+                        fallbackCircle(initial: initial, bg: bg)
+                    }
+                }
+            } else {
+                fallbackCircle(initial: initial, bg: bg)
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(Circle())
+    }
+
+    private func fallbackCircle(initial: String, bg: Color) -> some View {
+        Circle()
+            .fill(bg)
+            .overlay {
+                Text(initial.isEmpty ? "W" : initial)
+                    .font(.system(size: max(8, size * 0.48), weight: .bold))
+                    .foregroundStyle(Color.white)
+            }
+    }
+}
+
 struct LiveWebSearchStatusView: View {
     let sitesCount: Int
+    let domain: String
     @State private var pulse: Bool = false
 
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "globe")
                 .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(.blue)
+                .foregroundStyle(Color.blue)
                 .scaleEffect(pulse ? 1.12 : 0.94)
-                .animation(.easeInOut(duration: 0.95).repeatForever(autoreverses: true), value: pulse)
+                .animation(.easeInOut(duration: 0.90).repeatForever(autoreverses: true), value: pulse)
+
             HStack(spacing: 4) {
                 Text("\(sitesCount)")
-                    .font(.subheadline.weight(.semibold).monospacedDigit())
+                    .font(.subheadline.weight(.bold).monospacedDigit())
+                    .foregroundStyle(Color.primary)
                     .contentTransition(.numericText())
-                    .animation(.spring(response: 0.3, dampingFraction: 0.8), value: sitesCount)
+                    .animation(.spring(response: 0.28, dampingFraction: 0.80), value: sitesCount)
                 Text("web sitesi aranıyor")
                     .font(.subheadline.weight(.medium))
+                    .foregroundStyle(Color.secondary)
+
+                if !domain.isEmpty {
+                    Text("· \(domain)")
+                        .font(.caption.monospaced())
+                        .foregroundStyle(Color.blue.opacity(0.85))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .transition(.opacity)
+                }
             }
-            .foregroundStyle(.secondary)
-            .opacity(pulse ? 1.0 : 0.58)
-            .animation(.easeInOut(duration: 0.95).repeatForever(autoreverses: true), value: pulse)
+            .opacity(pulse ? 1.0 : 0.64)
+            .animation(.easeInOut(duration: 0.90).repeatForever(autoreverses: true), value: pulse)
         }
-        .padding(.vertical, 4)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .senGlassCapsule(interactive: false)
+        .padding(.vertical, 2)
         .onAppear { pulse = true }
     }
 }
@@ -979,19 +1313,29 @@ struct SourcesSheetView: View {
 
     var body: some View {
         NavigationStack {
-            List(sources) { src in
+            List(Array(sources.enumerated()), id: \.element.id) { idx, src in
                 if let url = URL(string: src.url) {
                     Link(destination: url) {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(src.title)
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(.primary)
-                                .lineLimit(2)
-                            Text(src.domain)
-                                .font(.caption2.monospaced())
-                                .foregroundStyle(.blue)
+                        HStack(alignment: .top, spacing: 12) {
+                            SiteFaviconView(domain: src.domain, fallbackIndex: idx, size: 28)
+                                .padding(.top, 2)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(src.title)
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(Color.primary)
+                                    .lineLimit(2)
+                                Text(src.domain)
+                                    .font(.caption2.monospaced())
+                                    .foregroundStyle(Color.blue)
+                                if !src.snippet.isEmpty {
+                                    Text(src.snippet)
+                                        .font(.caption)
+                                        .foregroundStyle(Color.secondary)
+                                        .lineLimit(2)
+                                }
+                            }
                         }
-                        .padding(.vertical, 2)
+                        .padding(.vertical, 3)
                     }
                 }
             }
@@ -1003,6 +1347,73 @@ struct SourcesSheetView: View {
                 }
             }
         }
+    }
+}
+
+struct TemporaryChatSettingsSheet: View {
+    @Binding var isPersonalized: Bool
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 12) {
+                optionCard(
+                    title: "Kişiselleştirilmiş",
+                    subtitle: "Yanıtlarda mevcut yerel bellek ve tercihlerinizi kullanır ancak bu sohbeti kaydetmez.",
+                    selected: isPersonalized
+                ) {
+                    SenHaptics.light()
+                    isPersonalized = true
+                }
+
+                optionCard(
+                    title: "Kişiselleştirilmemiş",
+                    subtitle: "Tamamen sıfır bağlamla çalışır; ne mevcut belleğinizi okur ne de bu sohbeti kaydeder.",
+                    selected: !isPersonalized
+                ) {
+                    SenHaptics.light()
+                    isPersonalized = false
+                }
+
+                Spacer(minLength: 4)
+            }
+            .padding(16)
+            .navigationTitle("Geçici sohbet")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Bitti") { dismiss() }
+                        .fontWeight(.semibold)
+                }
+            }
+        }
+    }
+
+    private func optionCard(title: String, subtitle: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(Color.primary)
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(Color.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                    .font(.title3)
+                    .foregroundStyle(selected ? Color.blue : Color.secondary.opacity(0.4))
+            }
+            .padding(14)
+            .senGlassRounded(radius: 20, interactive: true)
+            .overlay {
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .strokeBorder(selected ? Color.blue.opacity(0.45) : Color.clear, lineWidth: 1.2)
+            }
+        }
+        .buttonStyle(SenSpringButtonStyle())
     }
 }
 
@@ -1052,18 +1463,18 @@ struct ModelPickerSheetView: View {
                                     if selected {
                                         Image(systemName: "checkmark.circle.fill")
                                             .font(.title3)
-                                            .foregroundStyle(isE4B ? .indigo : .blue)
+                                            .foregroundStyle(isE4B ? Color.indigo : Color.blue)
                                             .transition(.scale.combined(with: .opacity))
                                     }
                                 }
-                                .padding(12)
-                                .background {
-                                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                        .fill(selected ? (isE4B ? Color.indigo : Color.blue).opacity(0.12) : Color.primary.opacity(0.05))
-                                        .overlay {
-                                            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                                .strokeBorder(selected ? (isE4B ? Color.indigo : Color.blue).opacity(0.45) : Color.primary.opacity(0.08), lineWidth: 1)
-                                        }
+                                .padding(14)
+                                .senGlassRounded(radius: 22, interactive: true)
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                                        .strokeBorder(
+                                            selected ? (isE4B ? Color.indigo : Color.blue).opacity(0.45) : Color.clear,
+                                            lineWidth: 1.2
+                                        )
                                 }
                             }
                             .buttonStyle(SenSpringButtonStyle())
@@ -1307,13 +1718,10 @@ struct ThinkingEffortSliderView: View {
             .frame(height: 42)
         }
         .padding(14)
-        .background {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color.primary.opacity(0.05))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .strokeBorder(effort == .high ? Color(red: 0.95, green: 0.28, blue: 0.52).opacity(0.42) : Color.primary.opacity(0.08), lineWidth: 1)
-                }
+        .senGlassRounded(radius: 22, interactive: false)
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(effort == .high ? Color(red: 0.95, green: 0.28, blue: 0.52).opacity(0.42) : Color.clear, lineWidth: 1.2)
         }
     }
 }

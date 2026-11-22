@@ -1502,6 +1502,7 @@ class ChatRequest(BaseModel):
     web_search: Optional[bool] = False
     use_library: Optional[bool] = False
     user_city: Optional[str] = None
+    ignore_memory: Optional[bool] = False
     temperature: Optional[float] = None
     top_p: Optional[float] = None
     max_new_tokens: Optional[int] = None
@@ -2037,8 +2038,8 @@ def _fetch_live_weather(query: str, force_weather: bool = False, fallback_city: 
     return cards, sources, "\n\n".join(ctxs), net_err
 
 
-def _fetch_page_excerpt(url: str, max_chars: int = 1200) -> str:
-    """Fetch a public web page safely (SSRF-checked) and return concise readable text excerpt."""
+def _fetch_page_excerpt(url: str, max_chars: int = 3200) -> str:
+    """Fetch a public web page safely (SSRF-checked), prioritizing <article>/<main> body text."""
     if not _is_safe_public_url(url):
         return ""
     try:
@@ -2046,15 +2047,19 @@ def _fetch_page_excerpt(url: str, max_chars: int = 1200) -> str:
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
             "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
         }
-        r = httpx.get(url, headers=headers, timeout=4.5, follow_redirects=True)
+        r = httpx.get(url, headers=headers, timeout=5.0, follow_redirects=True)
         if not _is_safe_public_url(str(r.url)):
             return ""
         ctype = (r.headers.get("content-type") or "").lower()
         if r.status_code != 200 or ("text/html" not in ctype and "text/plain" not in ctype):
             return ""
-        raw = r.text[:180_000]
-        raw = re.sub(r"(?is)<(script|style|noscript|svg|nav|footer|header)[^>]*>.*?</\1>", " ", raw)
-        text = html_lib.unescape(re.sub(r"<[^>]+>", " ", raw))
+        raw = r.text[:260_000]
+        # Prefer <article> or <main> content so cookie banners & navigation menus don't eat the excerpt
+        art_m = re.search(r"(?is)<article\b[^>]*>(.*?)</article>", raw)
+        main_m = re.search(r"(?is)<main\b[^>]*>(.*?)</main>", raw) if not art_m else None
+        target_html = (art_m.group(1) if art_m and len(art_m.group(1)) > 350 else (main_m.group(1) if main_m and len(main_m.group(1)) > 350 else raw))
+        target_html = re.sub(r"(?is)<(script|style|noscript|svg|nav|footer|header|aside|form)[^>]*>.*?</\1>", " ", target_html)
+        text = html_lib.unescape(re.sub(r"<[^>]+>", " ", target_html))
         text = re.sub(r"\s+", " ", text).strip()
         return text[:max_chars]
     except Exception:
@@ -2145,7 +2150,49 @@ def _resolve_followup_intent(query: str, history: Optional[List[Dict[str, str]]]
     return query, False
 
 
-def _perform_web_search(query: str, max_results: int = 5, history: Optional[List[Dict[str, str]]] = None, allow_general_search: bool = True, user_city: Optional[str] = None) -> Dict[str, Any]:
+def _should_auto_research(query: str) -> bool:
+    """Trigger web search automatically even when web_search pill is OFF, ONLY for factual/product/live/location queries (never personal/casual/astrology/planning/coding)."""
+    q = (query or "").strip()
+    if not q or len(q) < 4:
+        return False
+    q_low = q.lower()
+    # Explicitly exclude personal/casual/creative/astrology/planning/coding prompts
+    if re.search(r"\b(?:burç|burcu|yükselen|tarot|arcana|rüya|plan\s+oluştur|rutin|program\s+yap|python|swift|html|css|javascript|kod\s+yaz|merhaba|selam|nasılsın)\b", q_low):
+        return False
+    if _is_weather_text(q):
+        return True
+    auto_pat = (
+        r"\b(?:araştır\w*|arastir\w*|internette|google|webde|web'de|"
+        r"dolar|euro|döviz|kur|altın|fiyat\w*|kaç\s+tl|ne\s+kadar|"
+        r"nerede\w*\s+çekildi|gerçekte\s+nerede\w*|çekim\s+yeri|mekan\w*|cami\w*\s+(?:gerçekte\s+)?nerede\w*|"
+        r"klavye|kulaklık|koltuk|telefon|laptop|monitör|ekran\s+kartı|ürün|marka|model\w*|"
+        r"güncel|son\s+dakika|haber\w*|vizyonda|imdb|maç\s+skoru|puan\s+durumu)\b"
+    )
+    return bool(re.search(auto_pat, q_low))
+
+
+def _clean_search_query(query: str) -> str:
+    """Strip conversational command filler so DDGS hits real articles instead of pirate streaming spam."""
+    q = (query or "").strip()
+    q = re.sub(
+        r"\b(?:internette|internetten|google\s*'?\s*da|google|webde|web'de|araştır\w*|arastir\w*|arar\s+mısın|bakar\s+mısın|söyler\s+misin|lütfen|gerçekte|bana|peki|acaba|bu\s+bilgiyi)\b",
+        " ",
+        q,
+        flags=re.I,
+    )
+    q = re.sub(r"[?!.,;]+", " ", q)
+    q = re.sub(r"\s+", " ", q).strip()
+    return q or (query or "").strip()
+
+
+def _perform_web_search(
+    query: str,
+    max_results: int = 5,
+    history: Optional[List[Dict[str, str]]] = None,
+    allow_general_search: bool = True,
+    user_city: Optional[str] = None,
+    progress_cb: Optional[Any] = None,
+) -> Dict[str, Any]:
     """Smart conversation-aware web search (intent filter + follow-up memory + multi-city weather + direct URL reader + ddgs)."""
     clean_q = re.sub(r"\s+", " ", (query or "").strip())[:240]
     direct_urls = _extract_urls(clean_q)
@@ -2254,36 +2301,74 @@ def _perform_web_search(query: str, max_results: int = 5, history: Optional[List
             "tiktok.com", "forumsal.org", "falvfal.com", "kizlarsoruyor.com",
             "binkelam.com", "pinterest.com", "instagram.com", "facebook.com",
             "threads.net", "quora.com", "dailymotion.com", "uludagsozluk.com",
+            "onedio.com", "hdfilmizle.ink", "setfilmizle.ltd", "diziboxizle.top",
         }
+        pirate_domain_re = re.compile(
+            r"(?:dizipal|filmizle|dizibox|hdfilm|fullhdfilm|yabancidizi|dizigom|dizilla|filmmodu|jetfilm|dizipub|dizist|diziwatch|selcuksports)",
+            re.I,
+        )
+        cleaned_search_q = _clean_search_query(eff_q)
+        search_queries = [cleaned_search_q]
+        # For filming location / "nerede" queries about series/movies, add a laser-focused Turkish query
+        if re.search(r"\b(?:dizi\w*|film\w*|cami\w*|imam\w*|çekim|nerede)\b", cleaned_search_q, re.I) and "nerede çekildi" not in cleaned_search_q.lower():
+            base_tokens = [t for t in cleaned_search_q.split() if len(t) >= 3][:4]
+            if base_tokens:
+                search_queries.append(f"{' '.join(base_tokens)} nerede çekildi mekan")
+
+        seen_urls = set()
         try:
             from ddgs import DDGS
-            hits = list(DDGS().text(eff_q, region="tr-tr", max_results=max_results + 5))
-            for item in hits:
+            for sq in search_queries:
                 if len(raw_hits) >= max_results:
                     break
-                href = (item.get("href") or "").strip()
-                title = (item.get("title") or "").strip()
-                body = (item.get("body") or "").strip()
-                if href.startswith("http") and title:
-                    domain = urllib.parse.urlparse(href).netloc.replace("www.", "").lower()
-                    if any(domain == b or domain.endswith("." + b) for b in low_quality_domains):
-                        continue
-                    raw_hits.append({
-                        "title": title,
-                        "url": href,
-                        "domain": domain,
-                        "snippet": body,
-                    })
+                hits = list(DDGS().text(sq, region="tr-tr", max_results=max_results + 8))
+                for item in hits:
+                    if len(raw_hits) >= max_results:
+                        break
+                    href = (item.get("href") or "").strip()
+                    title = (item.get("title") or "").strip()
+                    body = (item.get("body") or "").strip()
+                    if href.startswith("http") and title and href not in seen_urls:
+                        domain = urllib.parse.urlparse(href).netloc.replace("www.", "").lower()
+                        if any(domain == b or domain.endswith("." + b) for b in low_quality_domains):
+                            continue
+                        if pirate_domain_re.search(domain) or re.search(r"\b(?:bölüm\s+izle|sezon\s+\d+\.?\s*bölüm|türkçe\s+dublaj|altyazılı\s+izle)\b", title, re.I):
+                            continue
+                        seen_urls.add(href)
+                        raw_hits.append({
+                            "title": title,
+                            "url": href,
+                            "domain": domain,
+                            "snippet": body,
+                        })
         except Exception as exc:
             logger.warning("DDGS search error: %s", exc)
             ddgs_failed = True
 
     if raw_hits:
-        top_urls = [h["url"] for h in raw_hits[:3]]
-        excerpts: List[str] = ["", "", ""]
+        # Fetch top pages and emit REAL-TIME 1 -> 2 -> 3 -> 4 -> 5 progress via progress_cb as each site finishes!
+        fetch_count = min(len(raw_hits), 5)
+        excerpts: List[str] = [""] * len(raw_hits)
         try:
+            from concurrent.futures import as_completed
             with ThreadPoolExecutor(max_workers=3) as pool:
-                excerpts = list(pool.map(_fetch_page_excerpt, top_urls))
+                future_map = {
+                    pool.submit(_fetch_page_excerpt, raw_hits[i]["url"], 3200): i
+                    for i in range(fetch_count)
+                }
+                completed_sites = 0
+                for fut in as_completed(future_map):
+                    idx_f = future_map[fut]
+                    try:
+                        excerpts[idx_f] = fut.result() or ""
+                    except Exception:
+                        excerpts[idx_f] = ""
+                    completed_sites += 1
+                    if progress_cb:
+                        try:
+                            progress_cb(completed_sites, raw_hits[idx_f]["domain"])
+                        except Exception:
+                            pass
         except Exception:
             pass
 
@@ -3041,12 +3126,64 @@ async def api_chat(req: ChatRequest, request: Request):
                     or re.search(r"\b(?:html|css|javascript|python|portfolyo|arayüz|kodu|tasarım\s+yap)\b", last_user_msg, re.I)
                 )
             )
-            if last_user_msg and (do_web_search or has_direct_url) and not is_local_code_turn:
-                yield _format_sse({"type": "status", "stage": "web_search", "sites_count": 1, "message": "Sayfa okunuyor..." if (has_direct_url and not do_web_search) else "Web siteleri taranıyor..."})
-                web_result = await asyncio.to_thread(_perform_web_search, last_user_msg, 5, hist_for_search, do_web_search, req.user_city)
+            auto_research = bool(last_user_msg and not do_web_search and _should_auto_research(last_user_msg))
+            effective_web_search = bool(do_web_search or auto_research)
+            if last_user_msg and (effective_web_search or has_direct_url) and not is_local_code_turn:
+                yield _format_sse({
+                    "type": "status",
+                    "stage": "web_search",
+                    "sites_count": 1,
+                    "domain": "",
+                    "message": "Sayfa okunuyor..." if (has_direct_url and not effective_web_search) else "Web siteleri taranıyor...",
+                })
+                loop = asyncio.get_running_loop()
+                prog_q: asyncio.Queue = asyncio.Queue()
+
+                def _on_site_progress(cnt: int, dom: str) -> None:
+                    loop.call_soon_threadsafe(prog_q.put_nowait, (cnt, dom))
+
+                search_task = asyncio.create_task(
+                    asyncio.to_thread(
+                        _perform_web_search,
+                        last_user_msg,
+                        5,
+                        hist_for_search,
+                        effective_web_search,
+                        req.user_city,
+                        _on_site_progress,
+                    )
+                )
+                while not search_task.done():
+                    try:
+                        cnt, dom = await asyncio.wait_for(prog_q.get(), timeout=0.12)
+                        yield _format_sse({
+                            "type": "status",
+                            "stage": "web_search",
+                            "sites_count": cnt,
+                            "domain": dom,
+                            "message": f"{cnt} web sitesi inceleniyor ({dom})",
+                        })
+                    except asyncio.TimeoutError:
+                        continue
+                while not prog_q.empty():
+                    cnt, dom = prog_q.get_nowait()
+                    yield _format_sse({
+                        "type": "status",
+                        "stage": "web_search",
+                        "sites_count": cnt,
+                        "domain": dom,
+                        "message": f"{cnt} web sitesi inceleniyor ({dom})",
+                    })
+                web_result = await search_task
                 if not web_result.get("skipped", False):
                     if web_result.get("sources"):
-                        yield _format_sse({"type": "status", "stage": "web_search", "sites_count": len(web_result["sources"]), "message": f"{len(web_result['sources'])} web sitesi incelendi"})
+                        yield _format_sse({
+                            "type": "status",
+                            "stage": "web_search",
+                            "sites_count": len(web_result["sources"]),
+                            "domain": web_result["sources"][-1].get("domain", ""),
+                            "message": f"{len(web_result['sources'])} web sitesi incelendi",
+                        })
                     yield _format_sse({
                         "type": "web_search",
                         "online": web_result["online"],
@@ -3182,17 +3319,17 @@ async def api_chat(req: ChatRequest, request: Request):
                     eff_system_prompt = (
                         f"{eff_system_prompt}\n\n"
                         "[İLK TUR NETLEŞTİRME KURALI]: Kullanıcı henüz tür/burç/hedef belirtmeden genel bir başlangıç kartına tıkladı. "
-                        "Rastgele liste boşaltma; sıcak 1 cümleyle gir, ardından konuya uygun tek emojili 4–5 kısa şıkla tek bir netleştirme sorusu sor (ör. filmde hangi tarzı sevdiği; burçta hangi burçları karşılaştırmak istediği; planda günlük mü haftalık mı ve odak alanı). Bu turda ```sen_card üretme."
+                        "Rastgele liste boşaltma; sıcak 1 cümleyle gir, ardından konuya uygun tek emojili 4–5 kısa şık sun ve YALNIZCA TEK BİR netleştirme sorusu sor (aynı soruyu hem üstte hem altta tekrarlama!). Bu turda ```sen_card üretme."
                     ).strip()
                 else:
                     eff_system_prompt = (
                         f"{eff_system_prompt}\n\n"
                         "[SOHBET VE RİTİM KURALI — SOMUT VE DOĞRUDAN CEVAP]:\n"
-                        "1) İçten, zeki, net ve akıcı Türkçe konuş. ASLA abartılı yapay metaforlar, robotik uyarılar veya kullanıcının söylemediği varsayımlar üretme.\n"
-                        "2) SONSÜZ SORU DÖNGÜSÜ YASAĞI (ÇOK KRİTİK): Kullanıcı tercihini belirttiyse ('Yerli olsun', 'Fark etmez sen seç', 'Aksiyon olsun', 'Polis suç temalı olsun', 'Spor ve iş odaklı olsun' vb.) veya ürün/öneri istediyse ('mekanik klavye öner' vb.), ASLA tekrar netleştirme sorusu sorup öneriyi erteleme! ASLA 'Bir Dram Örneği', 'Yüksek Tempolu', 'Soruşturma Odaklı' gibi İSİMSİZ kategori şablonları yazma! Doğrudan GERÇEK ve SOMUT film/ürün/plan isimlerini (ör. Eşkıya, Kış Uykusu, Organize İşler, Behzat Ç. Seni Kalbime Gömdüm, Av Mevsimi, Mad Max: Fury Road, Keychron K6, Akko 5075B vb.) ver!\n"
-                        "3) AKICI RİTİM: Kısa sıcak giriş (1–2 cümle) → görsel kart veya net maddeler → '**Benim yorumum:**' veya '**Benim ilk tercihim:**' satırı → gerekirse sonda konuyu derinleştiren tek kısa soru.\n"
-                        "4) TEKRAR YASAĞI: Görsel kart (```sen_card) kullandığın yanıtta kartın içindeki filmleri, ürünleri veya maddeleri kartın üstünde ya da altında düz metin listesi olarak TEKRAR YAZMA.\n"
-                        "5) EMOJİ VE MARKDOWN DİSİPLİNİ: Madde başlarında '*' yerine '-' kullan; cümle ortasına rastgele emoji serpiştirme."
+                        "1) İçten, zeki, net ve akıcı Türkçe konuş. ASLA 'Arka plan verilerinde...' veya 'Sistem notunda...' gibi iç yapıyı belli eden ifadeler kullanma; aradığın bilgi bulunamadıysa 3 paragraf bahane yazmak yerine en fazla 2 kısa cümlede dürüstçe söyle.\n"
+                        "2) SONSÜZ SORU DÖNGÜSÜ YASAĞI: Kullanıcı tercihini belirttiyse veya doğrudan öneri istediyse ASLA tekrar soru sorup erteleme ve ASLA 'Bir Dram Örneği' gibi isimsiz şablon yazma; doğrudan GERÇEK film/ürün/mekân/plan isimlerini ver!\n"
+                        "3) DOĞRU KAPANIŞ KALIBI: Çoklu seçim/öneri listesinde '**Benim ilk tercihim:**', analiz/ilişki/karşılaştırmada '**Benim yorumum:**' kullan (ilişki analizinde asla 'Benim ilk tercihim' deme!).\n"
+                        "4) TEKRAR YASAĞI: Görsel kart (```sen_card) kullandığın yanıtta karttaki maddeleri üstte/altta düz metinle tekrar etme.\n"
+                        "5) MARKDOWN DİSİPLİNİ: Madde başlarında '*' yerine '-' kullan; cümle ortasına rastgele emoji serpiştirme."
                     ).strip()
             else:
                 eff_system_prompt = (
@@ -3224,9 +3361,13 @@ async def api_chat(req: ChatRequest, request: Request):
                     '```sen_card\n{"kind":"image_compare","title":"Karşılaştırma","left":{"name":"Seçenek A","emoji":"🔥","subtitle":"Kısa özellik","image_query":"specific product photo A","points":["Artı 1","Artı 2"]},"right":{"name":"Seçenek B","emoji":"⚡","subtitle":"Kısa özellik","image_query":"specific product photo B","points":["Artı 1","Artı 2"]},"verdict":"Net seçim tavsiyesi."}\n```\n'
                     "3) Skor & Uyumluluk Kartı (burç, ilişki): "
                     '```sen_card\n{"kind":"scorecard","title":"AKREP ♏ × OĞLAK ♑","badge":"Yüksek uyum","score":"9/10","subtitle":"Genel uyum puanı","metrics":[{"emoji":"❤️","label":"Aşk","value":"9/10"},{"emoji":"🔥","label":"Tutku","value":"9,5/10"},{"emoji":"🛡️","label":"Güven ve sadakat","value":"10/10"}],"strengths":["Karşılıklı sadakat ve güven"],"challenges":["İki tarafın da inatçı olması"],"summary":"Birbirlerine alan tanıdıklarında çok sağlam bir bağ kurarlar."}\n```\n'
-                    "4) İnteraktif Günlük/Haftalık Plan (plan/rutin istendiğinde Markdown tablosu yerine bu kartı kullan!): "
-                    '```sen_card\n{"kind":"checklist","title":"Spor & İş Dengesi Planı","badge":"5 Adım","steps":[{"label":"Sabah 30 dk kardiyo veya esneme","meta":"07:30"},{"label":"Derin odak iş bloğu (en zor görev)","meta":"09:00"},{"label":"Öğle molası ve 15 dk açık hava yürüyüşü","meta":"13:00"},{"label":"Akşam ana kuvvet antrenmanı","meta":"18:30"},{"label":"Ekransız dinlenme ve uyku hazırlığı","meta":"22:30"}]}\n```\n'
-                    "Kartın içindeki maddeleri kartın dışında tekrar listeleme; kartın altında yalnızca 1-2 cümlelik '**Benim ilk tercihim / yorumum:**' satırını yaz."
+                    "4) İnteraktif Günlük/Haftalık Plan: "
+                    '```sen_card\n{"kind":"checklist","title":"Spor & İş Dengesi Planı","badge":"5 Adım","steps":[{"label":"Sabah 30 dk kardiyo veya esneme","meta":"07:30"},{"label":"Derin odak iş bloğu","meta":"09:00"}]}\n```\n'
+                    "5) Tekli Mekân / Konu Fotoğraf Kartı (belirli bir cami, bina, yer, ürün sorulduğunda): "
+                    '```sen_card\n{"kind":"image_spotlight","title":"Kılıçlı Köyü Camii","location_label":"Kılıçlı Mahallesi, Beykoz, İstanbul","image_query":"Beykoz Kilicli Koyu Camii Istanbul"}\n```\n'
+                    "6) İnteraktif Tercih / Seçim Kartı (kullanıcının 2-3 kısa tercihle karar vermesi gerekiyorsa): "
+                    '```sen_card\n{"kind":"choice_card","title":"Tercihini Netleştirelim","questions":[{"question":"1. Senin için en önemli özellik hangisi?","options":["Konfor ve yumuşaklık","Kolay temizlenmesi","Uzun ömürlü olması"]}]}\n```\n'
+                    "Kartın içindeki maddeleri kartın dışında tekrar listeleme; kartın altında yalnızca 1-2 cümlelik özet yorumunu ekle."
                 ).strip()
 
             # Keep quick weather/finance checks crisp without parroting card numbers or asking weird questions
@@ -3261,7 +3402,7 @@ async def api_chat(req: ChatRequest, request: Request):
                         "(NOT: MCP dosya araçları YALNIZCA yerel diskteki dosyalar içindir; internet araştırması için ASLA MCP search_files kullanma.)"
                     ).strip()
 
-            saved_mems = _load_memories()
+            saved_mems = [] if req.ignore_memory else _load_memories()
             if saved_mems:
                 mem_lines = "\n".join(f"- {it.get('text', '').strip()}" for it in saved_mems[:16] if it.get("text"))
                 if mem_lines:

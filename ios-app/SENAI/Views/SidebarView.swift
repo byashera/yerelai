@@ -1,10 +1,15 @@
 import SwiftUI
 
+// MARK: - ChatGPT-Style Left Slide-Over Sidebar Drawer
+
 struct SidebarView: View {
     @EnvironmentObject private var server: ServerManager
-    @Environment(\.dismiss) private var dismiss
-    @AppStorage("senai_theme") private var themePref: String = "system"
+    @AppStorage("senai_theme") private var themePref: String = "light"
+    @Binding var isPresented: Bool
     @Binding var showSettings: Bool
+    @Binding var showModelSheet: Bool
+
+    @State private var showSearch: Bool = false
     @State private var searchText: String = ""
     @State private var renameTarget: ChatSessionSummary? = nil
     @State private var renameDraft: String = ""
@@ -24,9 +29,33 @@ struct SidebarView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                // Fixed Top Search Bar (never floats at the bottom of the sheet over rows!)
+        VStack(spacing: 0) {
+            // Top Brand Header + Search Circle (ChatGPT style)
+            HStack {
+                Text("SEN.AI")
+                    .font(.title2.weight(.bold))
+                    .foregroundStyle(.primary)
+                Spacer()
+                Button {
+                    SenHaptics.light()
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.84)) {
+                        showSearch.toggle()
+                        if !showSearch { searchText = "" }
+                    }
+                } label: {
+                    Image(systemName: showSearch ? "xmark" : "magnifyingglass")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .frame(width: 38, height: 38)
+                }
+                .buttonStyle(SenSpringButtonStyle())
+                .senGlassCircle(interactive: true)
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 14)
+            .padding(.bottom, 10)
+
+            if showSearch {
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass")
                         .font(.subheadline)
@@ -36,11 +65,8 @@ struct SidebarView: View {
                         .textInputAutocapitalization(.never)
                         .disableAutocorrection(true)
                     if !searchText.isEmpty {
-                        Button {
-                            searchText = ""
-                        } label: {
+                        Button { searchText = "" } label: {
                             Image(systemName: "xmark.circle.fill")
-                                .font(.subheadline)
                                 .foregroundStyle(.secondary)
                         }
                         .buttonStyle(.plain)
@@ -53,150 +79,225 @@ struct SidebarView: View {
                         .fill(Color.primary.opacity(0.06))
                 }
                 .padding(.horizontal, 16)
-                .padding(.top, 8)
-                .padding(.bottom, 6)
+                .padding(.bottom, 10)
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
 
-                List {
-                    Section {
-                        Button {
-                            server.startNewChat()
-                            dismiss()
-                        } label: {
-                            HStack(spacing: 10) {
-                                Image(systemName: "plus.bubble.fill")
-                                    .font(.body.weight(.semibold))
-                                    .foregroundStyle(.blue)
-                                Text("Yeni Sohbet Başlat")
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(.primary)
-                                Spacer()
-                                HStack(spacing: 5) {
-                                    Circle()
-                                        .fill(server.connectionRoute == .disconnected ? Color.orange : Color.green)
-                                        .frame(width: 6, height: 6)
-                                    Text(server.connectionRoute == .lan ? "Wi-Fi" : (server.connectionRoute == .cloudflare ? "Uzaktan" : "Bağlı değil"))
-                                        .font(.caption2.weight(.medium))
-                                        .foregroundStyle(.secondary)
-                                }
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 18) {
+                    // Top Quick Navigation Shortcuts (like ChatGPT's Planlanmış / Kitaplık / Özelleştir)
+                    VStack(spacing: 2) {
+                        quickNavRow(icon: "bubble.left.and.exclamationmark.bubble.right", title: "Geçici Sohbet") {
+                            server.startTemporaryChat()
+                            closeDrawer()
+                        }
+                        quickNavRow(icon: "books.vertical", title: "Kütüphane", badge: server.useLibraryEnabled ? "Açık" : nil) {
+                            server.useLibraryEnabled.toggle()
+                            SenHaptics.light()
+                        }
+                        quickNavRow(icon: "slider.horizontal.3", title: "Model & Düşünme", badge: server.activeModelName.replacingOccurrences(of: "Gemma 4 ", with: "")) {
+                            closeDrawer()
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
+                                showModelSheet = true
                             }
                         }
-                        .tint(.primary)
+                        quickNavRow(icon: "globe", title: "Web Araştırması", badge: server.webSearchEnabled ? "Açık" : "Oto") {
+                            server.webSearchEnabled.toggle()
+                            SenHaptics.light()
+                        }
+                        quickNavRow(
+                            icon: themePref == "dark" ? "sun.max" : "moon",
+                            title: themePref == "dark" ? "Açık Tema" : "Koyu Tema"
+                        ) {
+                            themePref = (themePref == "dark") ? "light" : "dark"
+                            SenHaptics.light()
+                        }
                     }
+                    .padding(.horizontal, 10)
 
+                    // Pinned Sessions
                     if !pinnedSessions.isEmpty {
-                        Section("Sabitlenenler") {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Sabitlenenler")
+                                .font(.footnote.weight(.bold))
+                                .foregroundStyle(.primary)
+                                .padding(.horizontal, 18)
+
                             ForEach(pinnedSessions) { s in
-                                sessionRow(s)
+                                drawerSessionRow(s, isPinned: true)
                             }
                         }
+
+                        Divider()
+                            .opacity(0.45)
+                            .padding(.horizontal, 18)
                     }
 
-                    Section("Sohbet Geçmişi") {
+                    // Recent Sessions
+                    VStack(alignment: .leading, spacing: 4) {
                         if regularSessions.isEmpty && pinnedSessions.isEmpty {
                             Text("Henüz kayıtlı sohbet yok")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
-                        } else if regularSessions.isEmpty {
-                            Text("Diğer sohbet yok")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 18)
+                                .padding(.vertical, 8)
                         } else {
                             ForEach(regularSessions) { s in
-                                sessionRow(s)
+                                drawerSessionRow(s, isPinned: false)
                             }
                         }
                     }
+
+                    Color.clear.frame(height: 80)
                 }
-                .listStyle(.insetGrouped)
+                .padding(.top, 4)
             }
-            .navigationTitle("SEN.AI")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        themePref = (themePref == "dark") ? "light" : "dark"
-                        SenHaptics.light()
-                    } label: {
-                        Image(systemName: themePref == "dark" ? "sun.max.fill" : "moon.fill")
+        }
+        .overlay(alignment: .bottom) {
+            // Floating Bottom Action Bar (New Chat Pill + Profile/Settings Circle)
+            HStack {
+                Button {
+                    server.startNewChat()
+                    closeDrawer()
+                } label: {
+                    HStack(spacing: 7) {
+                        Image(systemName: "square.and.pencil")
+                            .font(.system(size: 15, weight: .bold))
+                        Text("Sohbet")
+                            .font(.subheadline.weight(.bold))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 12)
+                    .background {
+                        Capsule()
+                            .fill(Color.blue)
+                            .shadow(color: Color.blue.opacity(0.32), radius: 10, y: 4)
                     }
                 }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        dismiss()
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                            showSettings = true
-                        }
-                    } label: {
-                        Image(systemName: "gearshape")
+                .buttonStyle(SenSpringButtonStyle())
+
+                Spacer()
+
+                Button {
+                    SenHaptics.light()
+                    closeDrawer()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
+                        showSettings = true
+                    }
+                } label: {
+                    ZStack {
+                        Circle()
+                            .fill(Color.primary.opacity(0.10))
+                            .frame(width: 42, height: 42)
+                        Text("SA")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.primary)
                     }
                 }
+                .buttonStyle(SenSpringButtonStyle())
+                .senGlassCircle(interactive: true)
+                .accessibilityLabel("Ayarlar")
             }
-            .alert("Sohbeti Yeniden Adlandır", isPresented: Binding(
-                get: { renameTarget != nil },
-                set: { if !$0 { renameTarget = nil } }
-            )) {
-                TextField("Yeni başlık", text: $renameDraft)
-                Button("İptal", role: .cancel) { renameTarget = nil }
-                Button("Kaydet") {
-                    if let target = renameTarget {
-                        let draft = renameDraft
-                        renameTarget = nil
-                        Task { await server.renameSession(target.id, newTitle: draft) }
-                    }
+            .padding(.horizontal, 18)
+            .padding(.bottom, 16)
+            .padding(.top, 10)
+            .background {
+                LinearGradient(
+                    colors: [Color(.systemBackground).opacity(0), Color(.systemBackground).opacity(0.95)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .ignoresSafeArea()
+            }
+        }
+        .background(Color(.systemBackground).ignoresSafeArea())
+        .alert("Sohbeti Yeniden Adlandır", isPresented: Binding(
+            get: { renameTarget != nil },
+            set: { if !$0 { renameTarget = nil } }
+        )) {
+            TextField("Yeni başlık", text: $renameDraft)
+            Button("İptal", role: .cancel) { renameTarget = nil }
+            Button("Kaydet") {
+                if let target = renameTarget {
+                    let draft = renameDraft
+                    renameTarget = nil
+                    Task { await server.renameSession(target.id, newTitle: draft) }
                 }
             }
         }
     }
 
-    @ViewBuilder
-    private func sessionRow(_ s: ChatSessionSummary) -> some View {
-        let isPinned = s.pinned == true
-        Button {
-            Task {
-                await server.openSession(s.id)
-                dismiss()
-            }
-        } label: {
-            HStack(spacing: 10) {
-                Image(systemName: isPinned ? "pin.fill" : (server.activeSessionId == s.id ? "bubble.left.fill" : "bubble.left"))
-                    .font(.caption)
-                    .foregroundStyle(isPinned ? Color.orange : (server.activeSessionId == s.id ? Color.blue : Color.secondary))
-                Text(s.title)
-                    .font(.subheadline.weight(server.activeSessionId == s.id ? .semibold : .regular))
+    private func closeDrawer() {
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.88)) {
+            isPresented = false
+        }
+    }
+
+    private func quickNavRow(icon: String, title: String, badge: String? = nil, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 13) {
+                Image(systemName: icon)
+                    .font(.system(size: 16, weight: .medium))
                     .foregroundStyle(.primary)
-                    .lineLimit(1)
-                Spacer(minLength: 8)
-                if server.activeSessionId == s.id {
-                    Image(systemName: "checkmark")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(.blue)
+                    .frame(width: 24)
+                Text(title)
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(.primary)
+                Spacer()
+                if let badge {
+                    Text(badge)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background { Capsule().fill(Color.primary.opacity(0.06)) }
                 }
             }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 10)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .swipeActions(edge: .leading, allowsFullSwipe: true) {
-            Button {
-                Task { await server.togglePinSession(s.id) }
-            } label: {
-                Label(isPinned ? "Kaldır" : "Sabitle", systemImage: isPinned ? "pin.slash" : "pin.fill")
+    }
+
+    private func drawerSessionRow(_ s: ChatSessionSummary, isPinned: Bool) -> some View {
+        let isActive = server.activeSessionId == s.id && !server.isTemporaryChat
+        return Button {
+            Task {
+                await server.openSession(s.id)
+                closeDrawer()
             }
-            .tint(.orange)
+        } label: {
+            HStack(spacing: 10) {
+                if isPinned {
+                    Image(systemName: "pin.fill")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                }
+                Text(s.title)
+                    .font(.subheadline.weight(isActive ? .semibold : .regular))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Spacer(minLength: 6)
+                if let dt = shortTimeLabel(s.updated_at) {
+                    Text(dt)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background {
+                if isActive {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color.primary.opacity(0.07))
+                }
+            }
+            .padding(.horizontal, 10)
+            .contentShape(Rectangle())
         }
-        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-            Button(role: .destructive) {
-                Task { await server.deleteSession(s.id) }
-            } label: {
-                Label("Sil", systemImage: "trash")
-            }
-            Button {
-                renameDraft = s.title
-                renameTarget = s
-            } label: {
-                Label("Adlandır", systemImage: "pencil")
-            }
-            .tint(.blue)
-        }
+        .buttonStyle(.plain)
         .contextMenu {
             Button {
                 Task { await server.togglePinSession(s.id) }
@@ -216,5 +317,16 @@ struct SidebarView: View {
                 Label("Sil", systemImage: "trash")
             }
         }
+    }
+
+    private func shortTimeLabel(_ raw: String?) -> String? {
+        guard let raw = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { return nil }
+        if raw.count <= 10 && !raw.contains("T") { return raw }
+        let parts = raw.split(separator: "T")
+        if parts.count == 2 {
+            let timePart = String(parts[1].prefix(5))
+            return timePart
+        }
+        return String(raw.prefix(10))
     }
 }

@@ -94,16 +94,16 @@ jobs:
               xcrun simctl io "$UDID" screenshot "dist-shots/$outfile"
             }
 
-            capture_shot "welcome"        "01-welcome-dynamic-light.png"
-            capture_shot "chat"           "02-weather-scorecard-thinking-light.png"
-            capture_shot "media_list"     "03-media-list-movies-light.png"
-            capture_shot "image_compare"  "04-image-compare-light.png"
-            capture_shot "chat_more"      "05-checklist-v2-table-light.png"
-            capture_shot "code_table"     "06-code-syntax-table-light.png"
-            capture_shot "searching"      "07-web-searching-status-light.png"
-            capture_shot "sidebar"        "08-sidebar-pinned-light.png"
-            capture_shot "photo_composer" "09-photo-composer-light.png"
-            capture_shot "voice"          "10-voice-mode-waveform-light.png"
+            capture_shot "welcome"         "01-welcome-composer-light.png"
+            capture_shot "sidebar"         "02-sidebar-drawer-light.png"
+            capture_shot "settings"        "03-settings-cards-light.png"
+            capture_shot "temporary"       "04-temporary-chat-light.png"
+            capture_shot "plus_menu"       "05-plus-menu-pills-light.png"
+            capture_shot "models"          "06-models-liquid-light.png"
+            capture_shot "spotlight_table" "07-spotlight-table-light.png"
+            capture_shot "choice_card"     "08-choice-card-light.png"
+            capture_shot "searching"       "09-searching-live-light.png"
+            capture_shot "chat"            "10-weather-scorecard-light.png"
 
             xcrun simctl shutdown "$UDID" || true
             ls -lh dist-shots

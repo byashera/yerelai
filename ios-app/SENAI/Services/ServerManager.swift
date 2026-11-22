@@ -9,7 +9,8 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
     @AppStorage("senai_gist_url") var gistJsonURL: String = "https://gist.githubusercontent.com/byashera/a2d7ef6a838e83f17d72860b91d9458c/raw/yerelai_tunnel.json"
     @AppStorage("senai_custom_url") var customURL: String = ""
     @AppStorage("senai_tts_voice") var ttsVoice: String = "tr-TR-AhmetNeural"
-    @AppStorage("senai_web_search") var webSearchEnabled: Bool = true
+    @AppStorage("senai_web_search") var webSearchEnabled: Bool = false
+    @AppStorage("senai_use_library") var useLibraryEnabled: Bool = false
     @AppStorage("senai_model_id") var selectedModelId: String = "gemma-4-e4b-4bit"
     @AppStorage("senai_thinking") var thinkingEffortRaw: String = ThinkingEffort.off.rawValue
 
@@ -28,6 +29,9 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
     @Published var isGenerating: Bool = false
     @Published var isSearchingWeb: Bool = false
     @Published var searchingSitesCount: Int = 0
+    @Published var searchingDomain: String = ""
+    @Published var isTemporaryChat: Bool = false
+    @Published var temporaryPersonalized: Bool = true
     @Published var statusLine: String = ""
     @Published var speakingMessageId: String? = nil
 
@@ -234,10 +238,29 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
         } catch {}
     }
 
+    func faviconURL(for domain: String) -> URL? {
+        let clean = domain.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty, activeBaseURL != "https://preview.sen.ai",
+              let enc = clean.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
+            return nil
+        }
+        return URL(string: "https://www.google.com/s2/favicons?domain=\(enc)&sz=64")
+    }
+
     func startNewChat() {
         stopGeneration()
         stopSpeaking()
+        isTemporaryChat = false
         activeSessionId = "ios_\(UUID().uuidString.prefix(10).lowercased())"
+        messages = []
+        SenHaptics.light()
+    }
+
+    func startTemporaryChat() {
+        stopGeneration()
+        stopSpeaking()
+        isTemporaryChat = true
+        activeSessionId = "tmp_\(UUID().uuidString.prefix(10).lowercased())"
         messages = []
         SenHaptics.light()
     }
@@ -287,6 +310,7 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
         isGenerating = true
         isSearchingWeb = false
         searchingSitesCount = 0
+        searchingDomain = ""
         statusLine = images.isEmpty ? "" : "Görsel yükleniyor..."
 
         streamTask = Task {
@@ -317,7 +341,8 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
                 "model_id": selectedModelId,
                 "thinking_effort": thinkingEffort.rawValue,
                 "web_search": webSearchEnabled,
-                "use_library": false,
+                "use_library": useLibraryEnabled,
+                "ignore_memory": isTemporaryChat && !temporaryPersonalized,
                 "messages": historyPayload,
             ]
             if let city = userCity, !city.isEmpty {
@@ -343,6 +368,7 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
             isGenerating = false
             isSearchingWeb = false
             searchingSitesCount = 0
+            searchingDomain = ""
             statusLine = ""
             if let idx = messages.indices.last, messages[idx].role == "assistant" {
                 messages[idx].isStreaming = false
@@ -358,17 +384,47 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
 
     private func performSSEStream(bodyObj: [String: Any], assistantId: String, autoSpeak: Bool = false) async {
         let startTime = Date()
+        var pendingAnswer = ""
+        var pendingThinking = ""
+        var lastFlush = Date()
+
+        func flushBuffers(force: Bool = false) {
+            let now = Date()
+            guard force || now.timeIntervalSince(lastFlush) >= 0.05 else { return }
+            if !pendingThinking.isEmpty || !pendingAnswer.isEmpty {
+                let tAdd = pendingThinking
+                let aAdd = pendingAnswer
+                pendingThinking = ""
+                pendingAnswer = ""
+                lastFlush = now
+                let secs = now.timeIntervalSince(startTime)
+                updateAssistant(assistantId) {
+                    if !tAdd.isEmpty {
+                        $0.thinking += tAdd
+                        $0.thinkingSeconds = secs
+                    }
+                    if !aAdd.isEmpty {
+                        $0.content += aAdd
+                    }
+                }
+            }
+        }
+
         defer {
+            flushBuffers(force: true)
             isGenerating = false
             isSearchingWeb = false
             searchingSitesCount = 0
+            searchingDomain = ""
             statusLine = ""
             var finalSpokenText = ""
             if let idx = messages.firstIndex(where: { $0.id == assistantId }) {
                 messages[idx].isStreaming = false
                 finalSpokenText = messages[idx].content
             }
-            Task { await saveCurrentSession() }
+            if !isTemporaryChat {
+                Task { await saveCurrentSession() }
+            }
             if autoSpeak, !finalSpokenText.isEmpty {
                 Task { await toggleSpeak(messageId: assistantId, text: finalSpokenText) }
             }
@@ -403,8 +459,10 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
                     if stage == "web_search" {
                         isSearchingWeb = true
                         let cnt = (ev["sites_count"] as? Int) ?? max(1, searchingSitesCount)
-                        withAnimation(.snappy(duration: 0.25)) {
+                        let dom = (ev["domain"] as? String) ?? ""
+                        withAnimation(.snappy(duration: 0.22)) {
                             searchingSitesCount = max(searchingSitesCount, cnt)
+                            if !dom.isEmpty { searchingDomain = dom }
                         }
                     } else if stage == "generating" || stage == "model_loading" {
                         isSearchingWeb = false
@@ -412,40 +470,42 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
                 case "thinking_delta", "thinking":
                     if let delta = ev["delta"] as? String {
                         isSearchingWeb = false
-                        let secs = Date().timeIntervalSince(startTime)
-                        updateAssistant(assistantId) {
-                            $0.thinking += delta
-                            $0.thinkingSeconds = secs
-                        }
+                        pendingThinking += delta
+                        flushBuffers()
                     }
                 case "answer_delta", "text":
                     if let delta = ev["delta"] as? String {
                         isSearchingWeb = false
                         statusLine = ""
-                        updateAssistant(assistantId) { $0.content += delta }
+                        pendingAnswer += delta
+                        flushBuffers()
                     }
                 case "auto_persona":
+                    flushBuffers(force: true)
                     if let name = ev["name"] as? String {
                         updateAssistant(assistantId) { $0.autoPersona = name }
                     }
                 case "web_search":
+                    flushBuffers(force: true)
                     if let srcs = ev["sources"],
                        let sData = try? JSONSerialization.data(withJSONObject: srcs),
                        let parsed = try? JSONDecoder().decode([WebSource].self, from: sData) {
                         if !parsed.isEmpty {
-                            withAnimation(.snappy(duration: 0.25)) {
+                            withAnimation(.snappy(duration: 0.22)) {
                                 searchingSitesCount = parsed.count
                             }
                         }
                         updateAssistant(assistantId) { $0.webSources = parsed }
                     }
                 case "rich_card":
+                    flushBuffers(force: true)
                     if let cardObj = ev["card"],
                        let cData = try? JSONSerialization.data(withJSONObject: cardObj),
                        let parsed = try? JSONDecoder().decode(RichCardPayload.self, from: cData) {
                         updateAssistant(assistantId) { $0.richCards.append(parsed) }
                     }
                 case "error":
+                    flushBuffers(force: true)
                     let err = (ev["detail"] as? String) ?? (ev["error"] as? String) ?? "Üretim hatası"
                     updateAssistant(assistantId) { $0.content = "Hata: \(err)" }
                 default:
@@ -455,6 +515,7 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
         } catch is CancellationError {
             // Cancelled cleanly
         } catch {
+            flushBuffers(force: true)
             updateAssistant(assistantId) {
                 if $0.content.isEmpty {
                     $0.content = "Bağlantı kesildi: \(error.localizedDescription)"
@@ -783,12 +844,55 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
                 ChatMessage(id: "u3", role: "user", content: "Python stok hesaplama kodu ve örnek envanter tablosu yazar mısın?"),
                 ChatMessage(id: "a3", role: "assistant", content: codeTableMd, autoPersona: "Veri & Excel Analisti", rating: "like"),
             ]
+        } else if screen == "spotlight_table" {
+            let spotlightMd = """
+            Gassal dizisindeki imamın görev yaptığı cami **İstanbul Beykoz'daki Kılıçlı Köyü Camii**'dir.
+
+            ```sen_card
+            {"kind":"image_spotlight","title":"Kılıçlı Köyü Camii","subtitle":"Beykoz, İstanbul · Gassal Dizisi Çekim Mekanı","location_label":"Beykoz, İstanbul","image_query":"Kılıçlı Köyü Camii Beykoz İstanbul"}
+            ```
+
+            | Özellik | Değerlendirme | Durum |
+            | --- | --- | --- |
+            | **Konum Doğruluğu** | Beykoz Kılıçlı Köyü | Çok iyi |
+            | **Kaynak Güveni** | 5 bağımsız haber sitesi | En iyi |
+            | **Çekim Atmosferi** | Doğal köy dokusu | Başarılı |
+            """
+            messages = [
+                ChatMessage(id: "usp1", role: "user", content: "Gassal dizisindeki imamın camisi gerçekte nerede?"),
+                ChatMessage(
+                    id: "asp1",
+                    role: "assistant",
+                    content: spotlightMd,
+                    thinking: "internal",
+                    webSources: [
+                        WebSource(title: "Gassal Dizisi Nerede Çekildi? Kılıçlı Köyü Camii", url: "https://referansturk.com.tr", domain: "referansturk.com.tr", snippet: "Gassal dizisinin cami sahneleri Beykoz Kılıçlı Köyü'nde çekildi."),
+                        WebSource(title: "Gassal Çekim Mekanları", url: "https://milligazete.com.tr", domain: "milligazete.com.tr", snippet: "İstanbul Beykoz ilçesine bağlı Kılıçlı Mahallesi."),
+                        WebSource(title: "Televizyon Gazetesi — Gassal", url: "https://televizyongazetesi.com", domain: "televizyongazetesi.com", snippet: "TRT Tabii yapımı Gassal dizisi mekanları."),
+                    ],
+                    rating: "like",
+                    thinkingSeconds: 1.9
+                ),
+            ]
+        } else if screen == "choice_card" {
+            let choiceMd = """
+            Sana tam nokta atışı bir öneri yapabilmem için aşağıdan seçim yapabilirsin:
+
+            ```sen_card
+            {"kind":"choice_card","title":"Tercihlerini seç","subtitle":"Hızlı 2 adımlı seçim","questions":[{"question":"Hangi kategori?","options":["Film & Dizi","Klavye & Ekipman","Günlük Plan"]},{"question":"Önceliğin nedir?","options":["Fiyat / Performans","En Yüksek Kalite","Hızlı Çözüm"]}]}
+            ```
+            """
+            messages = [
+                ChatMessage(id: "uch1", role: "user", content: "Bana harika bir öneri yapar mısın?"),
+                ChatMessage(id: "ach1", role: "assistant", content: choiceMd, rating: "like"),
+            ]
         } else if screen == "searching" {
             isGenerating = true
             isSearchingWeb = true
-            searchingSitesCount = 4
+            searchingSitesCount = 3
+            searchingDomain = "referansturk.com.tr"
             messages = [
-                ChatMessage(id: "us1", role: "user", content: "Claw's Z14 koltuğunun kendi sitesinde 135° yatış bilgisi yazıyor mu?"),
+                ChatMessage(id: "us1", role: "user", content: "Gassal dizisindeki imamın camisi gerçekte nerede?"),
                 ChatMessage(id: "as1", role: "assistant", content: "", isStreaming: true),
             ]
         } else {

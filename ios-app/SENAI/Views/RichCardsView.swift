@@ -313,6 +313,10 @@ struct SenVisualCardView: View {
             RatingCardView(card: card)
         case "checklist":
             ChecklistCardView(card: card)
+        case "image_spotlight":
+            ImageSpotlightCardView(card: card)
+        case "choice_card":
+            ChoiceQuestionnaireCardView(card: card)
         default:
             EmptyView()
         }
@@ -359,8 +363,8 @@ struct CompatibilityCardView: View {
                 Text(card.title ?? "Uyum Analizi")
                     .font(.subheadline.weight(.bold))
                     .foregroundStyle(.primary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.75)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.82)
                 Spacer(minLength: 6)
                 if let badge = card.badge, !badge.isEmpty {
                     Text(badge)
@@ -461,7 +465,7 @@ struct CompatibilityCardView: View {
                     ForEach(strengths, id: \.self) { s in
                         HStack(alignment: .top, spacing: 6) {
                             Text("•").foregroundStyle(.green)
-                            Text(s).font(.caption).foregroundStyle(.secondary)
+                            Text(s).font(.caption).foregroundStyle(Color.primary.opacity(0.82))
                         }
                     }
                 }
@@ -475,7 +479,7 @@ struct CompatibilityCardView: View {
                     ForEach(challenges, id: \.self) { ch in
                         HStack(alignment: .top, spacing: 6) {
                             Text("•").foregroundStyle(.orange)
-                            Text(ch).font(.caption).foregroundStyle(.secondary)
+                            Text(ch).font(.caption).foregroundStyle(Color.primary.opacity(0.82))
                         }
                     }
                 }
@@ -1206,26 +1210,21 @@ struct MarkdownTableCardView: View {
 
                 ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
                     HStack(alignment: .top, spacing: 12) {
-                        Text(row.count > 0 ? row[0] : "")
-                            .font(.subheadline)
-                            .foregroundStyle(.primary)
+                        tableCellView(row.count > 0 ? row[0] : "", isRightAligned: false, isBold: false)
                         Spacer(minLength: 12)
-                        Text(row.count > 1 ? row[1] : "")
-                            .font(.subheadline.weight(.semibold).monospacedDigit())
-                            .foregroundStyle(.primary)
-                            .multilineTextAlignment(.trailing)
+                        tableCellView(row.count > 1 ? row[1] : "", isRightAligned: true, isBold: true)
                     }
                     .padding(.vertical, 9)
                     Divider().opacity(0.30)
                 }
             } else if headers.count <= 4 {
-                // 3-4 column table: fits 100% inside iPhone screen width with clean multi-line wrapping (zero right-edge clipping!)
+                // 3-4 column table: all columns left-aligned & normal weight (ChatGPT comparison table style!)
                 HStack(alignment: .bottom, spacing: 8) {
-                    ForEach(Array(headers.enumerated()), id: \.offset) { cIdx, h in
-                        Text(h)
+                    ForEach(Array(headers.enumerated()), id: \.offset) { _, h in
+                        Text(tableCellAttributed(h))
                             .font(.caption.weight(.bold))
                             .foregroundStyle(.primary)
-                            .frame(maxWidth: .infinity, alignment: cIdx == headers.count - 1 ? .trailing : .leading)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
                 .padding(.vertical, 8)
@@ -1235,25 +1234,20 @@ struct MarkdownTableCardView: View {
                 ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
                     HStack(alignment: .top, spacing: 8) {
                         ForEach(0..<headers.count, id: \.self) { cIdx in
-                            Text(cIdx < row.count ? row[cIdx] : "")
-                                .font(.caption.monospacedDigit())
-                                .foregroundStyle(cIdx == headers.count - 1 ? Color.primary : Color.primary.opacity(0.88))
-                                .fontWeight(cIdx == headers.count - 1 ? .semibold : .regular)
-                                .multilineTextAlignment(cIdx == headers.count - 1 ? .trailing : .leading)
-                                .fixedSize(horizontal: false, vertical: true)
-                                .frame(maxWidth: .infinity, alignment: cIdx == headers.count - 1 ? .trailing : .leading)
+                            tableCellView(cIdx < row.count ? row[cIdx] : "", isRightAligned: false, isBold: false)
+                                .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
                     .padding(.vertical, 9)
                     Divider().opacity(0.30)
                 }
             } else {
-                // 5+ column table: horizontal scroll
+                // 5+ column table: horizontal scroll, all left-aligned
                 ScrollView(.horizontal, showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 0) {
                         HStack(spacing: 0) {
                             ForEach(Array(headers.enumerated()), id: \.offset) { _, h in
-                                Text(h)
+                                Text(tableCellAttributed(h))
                                     .font(.caption.weight(.bold))
                                     .foregroundStyle(.primary)
                                     .frame(minWidth: 84, alignment: .leading)
@@ -1266,10 +1260,7 @@ struct MarkdownTableCardView: View {
                         ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
                             HStack(alignment: .top, spacing: 0) {
                                 ForEach(0..<headers.count, id: \.self) { cIdx in
-                                    Text(cIdx < row.count ? row[cIdx] : "")
-                                        .font(.caption.monospacedDigit())
-                                        .foregroundStyle(cIdx == headers.count - 1 ? Color.primary : Color.primary.opacity(0.88))
-                                        .fontWeight(cIdx == headers.count - 1 ? .semibold : .regular)
+                                    tableCellView(cIdx < row.count ? row[cIdx] : "", isRightAligned: false, isBold: false)
                                         .frame(minWidth: 84, alignment: .leading)
                                         .padding(.trailing, 12)
                                         .padding(.vertical, 9)
@@ -1310,5 +1301,154 @@ struct MarkdownTableCardView: View {
             .padding(.top, 6)
         }
         .padding(.vertical, 4)
+    }
+
+    @ViewBuilder
+    private func tableCellView(_ raw: String, isRightAligned: Bool, isBold: Bool) -> some View {
+        let stripped = raw.replacingOccurrences(of: "*", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let low = stripped.lowercased()
+        let isHighlightBadge = (low == "çok iyi" || low == "cok iyi" || low == "en iyi" || low == "mükemmel")
+        if isHighlightBadge {
+            Text(stripped)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.green)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background { Capsule().fill(Color.green.opacity(0.14)) }
+        } else {
+            Text(tableCellAttributed(raw))
+                .font(isBold ? .subheadline.weight(.semibold).monospacedDigit() : .caption.monospacedDigit())
+                .foregroundStyle(.primary)
+                .multilineTextAlignment(isRightAligned ? .trailing : .leading)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func tableCellAttributed(_ raw: String) -> AttributedString {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let parsed = try? AttributedString(markdown: trimmed, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
+            return parsed
+        }
+        return AttributedString(trimmed.replacingOccurrences(of: "**", with: ""))
+    }
+}
+
+// MARK: - Single Location / Subject HD Spotlight Photo Card (ChatGPT style)
+
+struct ImageSpotlightCardView: View {
+    @EnvironmentObject private var server: ServerManager
+    let card: SenVisualCard
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ResolvedRemoteImageView(
+                url: server.imageResolveURL(for: card.image_query ?? card.title),
+                fallbackIcon: "photo.on.rectangle.angled"
+            )
+            .frame(height: 175)
+            .frame(maxWidth: 260)
+            .clipShape(.rect(cornerRadius: 16))
+            .overlay {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.10), lineWidth: 0.7)
+            }
+
+            if let loc = card.location_label, !loc.isEmpty {
+                HStack(spacing: 5) {
+                    Text("Konum:")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(.primary)
+                    Text(loc)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            } else if let title = card.title, !title.isEmpty {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+// MARK: - ChatGPT-Style Interactive Choice Questionnaire Card
+
+struct ChoiceQuestionnaireCardView: View {
+    @EnvironmentObject private var server: ServerManager
+    let card: SenVisualCard
+    @State private var selections: [String: String] = [:]
+    @State private var submitted: Bool = false
+
+    var body: some View {
+        let questions = card.questions ?? []
+        VStack(alignment: .leading, spacing: 14) {
+            ForEach(Array(questions.enumerated()), id: \.element.id) { qIdx, q in
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(q.question)
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(.primary)
+
+                    ForEach(q.options, id: \.self) { opt in
+                        let current = selections[q.id] ?? q.options.first ?? ""
+                        let isSelected = (current == opt)
+                        Button {
+                            SenHaptics.light()
+                            selections[q.id] = opt
+                        } label: {
+                            HStack(spacing: 10) {
+                                ZStack {
+                                    Circle()
+                                        .strokeBorder(isSelected ? Color.primary : Color.secondary.opacity(0.38), lineWidth: isSelected ? 5 : 1.5)
+                                        .frame(width: 20, height: 20)
+                                }
+                                Text(opt)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.primary)
+                                    .multilineTextAlignment(.leading)
+                                Spacer()
+                            }
+                            .padding(.vertical, 3)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                if qIdx < questions.count - 1 {
+                    Divider().opacity(0.35)
+                }
+            }
+
+            Button {
+                SenHaptics.medium()
+                let summaryLines = questions.map { q -> String in
+                    let chosen = selections[q.id] ?? q.options.first ?? ""
+                    return "\(q.question) \(chosen)"
+                }
+                submitted = true
+                server.sendMessage("Tercihlerime göre değerlendir:\n" + summaryLines.joined(separator: "\n"))
+            } label: {
+                Text(submitted ? "Gönderildi ✓" : "Tercihlerime göre değerlendir")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background {
+                        Capsule().fill(submitted ? Color.green : Color.blue)
+                    }
+            }
+            .buttonStyle(SenSpringButtonStyle())
+            .disabled(submitted || server.isGenerating)
+        }
+        .padding(16)
+        .background {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(Color(.secondarySystemGroupedBackground))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.09), lineWidth: 0.8)
+                }
+                .shadow(color: Color.black.opacity(0.04), radius: 8, y: 2)
+        }
     }
 }

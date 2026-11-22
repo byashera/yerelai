@@ -236,6 +236,7 @@ struct SenAmbientBackground: View {
                 )
             }
         }
+        .drawingGroup()
         .ignoresSafeArea()
     }
 }

@@ -292,6 +292,12 @@ struct SenChecklistStep: Identifiable, Codable, Hashable {
     let meta: String?
 }
 
+struct SenChoiceQuestion: Identifiable, Codable, Hashable {
+    var id: String { question }
+    let question: String
+    let options: [String]
+}
+
 struct SenVisualCard: Identifiable, Decodable, Hashable {
     var id: String { "\(kind)_\(title ?? "")" }
     let kind: String
@@ -303,6 +309,8 @@ struct SenVisualCard: Identifiable, Decodable, Hashable {
     let score: Int?
     let scoreText: String?
     let emoji: String?
+    let image_query: String?
+    let location_label: String?
     let metrics: [SenMetric]?
     let left: SenCompareSide?
     let right: SenCompareSide?
@@ -314,9 +322,10 @@ struct SenVisualCard: Identifiable, Decodable, Hashable {
     let profiles: [SenProfileItem]?
     let strengths: [String]?
     let challenges: [String]?
+    let questions: [SenChoiceQuestion]?
 
     enum CodingKeys: String, CodingKey {
-        case kind, title, subtitle, badge, summary, note, score, emoji, metrics, left, right, verdict, tags, points, steps, items, profiles, strengths, challenges
+        case kind, title, subtitle, badge, summary, note, score, emoji, image_query, location_label, metrics, left, right, verdict, tags, points, steps, items, profiles, strengths, challenges, questions
     }
 
     init(from decoder: Decoder) throws {
@@ -328,6 +337,8 @@ struct SenVisualCard: Identifiable, Decodable, Hashable {
         summary = try? c.decodeIfPresent(String.self, forKey: .summary)
         note = try? c.decodeIfPresent(String.self, forKey: .note)
         emoji = try? c.decodeIfPresent(String.self, forKey: .emoji)
+        image_query = try? c.decodeIfPresent(String.self, forKey: .image_query)
+        location_label = try? c.decodeIfPresent(String.self, forKey: .location_label)
         metrics = try? c.decodeIfPresent([SenMetric].self, forKey: .metrics)
         left = try? c.decodeIfPresent(SenCompareSide.self, forKey: .left)
         right = try? c.decodeIfPresent(SenCompareSide.self, forKey: .right)
@@ -339,6 +350,7 @@ struct SenVisualCard: Identifiable, Decodable, Hashable {
         profiles = try? c.decodeIfPresent([SenProfileItem].self, forKey: .profiles)
         strengths = try? c.decodeIfPresent([String].self, forKey: .strengths)
         challenges = try? c.decodeIfPresent([String].self, forKey: .challenges)
+        questions = try? c.decodeIfPresent([SenChoiceQuestion].self, forKey: .questions)
 
         if let intScore = try? c.decodeIfPresent(Int.self, forKey: .score) {
             score = intScore
