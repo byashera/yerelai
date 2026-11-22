@@ -3412,6 +3412,10 @@ async def api_chat(req: ChatRequest, request: Request):
                         f"{mem_lines}\n"
                         "[/KALICI HAFIZA]"
                     ).strip()
+            if not req.ignore_memory:
+                fb_hint = _get_recent_rating_feedback_hint()
+                if fb_hint:
+                    eff_system_prompt = f"{eff_system_prompt}\n\n{fb_hint}".strip()
             if enable_thinking:
                 eff_system_prompt = (
                     f"{eff_system_prompt}\n\n"
@@ -4401,44 +4405,98 @@ async def api_list_dataset():
     }
 
 
+def _get_recent_rating_feedback_hint() -> str:
+    entries = _load_dataset_entries()
+    if not entries:
+        return ""
+    recent_dislikes: List[str] = []
+    recent_likes: List[str] = []
+    for e in reversed(entries):
+        msgs = e.get("messages") or []
+        u_txt = next((m.get("content", "").strip() for m in msgs if m.get("role") == "user"), "")
+        a_txt = next((m.get("content", "").strip() for m in msgs if m.get("role") == "assistant"), "")
+        if not u_txt or not a_txt:
+            continue
+        r = e.get("rating")
+        if r == "dislike" and len(recent_dislikes) < 2:
+            short_a = re.sub(r"\s+", " ", a_txt)[:110]
+            recent_dislikes.append(f"'{u_txt[:55]}' sorusunda şu tarz yanıt beğenilmedi: \"{short_a}...\"")
+        elif r == "like" and len(recent_likes) < 2:
+            short_a = re.sub(r"\s+", " ", a_txt)[:110]
+            recent_likes.append(f"'{u_txt[:55]}' sorusunda şu netlik ve format beğenildi: \"{short_a}...\"")
+        if len(recent_dislikes) >= 2 and len(recent_likes) >= 2:
+            break
+    if not recent_dislikes and not recent_likes:
+        return ""
+    lines = ["[KULLANICI BEĞENİ (👍/👎) GERİ BİLDİRİMLERİ — YANIT TARZINI BUNA GÖRE AYARLA]:"]
+    for item in recent_likes:
+        lines.append(f"- 👍 {item}")
+    for item in recent_dislikes:
+        lines.append(f"- 👎 {item} (Bu hatayı veya yüzeyselliği tekrarlama!)")
+    return "\n".join(lines)
+
+
 @app.post("/api/dataset/rate")
 async def api_rate_dataset_entry(payload: Dict[str, Any]):
     user_text = str(payload.get("user_text") or "").strip()
     assistant_text = str(payload.get("assistant_text") or "").strip()
-    rating = "dislike" if str(payload.get("rating") or "").lower() == "dislike" else "like"
+    message_id = str(payload.get("message_id") or "").strip()
+    raw_rating = str(payload.get("rating") or "").strip().lower()
+    if raw_rating in ("none", "", "null"):
+        rating = "none"
+    elif raw_rating == "dislike":
+        rating = "dislike"
+    else:
+        rating = "like"
     reason = str(payload.get("reason") or "").strip()[:120]
     corrected = str(payload.get("corrected_text") or "").strip()
     sys_prompt = str(payload.get("system_prompt") or "").strip()
     if not user_text or not assistant_text:
         raise HTTPException(status_code=400, detail="Soru ve yanıt boş olamaz.")
 
-    msgs: List[Dict[str, str]] = []
-    if sys_prompt:
-        msgs.append({"role": "system", "content": sys_prompt})
-    msgs.append({"role": "user", "content": user_text})
-    msgs.append({"role": "assistant", "content": assistant_text})
+    existing = _load_dataset_entries()
+    kept: List[Dict[str, Any]] = []
+    for e in existing:
+        e_mid = str(e.get("message_id") or "").strip()
+        e_msgs = e.get("messages") or []
+        e_u = next((m.get("content", "").strip() for m in e_msgs if m.get("role") == "user"), "")
+        e_a = next((m.get("content", "").strip() for m in e_msgs if m.get("role") == "assistant"), "")
+        if (message_id and e_mid == message_id) or (e_u == user_text and e_a == assistant_text):
+            continue
+        kept.append(e)
 
-    entry = {
-        "id": uuid.uuid4().hex[:10],
-        "created_at": datetime.now().isoformat(timespec="seconds"),
-        "rating": rating,
-        "reason": reason,
-        "corrected_text": corrected,
-        "model_id": str(payload.get("model_id") or ""),
-        "thinking_effort": str(payload.get("thinking_effort") or ""),
-        "messages": msgs,
-    }
-    with open(DATASET_PATH, "a", encoding="utf-8") as f:
-        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    entry: Optional[Dict[str, Any]] = None
+    if rating != "none":
+        msgs: List[Dict[str, str]] = []
+        if sys_prompt:
+            msgs.append({"role": "system", "content": sys_prompt})
+        msgs.append({"role": "user", "content": user_text})
+        msgs.append({"role": "assistant", "content": assistant_text})
 
-    entries = _load_dataset_entries()
+        entry = {
+            "id": uuid.uuid4().hex[:10],
+            "message_id": message_id,
+            "created_at": datetime.now().isoformat(timespec="seconds"),
+            "rating": rating,
+            "reason": reason,
+            "corrected_text": corrected,
+            "model_id": str(payload.get("model_id") or ""),
+            "thinking_effort": str(payload.get("thinking_effort") or ""),
+            "messages": msgs,
+        }
+        kept.append(entry)
+
+    with open(DATASET_PATH, "w", encoding="utf-8") as f:
+        for item in kept:
+            f.write(json.dumps(item, ensure_ascii=False) + "\n")
+
     return {
         "ok": True,
         "entry": entry,
-        "count": len(entries),
-        "sft_count": sum(1 for e in entries if e.get("rating", "like") == "like" or (e.get("corrected_text") or "").strip()),
-        "dislike_count": sum(1 for e in entries if e.get("rating") == "dislike"),
-        "dpo_count": len(_build_dpo_pairs(entries)),
+        "count": len(kept),
+        "sft_count": sum(1 for e in kept if e.get("rating", "like") == "like" or (e.get("corrected_text") or "").strip()),
+        "dislike_count": sum(1 for e in kept if e.get("rating") == "dislike"),
+        "dpo_count": len(_build_dpo_pairs(kept)),
     }
 
 

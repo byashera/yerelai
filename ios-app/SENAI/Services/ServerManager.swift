@@ -633,7 +633,7 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
         await fetchSessions()
     }
 
-    // MARK: - Rating (Like / Dislike -> SFT & DPO)
+    // MARK: - Rating (Like / Dislike -> Live Preference Feedback + Persistent Session + Deduplicated SFT/DPO)
 
     func rateMessage(_ messageId: String, rating: String) async {
         guard let idx = messages.firstIndex(where: { $0.id == messageId }), idx > 0 else { return }
@@ -641,17 +641,23 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
         let userText = messages[0..<idx].last(where: { $0.role == "user" })?.content ?? ""
         guard !userText.isEmpty, !assistantText.isEmpty else { return }
 
-        messages[idx].rating = rating
+        let nextRating: String? = (messages[idx].rating == rating) ? nil : rating
+        messages[idx].rating = nextRating
         SenHaptics.light()
+
+        if !isTemporaryChat {
+            await saveCurrentSession()
+        }
 
         guard let url = URL(string: "\(activeBaseURL)/api/dataset/rate") else { return }
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try? JSONSerialization.data(withJSONObject: [
+            "message_id": messageId,
             "user_text": userText,
             "assistant_text": assistantText,
-            "rating": rating,
+            "rating": nextRating ?? "none",
             "model_id": selectedModelId,
         ])
         _ = try? await urlSession.data(for: req)

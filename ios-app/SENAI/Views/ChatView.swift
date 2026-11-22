@@ -30,9 +30,20 @@ struct ChatView: View {
 
     var body: some View {
         GeometryReader { geo in
-            let drawerWidth = min(geo.size.width * 0.84, 340)
+            let drawerWidth = min(geo.size.width * 0.82, 324)
 
             ZStack(alignment: .leading) {
+                // Left Slide-Over Sidebar (revealed as main chat window slides right, matching IMG_5022.jpg)
+                if showSidebar {
+                    SidebarView(
+                        isPresented: $showSidebar,
+                        showSettings: $showSettings,
+                        showModelSheet: $showModelSheet
+                    )
+                    .frame(width: drawerWidth)
+                    .transition(.move(edge: .leading))
+                }
+
                 NavigationStack {
                     ZStack {
                         SenAmbientBackground()
@@ -60,7 +71,7 @@ struct ChatView: View {
 
                         // iOS 26 Floating Liquid Glass (+) Popover Menu
                         if showPlusMenu {
-                            Color.black.opacity(0.08)
+                            Color.black.opacity(0.04)
                                 .ignoresSafeArea()
                                 .onTapGesture {
                                     withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
@@ -74,7 +85,7 @@ struct ChatView: View {
                                 HStack {
                                     plusPopoverMenu
                                         .padding(.leading, 14)
-                                        .padding(.bottom, 74)
+                                        .padding(.bottom, 70)
                                     Spacer()
                                 }
                             }
@@ -82,6 +93,8 @@ struct ChatView: View {
                         }
                     }
                     .onAppear {
+                        server.webSearchEnabled = false
+                        server.useLibraryEnabled = false
                         if initialPreviewScreen == "sidebar" {
                             showSidebar = true
                         } else if initialPreviewScreen == "settings" {
@@ -96,7 +109,6 @@ struct ChatView: View {
                             server.isTemporaryChat = true
                         } else if initialPreviewScreen == "plus_menu" {
                             server.webSearchEnabled = true
-                            server.useLibraryEnabled = true
                             showPlusMenu = true
                         } else if initialPreviewScreen == "composer_pills" {
                             server.webSearchEnabled = true
@@ -127,7 +139,7 @@ struct ChatView: View {
                                 SenHaptics.light()
                                 inputFocused = false
                                 showPlusMenu = false
-                                withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
+                                withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
                                     showSidebar = true
                                 }
                             } label: {
@@ -137,7 +149,9 @@ struct ChatView: View {
                         }
 
                         ToolbarItem(placement: .principal) {
-                            modelPickerMenu
+                            if !server.isTemporaryChat {
+                                modelPickerMenu
+                            }
                         }
 
                         ToolbarItem(placement: .topBarTrailing) {
@@ -149,9 +163,9 @@ struct ChatView: View {
                                             server.isTemporaryChat.toggle()
                                         }
                                     } label: {
-                                        Image(systemName: server.isTemporaryChat ? "bubble.left.fill" : "circle.dashed")
+                                        Image(systemName: server.isTemporaryChat ? "checkmark.bubble" : "circle.dashed")
                                             .font(.system(size: 16, weight: .semibold))
-                                            .foregroundStyle(server.isTemporaryChat ? Color.blue : Color.primary)
+                                            .foregroundStyle(Color.primary)
                                     }
                                     .accessibilityLabel(server.isTemporaryChat ? "Geçici Sohbeti Kapat" : "Geçici Sohbet")
                                 } else {
@@ -218,8 +232,8 @@ struct ChatView: View {
                     }
                     .sheet(isPresented: $showTemporarySheet) {
                         TemporaryChatSettingsSheet(isPersonalized: $server.temporaryPersonalized)
-                            .presentationDetents([.height(320)])
-                            .presentationDragIndicator(.visible)
+                            .presentationDetents([.height(340)])
+                            .presentationDragIndicator(.hidden)
                     }
                     .fullScreenCover(isPresented: $showCamera) {
                         InstantCameraView(
@@ -262,30 +276,23 @@ struct ChatView: View {
                             .presentationDragIndicator(.visible)
                     }
                 }
-                .disabled(showSidebar)
-
-                // ChatGPT-Style Slide-Over Left Sidebar Drawer
-                if showSidebar {
-                    Color.black.opacity(0.28)
-                        .ignoresSafeArea()
-                        .onTapGesture {
-                            withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
-                                showSidebar = false
+                .clipShape(.rect(cornerRadius: showSidebar ? 36 : 0))
+                .shadow(color: Color.black.opacity(showSidebar ? 0.14 : 0), radius: 24, x: -6, y: 0)
+                .overlay {
+                    if showSidebar {
+                        Color.white.opacity(0.001)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
+                                    showSidebar = false
+                                }
                             }
-                        }
-                        .transition(.opacity)
-
-                    SidebarView(
-                        isPresented: $showSidebar,
-                        showSettings: $showSettings,
-                        showModelSheet: $showModelSheet
-                    )
-                    .frame(width: drawerWidth)
-                    .shadow(color: Color.black.opacity(0.16), radius: 22, x: 6, y: 0)
-                    .transition(.move(edge: .leading))
+                    }
                 }
+                .offset(x: showSidebar ? drawerWidth : 0)
             }
-            .animation(.spring(response: 0.32, dampingFraction: 0.86), value: showSidebar)
+            .background(Color(.systemBackground).ignoresSafeArea())
+            .animation(.spring(response: 0.34, dampingFraction: 0.86), value: showSidebar)
         }
     }
 
@@ -329,23 +336,18 @@ struct ChatView: View {
         return "İyi geceler,"
     }
 
-    // MARK: - Temporary Chat Hero (ChatGPT-style)
+    // MARK: - Temporary Chat Hero (ChatGPT IMG_5025.jpg exact match — no extra icon or pill box)
 
     private var temporaryChatHero: some View {
         ScrollView(showsIndicators: false) {
-            VStack(spacing: 14) {
-                Spacer(minLength: inputFocused ? 30 : 120)
-
-                Image(systemName: "bubble.left.and.text.bubble.right")
-                    .font(.system(size: 32, weight: .regular))
-                    .foregroundStyle(Color.secondary)
-                    .padding(.bottom, 2)
+            VStack(spacing: 12) {
+                Spacer(minLength: inputFocused ? 40 : 175)
 
                 Text("Geçici sohbet")
-                    .font(.title2.weight(.bold))
-                    .foregroundStyle(Color.primary)
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(Color.primary.opacity(0.75))
 
-                Text("Bu sohbet geçmişte görünmez veya yerel belleğinizi güncellemez.")
+                Text("Bu sohbet, geçmişinde görünmeyecek.")
                     .font(.subheadline)
                     .foregroundStyle(Color.secondary)
                     .multilineTextAlignment(.center)
@@ -357,17 +359,15 @@ struct ChatView: View {
                 } label: {
                     HStack(spacing: 5) {
                         Text(server.temporaryPersonalized ? "Kişiselleştirilmiş" : "Kişiselleştirilmemiş")
-                            .font(.subheadline.weight(.semibold))
+                            .font(.subheadline.weight(.medium))
                         Image(systemName: "chevron.down")
-                            .font(.caption.weight(.bold))
+                            .font(.caption.weight(.semibold))
                     }
-                    .foregroundStyle(Color.primary)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
+                    .foregroundStyle(Color.secondary)
+                    .padding(.vertical, 6)
                 }
                 .buttonStyle(.plain)
-                .senGlassCapsule(interactive: true)
-                .padding(.top, 4)
+                .padding(.top, 8)
 
                 Spacer(minLength: 40)
             }
@@ -694,7 +694,7 @@ struct ChatView: View {
                 if isExpanded {
                     // Multi-row layout: TextField on top, controls (+ | mic | send) below
                     TextField(
-                        server.isTemporaryChat ? "Geçici sohbete sor..." : "SEN.AI'ye sor...",
+                        server.isTemporaryChat ? "Geçici sohbet" : "SEN.AI'ye sor...",
                         text: $draft,
                         axis: .vertical
                     )
@@ -718,7 +718,7 @@ struct ChatView: View {
                         plusButton
 
                         TextField(
-                            server.isTemporaryChat ? "Geçici sohbete sor..." : "SEN.AI'ye sor...",
+                            server.isTemporaryChat ? "Geçici sohbet" : "SEN.AI'ye sor...",
                             text: $draft,
                             axis: .vertical
                         )
@@ -736,20 +736,13 @@ struct ChatView: View {
             }
             .background {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(colorScheme == .dark ? Color(.secondarySystemBackground).opacity(0.88) : Color.white.opacity(0.92))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                            .strokeBorder(
-                                colorScheme == .dark ? Color.white.opacity(0.12) : Color.black.opacity(0.06),
-                                lineWidth: 0.8
-                            )
-                    }
+                    .fill(colorScheme == .dark ? Color.white.opacity(0.04) : Color.white.opacity(0.65))
             }
-            .clipShape(.rect(cornerRadius: cornerRadius))
+            .senGlassRounded(radius: cornerRadius, interactive: false)
             .shadow(
-                color: Color.black.opacity(colorScheme == .dark ? 0.30 : 0.08),
-                radius: 16,
-                y: 5
+                color: Color.black.opacity(colorScheme == .dark ? 0.28 : 0.07),
+                radius: 14,
+                y: 4
             )
             .padding(.horizontal, 12)
             .padding(.bottom, 8)
@@ -770,16 +763,12 @@ struct ChatView: View {
                     .font(.system(size: 10, weight: .bold))
                     .foregroundStyle(tint.opacity(0.82))
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, 13)
             .padding(.vertical, 7)
             .background {
                 Capsule()
-                    .fill(colorScheme == .dark ? tint.opacity(0.18) : Color.white)
-                    .overlay {
-                        Capsule()
-                            .strokeBorder(tint.opacity(0.24), lineWidth: 0.8)
-                    }
-                    .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.22 : 0.07), radius: 6, y: 2)
+                    .fill(colorScheme == .dark ? Color(.tertiarySystemBackground) : Color.white)
+                    .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.25 : 0.08), radius: 8, y: 2)
             }
         }
         .buttonStyle(SenSpringButtonStyle())
@@ -792,11 +781,10 @@ struct ChatView: View {
                 showPlusMenu.toggle()
             }
         } label: {
-            Image(systemName: showPlusMenu ? "xmark" : "plus")
-                .font(.system(size: 17, weight: .semibold))
+            Image(systemName: "plus")
+                .font(.system(size: 18, weight: .medium))
                 .foregroundStyle(Color.primary)
                 .frame(width: 36, height: 36)
-                .contentTransition(.symbolEffect(.replace))
         }
         .buttonStyle(SenSpringButtonStyle())
         .accessibilityLabel("Araçlar ve Ekler")
@@ -864,76 +852,69 @@ struct ChatView: View {
         }
     }
 
-    // MARK: - iOS 26 Floating Liquid Glass (+) Popover Menu (ChatGPT-style)
+    // MARK: - iOS 26 Floating Liquid Glass (+) Popover Menu (ChatGPT-style translucent glass, monochrome single-line rows)
 
     private var plusPopoverMenu: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            plusMenuRow(icon: "camera", title: "Kamera", tint: Color.primary, isActive: false) {
+        VStack(alignment: .leading, spacing: 6) {
+            plusMenuRow(icon: "camera", title: "Kamera", isActive: false) {
                 showPlusMenu = false
                 showCamera = true
             }
-            plusMenuRow(icon: "photo.on.rectangle", title: "Fotoğraflar", tint: Color.primary, isActive: false) {
+            plusMenuRow(icon: "photo.on.rectangle", title: "Fotoğraflar", isActive: false) {
                 showPlusMenu = false
                 showPhotoPicker = true
             }
-            plusMenuRow(icon: "globe", title: "Web'de Araştır", tint: Color.blue, isActive: server.webSearchEnabled) {
+            plusMenuRow(icon: "globe", title: "Web'de araştır", isActive: server.webSearchEnabled) {
                 withAnimation(.spring(response: 0.28, dampingFraction: 0.80)) {
                     server.webSearchEnabled.toggle()
                     showPlusMenu = false
                 }
             }
-            plusMenuRow(icon: "books.vertical", title: "Kütüphane", tint: Color.indigo, isActive: server.useLibraryEnabled) {
+            plusMenuRow(icon: "books.vertical", title: "Kütüphane", isActive: server.useLibraryEnabled) {
                 withAnimation(.spring(response: 0.28, dampingFraction: 0.80)) {
                     server.useLibraryEnabled.toggle()
                     showPlusMenu = false
                 }
             }
-            plusMenuRow(icon: "gearshape", title: "Ayarlar", tint: Color.primary, isActive: false) {
+            plusMenuRow(icon: "gearshape", title: "Ayarlar", isActive: false) {
                 showPlusMenu = false
                 showSettings = true
             }
         }
-        .padding(.vertical, 10)
-        .padding(.horizontal, 10)
-        .frame(width: 248)
-        .background {
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .fill(colorScheme == .dark ? Color(.secondarySystemBackground).opacity(0.94) : Color.white.opacity(0.95))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 28, style: .continuous)
-                        .strokeBorder(colorScheme == .dark ? Color.white.opacity(0.14) : Color.black.opacity(0.06), lineWidth: 0.8)
-                }
-        }
-        .senGlassRounded(radius: 28, interactive: true)
-        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.38 : 0.14), radius: 24, y: 10)
+        .padding(.vertical, 12)
+        .padding(.horizontal, 12)
+        .frame(width: 264)
+        .senGlassRounded(radius: 30, interactive: true)
+        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.34 : 0.12), radius: 22, y: 8)
     }
 
-    private func plusMenuRow(icon: String, title: String, tint: Color, isActive: Bool, action: @escaping () -> Void) -> some View {
+    private func plusMenuRow(icon: String, title: String, isActive: Bool, action: @escaping () -> Void) -> some View {
         Button {
             SenHaptics.light()
             action()
         } label: {
             HStack(spacing: 14) {
                 Image(systemName: icon)
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(isActive ? tint : Color.primary)
-                    .frame(width: 38, height: 38)
+                    .font(.system(size: 16, weight: .regular))
+                    .foregroundStyle(Color.primary)
+                    .frame(width: 40, height: 40)
                     .background {
                         Circle()
-                            .fill(isActive ? tint.opacity(0.16) : Color.primary.opacity(0.06))
+                            .fill(Color.primary.opacity(0.06))
                     }
                 Text(title)
-                    .font(.body.weight(.medium))
-                    .foregroundStyle(isActive ? tint : Color.primary)
+                    .font(.body)
+                    .foregroundStyle(Color.primary)
+                    .lineLimit(1)
                 Spacer()
                 if isActive {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 16))
-                        .foregroundStyle(tint)
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(Color.primary)
                 }
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 5)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 4)
             .contentShape(Rectangle())
         }
         .buttonStyle(SenSpringButtonStyle())
@@ -1004,10 +985,16 @@ struct MessageRowView: View {
                         .padding(.vertical, 11)
                         .background {
                             RoundedRectangle(cornerRadius: 22, style: .continuous)
-                                .fill(Color.primary.opacity(0.065))
+                                .fill(
+                                    LinearGradient(
+                                        colors: [Color.blue.opacity(0.14), Color.indigo.opacity(0.09)],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
                                 .overlay {
                                     RoundedRectangle(cornerRadius: 22, style: .continuous)
-                                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.7)
+                                        .strokeBorder(Color.blue.opacity(0.18), lineWidth: 0.7)
                                 }
                         }
                         .contextMenu {
@@ -1355,38 +1342,49 @@ struct TemporaryChatSettingsSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 12) {
-                optionCard(
-                    title: "Kişiselleştirilmiş",
-                    subtitle: "Yanıtlarda mevcut yerel bellek ve tercihlerinizi kullanır ancak bu sohbeti kaydetmez.",
-                    selected: isPersonalized
-                ) {
-                    SenHaptics.light()
-                    isPersonalized = true
-                }
+        VStack(spacing: 14) {
+            Text("Geçici sohbet ayarları")
+                .font(.title3.weight(.bold))
+                .foregroundStyle(Color.primary)
+                .padding(.top, 18)
 
-                optionCard(
-                    title: "Kişiselleştirilmemiş",
-                    subtitle: "Tamamen sıfır bağlamla çalışır; ne mevcut belleğinizi okur ne de bu sohbeti kaydeder.",
-                    selected: !isPersonalized
-                ) {
-                    SenHaptics.light()
-                    isPersonalized = false
-                }
+            optionCard(
+                title: "Kişiselleştirilmiş",
+                subtitle: "Bu sohbet bellekten, eklentilerden ve özel talimatlardan yararlanabilir",
+                selected: isPersonalized
+            ) {
+                SenHaptics.light()
+                isPersonalized = true
+            }
 
-                Spacer(minLength: 4)
+            optionCard(
+                title: "Kişiselleştirilmemiş",
+                subtitle: "Bu sohbet belleği, eklentileri ve özel talimatları yoksayacak",
+                selected: !isPersonalized
+            ) {
+                SenHaptics.light()
+                isPersonalized = false
             }
-            .padding(16)
-            .navigationTitle("Geçici sohbet")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Bitti") { dismiss() }
-                        .fontWeight(.semibold)
-                }
+
+            Button {
+                SenHaptics.light()
+                dismiss()
+            } label: {
+                Text("Bitti")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(Color(.systemBackground))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background {
+                        Capsule().fill(Color.primary)
+                    }
             }
+            .buttonStyle(SenSpringButtonStyle())
+            .padding(.top, 4)
+
+            Spacer(minLength: 4)
         }
+        .padding(.horizontal, 20)
     }
 
     private func optionCard(title: String, subtitle: String, selected: Bool, action: @escaping () -> Void) -> some View {
@@ -1402,15 +1400,20 @@ struct TemporaryChatSettingsSheet: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer()
-                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
-                    .font(.title3)
-                    .foregroundStyle(selected ? Color.blue : Color.secondary.opacity(0.4))
+                if selected {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(Color.primary)
+                }
             }
             .padding(14)
-            .senGlassRounded(radius: 20, interactive: true)
-            .overlay {
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .strokeBorder(selected ? Color.blue.opacity(0.45) : Color.clear, lineWidth: 1.2)
+            .background {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Color(.secondarySystemGroupedBackground))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .strokeBorder(selected ? Color.primary : Color.primary.opacity(0.10), lineWidth: selected ? 1.5 : 0.8)
+                    }
             }
         }
         .buttonStyle(SenSpringButtonStyle())

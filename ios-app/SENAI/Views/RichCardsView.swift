@@ -1384,8 +1384,9 @@ struct ChoiceQuestionnaireCardView: View {
         let questions = card.questions ?? []
         VStack(alignment: .leading, spacing: 14) {
             ForEach(Array(questions.enumerated()), id: \.element.id) { qIdx, q in
+                let displayQuestion = q.question.first?.isNumber == true ? q.question : "\(qIdx + 1). \(q.question)"
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(q.question)
+                    Text(displayQuestion)
                         .font(.subheadline.weight(.bold))
                         .foregroundStyle(.primary)
 
@@ -1430,11 +1431,11 @@ struct ChoiceQuestionnaireCardView: View {
             } label: {
                 Text(submitted ? "Gönderildi ✓" : "Tercihlerime göre değerlendir")
                     .font(.subheadline.weight(.bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(submitted ? Color.white : Color(.systemBackground))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
                     .background {
-                        Capsule().fill(submitted ? Color.green : Color.blue)
+                        Capsule().fill(submitted ? Color.green : Color.primary)
                     }
             }
             .buttonStyle(SenSpringButtonStyle())

@@ -85,29 +85,27 @@ struct SidebarView: View {
 
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 18) {
-                    // Top Quick Navigation Shortcuts (like ChatGPT's Planlanmış / Kitaplık / Özelleştir)
+                    // Top Quick Navigation Shortcuts (ChatGPT iOS 26 style — clean monochrome, no right badge clutter)
                     VStack(spacing: 2) {
-                        quickNavRow(icon: "bubble.left.and.exclamationmark.bubble.right", title: "Geçici Sohbet") {
-                            server.startTemporaryChat()
-                            closeDrawer()
-                        }
-                        quickNavRow(icon: "books.vertical", title: "Kütüphane", badge: server.useLibraryEnabled ? "Açık" : nil) {
+                        quickNavRow(icon: "books.vertical", title: "Kütüphane") {
                             server.useLibraryEnabled.toggle()
                             SenHaptics.light()
+                            closeDrawer()
                         }
-                        quickNavRow(icon: "slider.horizontal.3", title: "Model & Düşünme", badge: server.activeModelName.replacingOccurrences(of: "Gemma 4 ", with: "")) {
+                        quickNavRow(icon: "slider.horizontal.3", title: "Özelleştir") {
                             closeDrawer()
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
                                 showModelSheet = true
                             }
                         }
-                        quickNavRow(icon: "globe", title: "Web Araştırması", badge: server.webSearchEnabled ? "Açık" : "Oto") {
+                        quickNavRow(icon: "globe", title: "Web Araştırması") {
                             server.webSearchEnabled.toggle()
                             SenHaptics.light()
+                            closeDrawer()
                         }
                         quickNavRow(
                             icon: themePref == "dark" ? "sun.max" : "moon",
-                            title: themePref == "dark" ? "Açık Tema" : "Koyu Tema"
+                            title: themePref == "dark" ? "Açık Görünüm" : "Koyu Görünüm"
                         ) {
                             themePref = (themePref == "dark") ? "light" : "dark"
                             SenHaptics.light()
@@ -188,11 +186,14 @@ struct SidebarView: View {
                 } label: {
                     ZStack {
                         Circle()
-                            .fill(Color.primary.opacity(0.10))
-                            .frame(width: 42, height: 42)
+                            .fill(Color.primary.opacity(0.06))
+                            .frame(width: 46, height: 46)
+                        Circle()
+                            .fill(Color(white: 0.48))
+                            .frame(width: 34, height: 34)
                         Text("SA")
                             .font(.caption.weight(.bold))
-                            .foregroundStyle(.primary)
+                            .foregroundStyle(Color.white)
                     }
                 }
                 .buttonStyle(SenSpringButtonStyle())
@@ -269,29 +270,24 @@ struct SidebarView: View {
                 closeDrawer()
             }
         } label: {
-            HStack(spacing: 10) {
+            HStack(spacing: 12) {
                 if isPinned {
-                    Image(systemName: "pin.fill")
-                        .font(.caption2)
-                        .foregroundStyle(.orange)
+                    Image(systemName: "bubble.left")
+                        .font(.system(size: 15, weight: .regular))
+                        .foregroundStyle(Color.primary)
                 }
                 Text(s.title)
-                    .font(.subheadline.weight(isActive ? .semibold : .regular))
-                    .foregroundStyle(.primary)
+                    .font(.body.weight(isActive ? .medium : .regular))
+                    .foregroundStyle(Color.primary)
                     .lineLimit(1)
-                Spacer(minLength: 6)
-                if let dt = shortTimeLabel(s.updated_at) {
-                    Text(dt)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
+                Spacer(minLength: 4)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
             .background {
                 if isActive {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color.primary.opacity(0.07))
+                        .fill(Color.primary.opacity(0.06))
                 }
             }
             .padding(.horizontal, 10)
