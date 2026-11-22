@@ -2,15 +2,15 @@
 
 # ✦ SEN.AI
 
-**Yerel GPU Üzerinde Çalışan Çok Modlu Yapay Zekâ Stüdyosu — Windows Masaüstü, Web/PWA & Native SwiftUI iOS**
+**Yerel GPU Üzerinde Çalışan Çok Modlu Yapay Zekâ Stüdyosu — Windows Masaüstü, Web/PWA & Native SwiftUI iOS 26–27**
 
 [![Engine](https://img.shields.io/badge/Motor-Gemma%204%20(E2B%20%2F%20E4B)-2563eb?style=flat-square)](https://ai.google.dev/gemma)
 [![CUDA](https://img.shields.io/badge/CUDA-llama.cpp%20GGUF%20Turbo-76b900?style=flat-square&logo=nvidia&logoColor=white)](https://github.com/ggml-org/llama.cpp)
 [![Desktop](https://img.shields.io/badge/Masa%C3%BCst%C3%BC-Electron%20Windows%2011-0f172a?style=flat-square&logo=electron&logoColor=white)](desktop/)
-[![iOS](https://img.shields.io/badge/iOS-SwiftUI%20Liquid%20Glass%20(iOS%2026%2B)-000000?style=flat-square&logo=apple&logoColor=white)](ios-app/)
+[![iOS](https://img.shields.io/badge/iOS-SwiftUI%20Liquid%20Glass%20(iOS%2026%E2%80%9327)-000000?style=flat-square&logo=apple&logoColor=white)](ios-app/)
 [![Build iOS](https://github.com/byashera/yerelai/actions/workflows/build-ios.yml/badge.svg)](https://github.com/byashera/yerelai/actions/workflows/build-ios.yml)
 
-*Verileriniz cihazınızdan çıkmadan, RTX GPU hızında Türkçe sesli, görsel, kod ve belge asistanı.*
+*Verileriniz cihazınızdan çıkmadan, RTX GPU hızında Türkçe sesli, görsel, kod, canlı web araştırması ve belge asistanı.*
 
 </div>
 
@@ -18,30 +18,35 @@
 
 ## Öne Çıkan Özellikler
 
-### ⚡ Yerel GPU Motoru & Akıllı Hızlandırma
-- **Gemma 4 (`E2B` & `E4B`) GGUF CUDA Turbo:** `llama-server` üzerinde Flash Attention, Q8 KV Cache ve çok turlu `--cache-reuse` ile **60+ tok/sn** yerel üretim hızı.
-- **Dinamik Temperature & Kişilik:** Genel sohbetlerde doğal ve akıcı (`0.73`), kod/Excel ve teknik analizlerde yüksek doğruluklu (`0.68`) otomatik ayarlama.
-- **Akıllı Uzman Yönlendirme:** Konuya göre otomatik uzman modu (`Web & UI`, `Veri & Excel`, `Kıdemli Yazılımcı`, `Çevirmen`, `Özet & Editör`).
+### 📱 Native SwiftUI iOS 26–27 Liquid Glass Uygulaması
+- **%100 Saf SwiftUI & Gerçek Liquid Glass:** iOS 26–27 cihazlarda `GlassEffectContainer` ve `.glassEffect()` materyalleri, 60 FPS `.drawingGroup()` arka plan kırılması ve **50 ms SSE token birleştirme (coalescing)** ile takılmasız akış.
+- **Modern Sohbet & Yan Menü Mimarisi:** Ana ekranı `36pt` yuvarlatılmış gölgeli bir kart olarak sağa kaydıran yan menü çekmecesi (Sidebar Drawer), gruplu kart tasarımlı Ayarlar ve mesaj kutusu **içinde** beliren çerçevesiz `🌐 Araştır ×` / `📚 Kütüphane ×` rozetleri.
+- **Yüzen Liquid Glass `+` Menüsü & Geçici Sohbet:** Tek dokunuşla açılan yarı saydam `+` menüsü (`Kamera`, `Fotoğraflar`, `Web'de araştır`, `Kütüphane`, `Ayarlar`) ve geçmişe/belleğe kaydedilmeyen **Geçici Sohbet** (*Kişiselleştirilmiş / Kişiselleştirilmemiş*) modu.
+- **Cosmic Düşünme Eforu & Türkçe Sistem Uyumu:** `Kapalı · Düşük · Orta · Yüksek` parçacık animasyonlu düşünme kaydırıcısı ve yerel Türkçe metin seçim menüsü (`Kes | Kopyala | Otomatik Doldur`).
+- **Akıllı Çift Bağlantı:** Evde Wi-Fi LAN (`192.168.x.x:8070`), dışarıda sabit **GitHub Gist JSON + Cloudflare** köprüsü ile otomatik geçiş.
 
-### 💎 Zengin Görsel Kartlar & Belge Üretimi
-- **Otomatik Görsel Kartlar (`sen_card`):** Uyum/Skor halkası, Karşılaştırma, Öneri/Puanlama ve tıklanabilir Plan/Kontrol Listesi kartları.
-- **Canlı Hava Durumu & Döviz:** 5 günlük Apple Weather tarzı tahmin şeridi ve anlık kur kartları.
-- **Tek Tıkla Gerçek `.xlsx` / `.docx` / `.pdf`:** Markdown tablolarından otomatik formüllü Excel çalışma kitabı, Word ve PDF dışa aktarımı.
-- **Canlı Split-Pane Kod Editörü:** HTML/CSS/JS canlı önizleme, görsel fark (`v1 ↔ v2`), Python sandbox ve yerel klasör çalışma alanı.
+### 🌐 Gerçek Zamanlı Web Araştırması, Akıllı Oto-Arama & RAG
+- **Gerçek Zamanlı (`1 → 2 → 3 → 4 → 5`) Canlı Sayaç:** `asyncio.Queue` tabanlı SSE ilerlemesi sayesinde her site incelenirken sayaç ve aktif alan adı (`🌐 3 web sitesi aranıyor · referansturk.com.tr`) anlık olarak güncellenir.
+- **Akıllı Otomatik Araştırma:** Uygulama açılışında `Araştır` etiketi varsayılan olarak kapalıdır; ancak mesajda ürün, film/dizi çekim mekânı, fiyat veya güncel doğrulama gerektiren bir ifade geçtiğinde (kişisel/burç/plan/kod soruları hariç) otomatik olarak web araştırması devreye girer.
+- **Korsan/Spam Filtresi & Favicon'lu Kaynaklar:** Düşük kaliteli spam/korsan dizi sitelerini eler, `<article>`/`<main>` gövdesinden 3200 karakterlik temiz bağlam çıkarır ve yanıt altında gerçek site ikonlu (**Favicon**) **`Kaynaklar`** kapsülü sunar.
+- **Yerel Bilgi Kütüphanesi (RAG) & MCP:** PDF, Word, TXT ve CSV belgelerinizi yerel olarak indeksler; masaüstünde `filesystem`, `sqlite`, `git` ve `fetch` MCP araçlarını çalıştırır.
 
-### 🌐 Akıllı Web Araştırması, RAG & MCP
-- **İhtiyaç Odaklı Canlı Web:** Yalnızca güncel bilgi, haber, hava durumu, döviz veya açık arama istendiğinde internete çıkar; düşük kaliteli spam siteleri eler ve yanıt altında kompakt **`🌐 N kaynak`** kapsülü sunar.
-- **Yerel Bilgi Kütüphanesi (RAG):** PDF, Word, TXT ve CSV belgelerinizi proje bazlı izole olarak indeksler.
-- **Yerel MCP İstemcisi:** Masaüstü uygulamasında dahili çevrimdışı `filesystem`, `sqlite`, `git` ve `fetch` araçlarını kullanıcı onay kartıyla çalıştırır.
+### 💎 Zengin Görsel Kartlar (`sen_card`) & Belge Üretimi
+- **6 İnteraktif Görsel Kart Türü:**
+  - `image_spotlight`: Mekân, yapı ve konular için yüksek çözünürlüklü tekli fotoğraf ve konum kartı.
+  - `choice_card`: Numaralı (`1.`, `2.`) çoktan seçmeli interaktif tercih kartı.
+  - `media_list`: Afişli/görselli film, dizi ve ürün öneri listesi.
+  - `image_compare`: Yan yana görselli 2'li ürün/seçenek karşılaştırma kartı.
+  - `scorecard`: Uyum ve puanlama halkası, kategori barları, güçlü yönler ve zorluklar kartı.
+  - `checklist`: Canlı ilerleme çubuklu, tıklanabilir günlük/haftalık rutin kartı.
+- **Canlı Hava Durumu, Döviz & Temiz Tablolar:** 5 günlük Apple Weather tarzı tahmin kartı, anlık kur kartları, hücre içi kalın metin ve yeşil vurgu rozeti (`Çok iyi`, `En iyi`) destekli Markdown tabloları.
+- **Tek Tıkla `.xlsx` / `.docx` / `.pdf` & Split-Pane Kod Editörü:** Markdown tablolarından formüllü Excel çalışma kitabı, Word/PDF dışa aktarımı ve canlı HTML/CSS/JS/Python önizleme.
 
-### 🗣️ Türkçe Sesli Sohbet & Eğitim Seti Motoru
-- **Temiz ve Hızlı Türkçe TTS:** Emojileri ve kod bloklarını sessizce atlayıp yalnızca yazılı metni doğal tempoda (`+20%`) seslendirir; mikrofondan Türkçe sesli giriş destekler.
-- **👍 / 👎 ile SFT & DPO Veri Seti:** Beğeni ve düzeltmelerinizden otomatik Unsloth uyumlu **SFT** ve **DPO (`prompt / chosen / rejected`)** eğitim setleri üretir, ücretsiz Google Colab T4 notebook'u ile kendi LoRA modelinizi eğitmenizi sağlar.
-
-### 📱 Native SwiftUI iOS Uygulaması (iOS 26–27 Liquid Glass)
-- **%100 Saf SwiftUI (~480 KB `.ipa`):** iOS 26–27 cihazlarda gerçek `GlassEffectContainer` ve `.glassEffect()` materyalleri, iOS 17–18 cihazlarda zarif `.ultraThinMaterial` uyumu.
-- **Akıllı Çift Bağlantı:** Evde Wi-Fi LAN (`192.168.x.x:8070`), dışarıda sabit **GitHub Gist JSON + Cloudflare** köprüsü ile kesintisiz erişim.
-- **Otomatik GitHub Actions Derleme:** Her güncellemede imzasız `SEN-AI.ipa`, Appetize.io için `SEN-AI-Simulator.app.zip` ve Açık/Koyu tema simülatör ekran görüntüleri otomatik üretilir.
+### ⚡ Yerel GPU Motoru, Türkçe Ses & Canlı 👍/👎 Geri Bildirim Motoru
+- **Gemma 4 (`E2B` & `E4B`) GGUF CUDA Turbo:** `llama-server` üzerinde Flash Attention, Q8 KV Cache ve `--cache-reuse` ile **60+ tok/sn** yerel üretim hızı.
+- **Akıllı Uzman Yönlendirme:** Konuya göre otomatik uzman modu (`Web & UI Tasarımcısı`, `Veri & Excel Analisti`, `Kıdemli Yazılımcı`, `Çevirmen`, `Özet & Editör`).
+- **Doğal Türkçe Sesli Sohbet (TTS & STT):** Emojileri ve kod bloklarını atlayarak yalnızca konuşma metnini doğal Neural seslerle (`Ahmet` / `Emel`) seslendirir; tam ekran dalga formlu canlı sesli sohbet modu sunar.
+- **Canlı Etkili & Kalıcı 👍 / 👎 Sistemi:** Mesaj beğenileri sohbet geçmişinde kalıcı olarak saklanır, tekrar dokunulduğunda geri alınabilir (mükerrer kayıt üretmez), modelin sonraki canlı yanıt tarzını anında besler ve Unsloth uyumlu **SFT / DPO** eğitim seti oluşturur.
 
 ---
 
@@ -64,9 +69,9 @@ python backend.py
 
 ## iPhone'a Kurulum
 
-1. [**Actions → Build SEN.AI iOS**](https://github.com/byashera/yerelai/actions/workflows/build-ios.yml) sayfasından en güncel **`SEN-AI-iOS-IPA`** dosyasını indirin.
-2. `SEN-AI.ipa` paketini **Sideloadly**, **SideStore** veya **AltStore** ile iPhone'a yükleyin.
-3. Uygulama içinden **SEN.AI ⌄ → Ayarlar & Sunucu** kısmına yerel IP veya sabit GitHub Gist JSON adresinizi girin.
+1. [**Actions → Build SEN.AI iOS**](https://github.com/byashera/yerelai/actions/workflows/build-ios.yml) sayfasından en güncel **`SEN-AI-iOS-IPA`** paketini indirin.
+2. `SEN-AI.ipa` dosyasını **Sideloadly**, **SideStore** veya **AltStore** ile iPhone'a yükleyin.
+3. Uygulama içinden **Sol Menü → SA (Ayarlar) → Sunucu Adresleri** bölümünden yerel LAN IP veya sabit GitHub Gist JSON adresinizi doğrulayın.
 
 ---
 
@@ -74,11 +79,11 @@ python backend.py
 
 ```text
 yerelai/
-├── backend.py                  # FastAPI SSE akış sunucusu, Gemma 4 CUDA motoru & Web/RAG/DPO API
+├── backend.py                  # FastAPI SSE akış sunucusu, Gemma 4 CUDA motoru & Gerçek Zamanlı Web/RAG/DPO API
 ├── modules/                    # Excel/Word/PDF/TTS, MCP istemcisi, Cloudflare+Gist tünel, Workspace
 ├── frontend/                   # Masaüstü & Mobil PWA arayüzü (index.html, app.js, styles/desktop/mobile.css)
 ├── desktop/                    # Windows 11 Electron uygulaması (Splash, Companion, Sistem Tepsisi)
-├── ios-app/                    # Native SwiftUI iOS 26-27 Liquid Glass uygulaması (XcodeGen)
+├── ios-app/                    # Native SwiftUI iOS 26–27 Liquid Glass uygulaması (XcodeGen)
 ├── colab/                      # Ücretsiz T4 GPU Unsloth LoRA eğitim notebook'u
-└── .github/workflows/          # Otomatik iOS .ipa, Simülatör & Ekran Görüntüsü derleyicisi
+└── .github/workflows/          # Otomatik iOS .ipa, Simülatör & 10'lu Ekran Görüntüsü derleyicisi
 ```
