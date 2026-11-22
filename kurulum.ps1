@@ -52,7 +52,7 @@ if (-not $ForceVenv -and (Test-Path $UnslothPy)) {
     $PyExe = $UnslothPy
     Write-Host "Hazir Unsloth CUDA + Gemma 4 ortami bulundu: $PyExe" -ForegroundColor Green
     $ErrorActionPreference = "Continue"
-    & $PyExe -m pip install -q openpyxl python-multipart httpx ddgs edge-tts 2>&1 | Out-Host
+    & $PyExe -m pip install -q -r (Join-Path $Root "requirements.txt") 2>&1 | Out-Host
     $ErrorActionPreference = "Stop"
   }
 }

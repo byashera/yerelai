@@ -12,6 +12,7 @@ import mimetypes
 import os
 import re
 import secrets
+import shutil
 import socket
 import subprocess
 import sys
@@ -24,6 +25,41 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+
+BASE_DIR = Path(__file__).resolve().parent
+
+if __name__ == "__main__" and not os.environ.get("SENAI_BOOTSTRAPPED"):
+    _need_reexec = False
+    try:
+        import fastapi  # noqa: F401
+        import httpx  # noqa: F401
+        import torch as _t  # noqa: F401
+        import transformers as _tr  # noqa: F401
+        if not (_t.cuda.is_available() and hasattr(_tr, "Gemma4ForConditionalGeneration")):
+            _need_reexec = True
+    except Exception:
+        _need_reexec = True
+
+    if _need_reexec:
+        _candidates = [
+            BASE_DIR / "venv" / "Scripts" / "python.exe",
+            Path.home() / ".unsloth" / "studio" / "unsloth_studio" / "Scripts" / "python.exe",
+        ]
+        _cur_exe = Path(sys.executable).resolve()
+        for _cand in _candidates:
+            if _cand.exists() and _cand.resolve() != _cur_exe:
+                os.environ["SENAI_BOOTSTRAPPED"] = "1"
+                print(f"[SEN.AI] Hazir CUDA Python ortamina geciliyor: {_cand}")
+                sys.exit(subprocess.call([str(_cand), str(Path(__file__).resolve()), *sys.argv[1:]]))
+        _kurulum = BASE_DIR / "kurulum.ps1"
+        if _kurulum.exists() and os.name == "nt":
+            os.environ["SENAI_BOOTSTRAPPED"] = "1"
+            print("[SEN.AI] Eksik bagimliliklar tespit edildi, kurulum.ps1 calistiriliyor...")
+            sys.exit(
+                subprocess.call(
+                    ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(_kurulum)]
+                )
+            )
 
 import httpx
 import uvicorn
@@ -38,8 +74,6 @@ from modules import extensions as ext_mgr
 from modules.mcp_client import LocalMcpManager
 from modules.tunnel import tunnel_mgr
 from modules.workspace import LocalWorkspaceManager
-
-BASE_DIR = Path(__file__).resolve().parent
 mcp_mgr = LocalMcpManager(BASE_DIR)
 ws_mgr = LocalWorkspaceManager(BASE_DIR / "data")
 MODELS_DIR = BASE_DIR / "models"
@@ -68,12 +102,25 @@ FILES_META_PATH = OUTPUTS_DIR / "files_meta.json"
 LOG_PATH = BASE_DIR / "backend.log"
 LLAMA_LOG_PATH = BASE_DIR / "llama_server.log"
 
-LLAMA_SERVER_BIN = Path(
-    os.environ.get(
-        "LLAMA_SERVER_BIN",
-        r"C:\Users\Salih\.unsloth\llama.cpp\build\bin\Release\llama-server.exe",
-    )
-)
+def _detect_llama_server_bin() -> Path:
+    env_bin = os.environ.get("LLAMA_SERVER_BIN")
+    if env_bin and Path(env_bin).exists():
+        return Path(env_bin)
+    candidates = [
+        BASE_DIR / "bin" / "llama-server.exe",
+        Path.home() / ".unsloth" / "llama.cpp" / "build" / "bin" / "Release" / "llama-server.exe",
+        Path.home() / ".unsloth" / "llama.cpp" / "llama-server.exe",
+    ]
+    for cand in candidates:
+        if cand.exists():
+            return cand
+    which_bin = shutil.which("llama-server")
+    if which_bin:
+        return Path(which_bin)
+    return Path.home() / ".unsloth" / "llama.cpp" / "build" / "bin" / "Release" / "llama-server.exe"
+
+
+LLAMA_SERVER_BIN = _detect_llama_server_bin()
 LLAMA_SERVER_PORT = int(os.environ.get("LLAMA_SERVER_PORT", "8071"))
 LLAMA_SERVER_URL = f"http://127.0.0.1:{LLAMA_SERVER_PORT}"
 
@@ -288,21 +335,28 @@ def _resolve_local_hf_snapshot(repo_id: str) -> Optional[Path]:
 
 
 def _resolve_local_gguf(model_meta: Dict[str, Any]) -> Optional[Tuple[Path, Path]]:
-    """Return (gguf_path, mmproj_path) if both files exist cleanly on disk."""
+    """Return (gguf_path, mmproj_path) if both files exist cleanly on disk (checks local clone + shared user dirs)."""
     gguf_dir_name = model_meta.get("gguf_dir") or ""
     gguf_file = model_meta.get("gguf_file") or ""
     mmproj_file = model_meta.get("mmproj_file") or ""
     if not (gguf_dir_name and gguf_file and mmproj_file):
         return None
-    folder = GGUF_DIR / gguf_dir_name
-    m_path = folder / gguf_file
-    mm_path = folder / mmproj_file
-    try:
-        if m_path.exists() and mm_path.exists():
-            if m_path.stat().st_size > 500_000_000 and mm_path.stat().st_size > 100_000_000:
-                return m_path, mm_path
-    except OSError:
-        return None
+    search_roots = [
+        GGUF_DIR,
+        Path.home() / "Desktop" / "yerelai" / "models" / "gguf",
+        Path.home() / ".senai" / "models" / "gguf",
+        Path.home() / ".unsloth" / "models" / "gguf",
+    ]
+    for root in search_roots:
+        folder = root / gguf_dir_name
+        m_path = folder / gguf_file
+        mm_path = folder / mmproj_file
+        try:
+            if m_path.exists() and mm_path.exists():
+                if m_path.stat().st_size > 500_000_000 and mm_path.stat().st_size > 100_000_000:
+                    return m_path, mm_path
+        except OSError:
+            continue
     return None
 
 
