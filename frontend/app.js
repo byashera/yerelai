@@ -958,6 +958,9 @@
     state.config = cfg || {};
     const gen = cfg.generation || {};
     state.selectedModelId = cfg.default_model_id || state.selectedModelId;
+    if (state.models.length && !state.models.some((m) => m.id === state.selectedModelId)) {
+      state.selectedModelId = state.models[0].id;
+    }
     state.selectedLoraId = cfg.active_lora_id || "";
     state.gpuProfile = cfg.gpu_profile || "auto";
     state.contextLength = Number(cfg.context_length || 32768);
