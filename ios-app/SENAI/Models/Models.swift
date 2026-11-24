@@ -5,6 +5,7 @@ enum ThinkingEffort: String, CaseIterable, Identifiable {
     case low = "low"
     case medium = "medium"
     case high = "high"
+    case max = "max"
 
     var id: String { rawValue }
 
@@ -14,6 +15,7 @@ enum ThinkingEffort: String, CaseIterable, Identifiable {
         case .low: return "Düşük"
         case .medium: return "Orta"
         case .high: return "Yüksek"
+        case .max: return "Max"
         }
     }
 
@@ -23,6 +25,7 @@ enum ThinkingEffort: String, CaseIterable, Identifiable {
         case .low: return "safari"
         case .medium: return "diamond"
         case .high: return "sparkles"
+        case .max: return "gauge.with.needle.fill"
         }
     }
 }
@@ -31,6 +34,9 @@ struct ModelOption: Identifiable, Hashable {
     let id: String
     let name: String
     let subtitle: String
+    let badge: String
+    let contextLength: Int
+    let isCloud: Bool
 }
 
 struct WebSource: Identifiable, Codable, Hashable {
@@ -381,6 +387,9 @@ struct ChatMessage: Identifiable, Hashable {
     var content: String
     var thinking: String = ""
     var autoPersona: String? = nil
+    var modelId: String? = nil
+    var forkedFromTitle: String? = nil
+    var forkedFromId: String? = nil
     var webSources: [WebSource] = []
     var richCards: [RichCardPayload] = []
     var attachedImages: [Data] = []

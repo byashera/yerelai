@@ -59,6 +59,29 @@ enum MarkdownCardParser {
                    let data = body.data(using: .utf8),
                    let card = try? JSONDecoder().decode(SenVisualCard.self, from: data) {
                     segments.append(.visualCard(card))
+                } else if isCardLang {
+                    // Never leak raw sen_card code block on iOS: render unknown JSON/plain-text cleanly as Markdown
+                    if let data = body.data(using: .utf8),
+                       let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                        var mdLines: [String] = []
+                        if let t = (obj["title"] as? String) ?? (obj["name"] as? String) {
+                            mdLines.append("**\(t)**")
+                        }
+                        let rawList = (obj["details"] as? [[String: Any]]) ?? (obj["specs"] as? [[String: Any]]) ?? (obj["items"] as? [[String: Any]]) ?? []
+                        for item in rawList {
+                            let ico = (item["icon"] as? String) ?? (item["emoji"] as? String) ?? ""
+                            let k = (item["point"] as? String) ?? (item["label"] as? String) ?? (item["title"] as? String) ?? ""
+                            let v = (item["value"] as? String) ?? (item["subtitle"] as? String) ?? (item["text"] as? String) ?? ""
+                            if !k.isEmpty || !v.isEmpty {
+                                mdLines.append("- \(ico.isEmpty ? "" : "\(ico) ")**\(k):** \(v)")
+                            }
+                        }
+                        if !mdLines.isEmpty {
+                            segments.append(.markdown(mdLines.joined(separator: "\n")))
+                        }
+                    } else if !body.hasPrefix("{") && !body.isEmpty {
+                        segments.append(.markdown(body))
+                    }
                 } else {
                     segments.append(.codeBlock(lang: lang.isEmpty ? "kod" : lang, code: body))
                 }

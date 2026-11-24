@@ -36,9 +36,12 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
     @Published var speakingMessageId: String? = nil
 
     let availableModels: [ModelOption] = [
-        ModelOption(id: "gemma-4-e2b-qat-mtp", name: "Gemma 4 E2B", subtitle: "QAT · MTP Hızlı yanıt"),
-        ModelOption(id: "gemma-4-e4b-qat-mtp", name: "Gemma 4 E4B", subtitle: "QAT · MTP Derin analiz"),
+        ModelOption(id: "gemma-4-e2b-qat-mtp", name: "Sage 1", subtitle: "Hızlı, yaratıcı ve görsel odaklı.", badge: "Hızlı", contextLength: 10922, isCloud: false),
+        ModelOption(id: "gemma-4-e4b-qat-mtp", name: "Aureon 1.1", subtitle: "Gelişmiş analiz ve uzun hafıza.", badge: "Uzman", contextLength: 10922, isCloud: false),
+        ModelOption(id: "nvidia-orion-super-vl", name: "Orion", subtitle: "Gelişmiş kodlama ve yüksek bağlam.", badge: "Pro", contextLength: 262144, isCloud: true),
     ]
+
+    @Published var isCompacting: Bool = false
 
     override init() {
         super.init()
@@ -49,13 +52,56 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
         }
     }
 
+    var supportsMaxThinking: Bool {
+        let low = selectedModelId.lowercased()
+        return low.contains("e4b") || low.contains("orion")
+    }
+
+    var activeModelOption: ModelOption? {
+        availableModels.first(where: { $0.id == selectedModelId }) ?? availableModels.first
+    }
+
+    var activeContextLimit: Int {
+        activeModelOption?.contextLength ?? 10922
+    }
+
+    var estimatedContextTokens: Int {
+        guard !messages.isEmpty else { return 0 }
+        let totalChars = messages.reduce(0) { $0 + $1.content.count + $1.thinking.count }
+        return max(32, Int(Double(totalChars) / 2.8) + 180)
+    }
+
+    var contextPercent: Int {
+        guard !messages.isEmpty else { return 0 }
+        return min(100, max(1, Int(round((Double(estimatedContextTokens) / Double(max(1024, activeContextLimit))) * 100.0))))
+    }
+
+    var contextFillRatio: Double {
+        min(1.0, max(0.0, Double(contextPercent) / 100.0))
+    }
+
+    func modelDisplayName(for modelId: String?) -> String {
+        let low = (modelId ?? selectedModelId).lowercased()
+        if low.contains("orion") { return "Orion" }
+        if low.contains("e4b") { return "Aureon 1.1" }
+        return "Sage 1"
+    }
+
     var thinkingEffort: ThinkingEffort {
-        get { ThinkingEffort(rawValue: thinkingEffortRaw) ?? .off }
-        set { thinkingEffortRaw = newValue.rawValue; objectWillChange.send() }
+        get {
+            let eff = ThinkingEffort(rawValue: thinkingEffortRaw) ?? .off
+            if eff == .max && !supportsMaxThinking { return .high }
+            return eff
+        }
+        set {
+            let clamped = (newValue == .max && !supportsMaxThinking) ? .high : newValue
+            thinkingEffortRaw = clamped.rawValue
+            objectWillChange.send()
+        }
     }
 
     var activeModelName: String {
-        availableModels.first(where: { $0.id == selectedModelId })?.name ?? "SEN.AI"
+        activeModelOption?.name ?? "Sage 1"
     }
 
     func imageResolveURL(for query: String?) -> URL? {
@@ -238,6 +284,9 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
                         content: (m["content"] as? String) ?? "",
                         thinking: (m["thinking"] as? String) ?? "",
                         autoPersona: m["auto_persona"] as? String,
+                        modelId: m["model_id"] as? String,
+                        forkedFromTitle: m["forked_from_title"] as? String,
+                        forkedFromId: m["forked_from_id"] as? String,
                         webSources: wsList,
                         richCards: rcList,
                         rating: m["rating"] as? String
@@ -312,7 +361,7 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
         SenHaptics.light()
         let userMsg = ChatMessage(id: UUID().uuidString, role: "user", content: finalPrompt, attachedImages: images)
         let assistantId = UUID().uuidString
-        let assistantMsg = ChatMessage(id: assistantId, role: "assistant", content: "", isStreaming: true)
+        let assistantMsg = ChatMessage(id: assistantId, role: "assistant", content: "", modelId: selectedModelId, isStreaming: true)
         messages.append(userMsg)
         messages.append(assistantMsg)
 
@@ -564,12 +613,20 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
         guard !activeBaseURL.isEmpty, !messages.isEmpty,
               let url = URL(string: "\(activeBaseURL)/api/sessions") else { return }
         let existing = sessions.first(where: { $0.id == activeSessionId })
-        let title = customTitle ?? existing?.title ?? String(messages.first(where: { $0.role == "user" })?.content.prefix(48) ?? "Yeni Sohbet")
+        let forkOrigin = messages.first?.forkedFromTitle
+        let fallbackTitle: String = {
+            if let f = forkOrigin, !f.isEmpty { return "\(f) - devam" }
+            return String(messages.first(where: { $0.role == "user" })?.content.prefix(48) ?? "Yeni Sohbet")
+        }()
+        let title = customTitle ?? existing?.title ?? fallbackTitle
         let pinned = customPinned ?? existing?.pinned ?? false
 
         let serialized: [[String: Any]] = messages.map { m in
             var dict: [String: Any] = ["id": m.id, "role": m.role, "content": m.content, "thinking": m.thinking]
             if let ap = m.autoPersona { dict["auto_persona"] = ap }
+            if let mid = m.modelId { dict["model_id"] = mid }
+            if let ft = m.forkedFromTitle { dict["forked_from_title"] = ft }
+            if let fid = m.forkedFromId { dict["forked_from_id"] = fid }
             if let r = m.rating { dict["rating"] = r }
             return dict
         }
@@ -584,6 +641,59 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
         ])
         _ = try? await urlSession.data(for: req)
         await fetchSessions()
+    }
+
+    func forkChat(at messageId: String) async {
+        guard !isGenerating, let idx = messages.firstIndex(where: { $0.id == messageId }) else { return }
+        var sliced = Array(messages.prefix(idx + 1))
+        guard !sliced.isEmpty else { return }
+        let prevSid = activeSessionId
+        let rawTitle = currentSessionTitle
+        let baseTitle = rawTitle
+            .replacingOccurrences(of: " - devam", with: "")
+            .replacingOccurrences(of: " (Dal)", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanBase = baseTitle.isEmpty ? "Sohbet" : baseTitle
+        sliced[0].forkedFromTitle = cleanBase
+        sliced[0].forkedFromId = prevSid
+        activeSessionId = "ios_\(UUID().uuidString.prefix(10).lowercased())"
+        messages = sliced
+        SenHaptics.success()
+        await saveCurrentSession(customTitle: "\(cleanBase) - devam")
+    }
+
+    func compactCurrentSession() async {
+        guard !isGenerating, !isCompacting, messages.count >= 2,
+              !activeBaseURL.isEmpty,
+              let url = URL(string: "\(activeBaseURL)/api/chat/compact") else { return }
+        isCompacting = true
+        defer { isCompacting = false }
+        let payloadMsgs: [[String: Any]] = messages.map { ["role": $0.role, "content": $0.content] }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try? JSONSerialization.data(withJSONObject: [
+            "session_id": activeSessionId,
+            "messages": payloadMsgs,
+        ])
+        do {
+            let (data, resp) = try await urlSession.data(for: req)
+            guard let http = resp as? HTTPURLResponse, http.statusCode == 200,
+                  let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let summary = obj["summary"] as? String, !summary.isEmpty else { return }
+            let keepTail = Array(messages.suffix(4))
+            let compactMsg = ChatMessage(
+                id: UUID().uuidString,
+                role: "assistant",
+                content: "Önceki sohbet bağlamı sıkıştırıldı:\n\n\(summary)",
+                modelId: selectedModelId
+            )
+            messages = [compactMsg] + keepTail
+            SenHaptics.success()
+            if !isTemporaryChat {
+                await saveCurrentSession()
+            }
+        } catch {}
     }
 
     func togglePinSession(_ sid: String) async {

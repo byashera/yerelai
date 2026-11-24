@@ -52,7 +52,7 @@
   }
 
   function syncThemeCards(themePref) {
-    const pref = themePref || localStorage.getItem("yerelai_theme") || "dark";
+    const pref = themePref || localStorage.getItem("yerelai_theme") || "light";
     $$("#sp-theme-grid .sp-theme-card").forEach((card) => {
       card.classList.toggle("active", card.dataset.setTheme === pref);
     });
@@ -131,24 +131,25 @@
       const res = await fetch("/api/admin/overview");
       if (!res.ok) throw new Error("Admin verisi alınamadı");
       const data = await res.json();
-      if (swGuest) swGuest.checked = data.allow_guest !== false;
+      if (swGuest) swGuest.checked = data.allow_guest_access !== false;
       const profiles = Array.isArray(data.profiles) ? data.profiles : [];
       if (!profiles.length) {
         listEl.innerHTML = `<div class="muted-note">Henüz profil yok.</div>`;
         return;
       }
       listEl.innerHTML = profiles.map((p) => {
-        const badge = p.role === "admin" ? "Admin" : (p.role === "guest" ? "Misafir" : "Üye");
-        const canDel = p.actor_id !== "owner";
+        const pid = p.id || p.actor_id || "";
+        const badge = p.role === "admin" ? "Admin" : (p.role === "guest" ? "Cihaz / Misafir" : "Üye");
+        const canDel = pid && pid !== "owner";
         return `
-          <div class="adm-profile-row" data-actor="${escHtml(p.actor_id)}">
+          <div class="adm-profile-row" data-actor="${escHtml(pid)}">
             <div class="adm-profile-info">
-              <span class="adm-profile-name">${escHtml(p.display_name || p.username || p.actor_id)} <span class="badge-pill">${badge}</span></span>
-              <span class="adm-profile-sub">ID: ${escHtml(p.actor_id)} · ${p.session_count || 0} sohbet · ${p.memory_count || 0} anı</span>
+              <span class="adm-profile-name">${escHtml(p.display_name || p.username || pid)} <span class="badge-pill">${badge}</span></span>
+              <span class="adm-profile-sub">ID: ${escHtml(pid)} · ${p.session_count || 0} sohbet · ${p.memory_count || 0} anı</span>
             </div>
             <div class="adm-profile-acts">
-              <button class="btn-outline compact adm-btn-sessions" type="button" data-actor="${escHtml(p.actor_id)}" data-name="${escHtml(p.display_name || p.actor_id)}">Sohbetler</button>
-              ${canDel ? `<button class="btn-outline compact danger adm-btn-del" type="button" data-actor="${escHtml(p.actor_id)}">Sil</button>` : ""}
+              <button class="btn-outline compact adm-btn-sessions" type="button" data-actor="${escHtml(pid)}" data-name="${escHtml(p.display_name || pid)}">Sohbetler</button>
+              ${canDel ? `<button class="btn-outline compact danger adm-btn-del" type="button" data-actor="${escHtml(pid)}">Sil</button>` : ""}
             </div>
           </div>`;
       }).join("");
@@ -480,7 +481,7 @@
         const res = await fetch("/api/admin/settings", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ allow_guest: e.target.checked }),
+          body: JSON.stringify({ allow_guest_access: e.target.checked }),
         });
         if (!res.ok) throw new Error("Güncellenemedi");
         setSavePill("saved");

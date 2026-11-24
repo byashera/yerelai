@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="tr" data-theme="dark">
+<html lang="tr" data-theme="light">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
@@ -7,19 +7,19 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="SEN.AI" />
   <meta name="mobile-web-app-capable" content="yes" />
-  <meta name="theme-color" content="#14161c" />
+  <meta name="theme-color" content="#f9f9f8" />
   <title>SEN.AI · Studio</title>
   <meta name="description" content="Yerel GPU VRAM üzerinde GGUF Turbo CUDA hızında çalışan Gemma 4 sesli, görsel, kod, doküman ve canlı web araştırmalı yapay zekâ stüdyosu." />
-  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
-  <link rel="apple-touch-icon" href="favicon.svg" />
+  <link rel="icon" type="image/svg+xml" href="favicon.svg?v=20.7" />
+  <link rel="apple-touch-icon" href="favicon.svg?v=20.7" />
   <link rel="manifest" href="manifest.json" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="vendor/katex.min.css" />
-  <link rel="stylesheet" href="styles.css?v=20.1" />
-  <link rel="stylesheet" href="desktop.css?v=20.1" />
-  <link rel="stylesheet" href="mobile.css?v=20.1" />
+  <link rel="stylesheet" href="styles.css?v=20.9" />
+  <link rel="stylesheet" href="desktop.css?v=20.9" />
+  <link rel="stylesheet" href="mobile.css?v=20.9" />
   <script defer src="vendor/chart.umd.min.js"></script>
   <script defer src="vendor/katex.min.js"></script>
   <script defer src="vendor/mermaid.min.js"></script>
@@ -40,7 +40,7 @@
       <div class="sidebar-top">
         <div class="brand">
           <div class="brand-logo" aria-hidden="true">
-            <img src="favicon.svg" alt="" width="28" height="28" />
+            <img src="favicon.svg?v=20.5" alt="" width="28" height="28" />
           </div>
           <div class="brand-copy">
             <span class="brand-name">SEN.AI</span>
@@ -88,7 +88,7 @@
           <input id="mobile-session-search" type="search" placeholder="Sohbetlerde ara..." aria-label="Sohbetlerde ara" />
         </div>
 
-        <div class="lib-head-row mobile-hide">
+        <div class="lib-head-row mobile-hide sidebar-projects-head">
           <span class="nav-section-label">Projeler</span>
           <button type="button" id="btn-new-project" class="lib-upload-btn" title="Yeni Proje Klasörü Oluştur">
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -218,7 +218,7 @@
               </svg>
               <span id="top-dl-pct" class="mono">%0</span>
             </span>
-            <span id="top-model-pill">Gemma 4 E2B</span>
+            <span id="top-model-pill">Sage 1</span>
             <span id="top-profile-chip" class="lang-chip">Turbo</span>
             <svg class="mobile-model-chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
           </div>
@@ -231,11 +231,8 @@
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="3.2 3.2"><circle cx="12" cy="12" r="9"/></svg>
           </button>
 
-          <!-- ChatGPT-Style Active Chat Actions: ••• | Share ↑ | Outputs/Summary ⊶ -->
+          <!-- Active Chat Actions: Share ↑ | Outputs/Summary ⊶ -->
           <div id="chat-export-actions" class="chat-top-actions" hidden>
-            <button type="button" id="btn-chat-more" class="icon-btn" title="Sohbet Seçenekleri" aria-label="Sohbet Seçenekleri">
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>
-            </button>
             <button type="button" id="btn-export-md" class="icon-btn" title="Sohbeti Dışa Aktar (.md)" aria-label="Dışa Aktar">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
             </button>
@@ -245,6 +242,22 @@
                 <span id="chat-outputs-count" class="outputs-count-dot mono" hidden>0</span>
               </button>
               <div id="chat-outputs-popover" class="chat-outputs-popover" hidden role="dialog" aria-label="Sohbet Çıktıları ve Dosyalar">
+                <div class="cop-ctx-section" id="cop-ctx-section">
+                  <div class="cop-ctx-top">
+                    <span class="cop-ctx-title">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 14l4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/><circle cx="12" cy="14" r="1.5" fill="currentColor" stroke="none"/></svg>
+                      <span>Bağlam Kullanımı</span>
+                    </span>
+                    <span id="cop-ctx-pct" class="cop-ctx-pct mono">%0</span>
+                  </div>
+                  <div class="cop-ctx-track" aria-hidden="true">
+                    <div id="cop-ctx-bar" class="cop-ctx-bar" style="width:0%"></div>
+                  </div>
+                  <div class="cop-ctx-foot">
+                    <span id="cop-ctx-meta" class="cop-ctx-meta mono">0 / 32.768 token</span>
+                    <button type="button" id="btn-cop-compact" class="cop-compact-btn" hidden>Sıkıştır</button>
+                  </div>
+                </div>
                 <div class="cop-head">
                   <strong>Çıktılar &amp; Dosyalar</strong>
                   <span id="cop-count-label" class="mono">0 öğe</span>
@@ -255,12 +268,6 @@
               </div>
             </div>
           </div>
-
-          <!-- Account / Actor Chip (Visible for remote users or to switch account) -->
-          <button type="button" id="btn-actor-chip" class="actor-chip-btn" hidden title="Hesap Durumu / Giriş Yap">
-            <span id="actor-chip-dot" class="actor-chip-dot"></span>
-            <span id="actor-chip-name">Misafir</span>
-          </button>
 
           <div class="notif-wrapper">
             <button type="button" id="btn-notif-bell" class="icon-btn notif-bell-btn" aria-label="Bildirim ve Colab Merkezi" title="Bildirim ve Colab Merkezi">
@@ -336,30 +343,39 @@
             <!-- Unified ChatGPT/Claude Calm Empty-State Hero -->
             <section id="welcome-hero" class="home-hero">
               <div class="hero-orb-stage" aria-hidden="true">
-                <svg class="hero-crystal-svg" width="44" height="44" viewBox="0 0 80 80" fill="none">
-                  <defs>
-                    <linearGradient id="hcTopL" x1="16" y1="8" x2="42" y2="50" gradientUnits="userSpaceOnUse">
-                      <stop offset="0%" stop-color="#67e8f9"/>
-                      <stop offset="100%" stop-color="#2563eb"/>
-                    </linearGradient>
-                    <linearGradient id="hcTopR" x1="40" y1="8" x2="66" y2="54" gradientUnits="userSpaceOnUse">
-                      <stop offset="0%" stop-color="#93c5fd"/>
-                      <stop offset="100%" stop-color="#4f46e5"/>
-                    </linearGradient>
-                    <linearGradient id="hcBot" x1="16" y1="48" x2="64" y2="72" gradientUnits="userSpaceOnUse">
-                      <stop offset="0%" stop-color="#1d4ed8"/>
-                      <stop offset="100%" stop-color="#312e81"/>
-                    </linearGradient>
-                  </defs>
-                  <polygon points="40,6 14,48 40,56" fill="url(#hcTopL)" opacity="0.96"/>
-                  <polygon points="40,6 66,48 40,56" fill="url(#hcTopR)" opacity="0.96"/>
-                  <polygon points="14,48 40,74 40,56" fill="url(#hcBot)" opacity="0.92"/>
-                  <polygon points="66,48 40,74 40,56" fill="#4338ca" opacity="0.9"/>
-                  <polygon points="40,6 40,56 26,44" fill="#ffffff" opacity="0.22"/>
-                  <polygon points="40,6 66,48 40,74 14,48" stroke="rgba(255,255,255,0.45)" stroke-width="1.3" stroke-linejoin="round"/>
-                </svg>
+                <div class="hero-aurora-bloom"></div>
+                <div class="hero-orbit-ring ring-outer"></div>
+                <div class="hero-orbit-ring ring-inner"></div>
+                <span class="hero-spark s1"></span>
+                <span class="hero-spark s2"></span>
+                <span class="hero-spark s3"></span>
+                <div class="hero-core-medallion">
+                  <svg class="hero-prism-svg" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <defs>
+                      <linearGradient id="hp-grad-a" x1="8" y1="6" x2="56" y2="58" gradientUnits="userSpaceOnUse">
+                        <stop offset="0%" stop-color="#38bdf8"/>
+                        <stop offset="50%" stop-color="#6366f1"/>
+                        <stop offset="100%" stop-color="#d946ef"/>
+                      </linearGradient>
+                      <linearGradient id="hp-grad-b" x1="56" y1="10" x2="10" y2="54" gradientUnits="userSpaceOnUse">
+                        <stop offset="0%" stop-color="#a5f3fc" stop-opacity="0.95"/>
+                        <stop offset="55%" stop-color="#818cf8" stop-opacity="0.65"/>
+                        <stop offset="100%" stop-color="#f472b6" stop-opacity="0.9"/>
+                      </linearGradient>
+                      <radialGradient id="hp-core" cx="50%" cy="50%" r="50%">
+                        <stop offset="0%" stop-color="#ffffff"/>
+                        <stop offset="55%" stop-color="#e0f2fe" stop-opacity="0.85"/>
+                        <stop offset="100%" stop-color="#6366f1" stop-opacity="0"/>
+                      </radialGradient>
+                    </defs>
+                    <polygon class="hp-outer-hex" points="32,5 54,18 54,46 32,59 10,46 10,18" stroke="url(#hp-grad-a)" stroke-width="2.2" fill="url(#hp-grad-a)" fill-opacity="0.12"/>
+                    <polygon class="hp-mid-diamond" points="32,12 49,32 32,52 15,32" stroke="url(#hp-grad-b)" stroke-width="2" fill="url(#hp-grad-b)" fill-opacity="0.18"/>
+                    <path class="hp-star" d="M32 18 L35.2 28.8 L46 32 L35.2 35.2 L32 46 L28.8 35.2 L18 32 L28.8 28.8 Z" fill="url(#hp-grad-a)"/>
+                    <circle class="hp-center-glow" cx="32" cy="32" r="5.5" fill="url(#hp-core)"/>
+                  </svg>
+                </div>
               </div>
-              <h1 class="hero-main-title"><span id="hero-greeting-lead">Günaydın</span>, nasıl yardımcı olabilirim?</h1>
+              <h1 class="hero-main-title" id="hero-greeting-title"><span id="hero-greeting-lead">İyi günler</span>, nasıl yardımcı olabilirim?</h1>
               <span id="hero-hw-text" hidden>RTX 4060 · 8.0 GB VRAM · GGUF Turbo</span>
             </section>
 
@@ -367,10 +383,28 @@
             <section id="temp-chat-hero" class="temp-chat-hero" hidden>
               <h2>Geçici sohbet</h2>
               <p>Bu sohbet geçmişe kaydedilmez ve eğitim verisi olarak kullanılmaz.</p>
-              <button type="button" id="btn-temp-personalize" class="temp-pers-trigger">
-                <span id="lbl-temp-personalize">Kişiselleştirilmiş</span>
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-              </button>
+              <div class="temp-pers-wrap" id="temp-pers-wrap">
+                <button type="button" id="btn-temp-personalize" class="temp-pers-trigger" aria-haspopup="menu" aria-expanded="false">
+                  <span id="lbl-temp-personalize">Kişiselleştirilmemiş</span>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                </button>
+                <div id="temp-pers-menu" class="temp-pers-menu" hidden role="menu" aria-label="Geçici Sohbet Kişiselleştirme">
+                  <button type="button" class="temp-pers-opt" data-temp-pers="on" role="menuitemradio" aria-checked="false">
+                    <div class="tpo-copy">
+                      <strong>Kişiselleştirilmiş</strong>
+                      <span>Bellekten, eklentilerden ve özel talimatlardan yararlanır</span>
+                    </div>
+                    <span class="tpo-check" aria-hidden="true">✓</span>
+                  </button>
+                  <button type="button" class="temp-pers-opt active" data-temp-pers="off" role="menuitemradio" aria-checked="true">
+                    <div class="tpo-copy">
+                      <strong>Kişiselleştirilmemiş</strong>
+                      <span>Belleği, eklentileri ve özel talimatları yok sayar</span>
+                    </div>
+                    <span class="tpo-check" aria-hidden="true">✓</span>
+                  </button>
+                </div>
+              </div>
             </section>
 
             <!-- Messages Stream -->
@@ -415,24 +449,22 @@
 
               <div id="pending-attachments" class="pending-attachments" hidden></div>
 
-              <!-- Active Tool Pills Shelf INSIDE Top of Composer Card (Clean Borderless Soft Surface) -->
+              <!-- Active Tool Pills Shelf INSIDE Top of Composer Card (Unified 30px Liquid Glass Pills) -->
               <div id="composer-pills-shelf" class="composer-pills-shelf">
                 <button type="button" id="chip-web-active" class="active-tool-chip sky" hidden title="Web Araştırmasını Kapat">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                  <svg class="atc-ico" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><path d="M12 2.5c2.6 2.7 4 6 4 9.5s-1.4 6.8-4 9.5c-2.6-2.7-4-6-4-9.5s1.4-6.8 4-9.5z"/><path d="M2.8 12h18.4"/></svg>
                   <span>Araştır</span>
                   <span class="atc-x">×</span>
                 </button>
-                <button type="button" id="chip-rag-active" class="active-tool-chip indigo" hidden title="Kütüphaneyi Kapat">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                <button type="button" id="chip-rag-active" class="active-tool-chip emerald" hidden title="Kütüphaneyi Kapat">
+                  <svg class="atc-ico" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><path d="M9 7h6M9 11h4"/></svg>
                   <span>Kütüphane</span>
                   <span class="atc-x">×</span>
                 </button>
                 <div id="active-mode-strip" class="active-mode-strip" hidden>
-                  <span class="active-mode-pill" id="active-mode-pill">
-                    <span class="active-mode-dot" aria-hidden="true"></span>
-                    <span id="active-mode-label">Mod</span>
-                    <button type="button" id="btn-clear-mode" class="active-mode-clear" title="Varsayılan Genel Asistana Dön" aria-label="Modu Kapat">×</button>
-                  </span>
+                  <svg class="atc-ico" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4V2M15 16v-2M8 9h2M20 9h2M17.8 11.8L19 13M17.8 6.2L19 5M3 21l9-9M12.2 6.2L11 5"/></svg>
+                  <span id="active-mode-label">Mod</span>
+                  <button type="button" id="btn-clear-mode" class="atc-x-btn" title="Varsayılan Genel Asistana Dön" aria-label="Modu Kapat">×</button>
                 </div>
               </div>
 
@@ -487,21 +519,27 @@
                 </div>
 
                 <div class="composer-right">
-                  <!-- Circular Micro SVG Context Meter Ring (Clickable to run /compact!) -->
-                  <button type="button" id="ctx-meter-pill" class="ctx-meter-pill mono" hidden title="Bağlam kullanımı — sıkıştırmak için tıklayın (/compact)">
-                    <svg class="ctx-ring-svg xs" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
-                      <circle class="ctx-ring-bg" cx="12" cy="12" r="9" />
-                      <circle class="ctx-ring-fg" id="ctx-pill-ring-fg" cx="12" cy="12" r="9" />
-                    </svg>
-                    <span id="ctx-meter-pct">%0</span>
-                  </button>
+                  <!-- Circular Micro SVG Context Meter Ring + Custom Glass Hover Tooltip -->
+                  <div class="ctx-meter-wrap">
+                    <button type="button" id="ctx-meter-pill" class="ctx-meter-pill mono" hidden aria-label="Bağlam kullanımı — sıkıştırmak için tıklayın">
+                      <svg class="ctx-ring-svg xs" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+                        <circle class="ctx-ring-bg" cx="12" cy="12" r="9" />
+                        <circle class="ctx-ring-fg" id="ctx-pill-ring-fg" cx="12" cy="12" r="9" />
+                      </svg>
+                      <span id="ctx-meter-pct">%0</span>
+                    </button>
+                    <div id="ctx-meter-tooltip" class="ctx-glass-tip" role="tooltip">
+                      <strong id="ctx-tip-title">Bağlam Doluluğu</strong>
+                      <span id="ctx-tip-sub">Sıkıştırmak için tıklayın (/compact)</span>
+                    </div>
+                  </div>
 
                   <div class="model-picker-wrap" id="composer-picker-wrap">
                     <button type="button" class="speaker-pill borderless-picker" id="btn-composer-picker" aria-haspopup="dialog" aria-expanded="false">
                       <span class="prism-mark xs" id="composer-prism" aria-hidden="true">
                         <svg viewBox="0 0 24 24" fill="none"><polygon points="12,3 21,9 17,20 7,20 3,9" stroke="currentColor" stroke-width="2" fill="currentColor" fill-opacity="0.22"/></svg>
                       </span>
-                      <span id="composer-pill-label">Gemma 4 E2B · Orta</span>
+                      <span id="composer-pill-label">Sage 1 · Orta</span>
                       <span class="effort-mini-dot" id="composer-effort-dot" data-effort="medium" aria-hidden="true"></span>
                       <svg class="pill-chevron" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
                     </button>
@@ -511,10 +549,15 @@
                       <div class="thinking-slider-card" id="thinking-slider-card" data-effort="medium">
                         <div class="ts-head-row">
                           <div class="ts-title-group">
-                            <span id="ts-level-label" class="ts-level-label">Orta</span>
-                            <span id="effort-desc-line" class="ts-subtitle">Dengeli derin analiz</span>
+                            <div class="ts-title-line">
+                              <span id="ts-level-label" class="ts-level-label">Orta</span>
+                              <span id="ts-max-ctx-badge" class="ts-max-ctx-badge" hidden>
+                                <svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 14l4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/><circle cx="12" cy="14" r="1.5" fill="currentColor" stroke="none"/></svg>
+                                <span>Yüksek Bağlam Kullanımı</span>
+                              </span>
+                            </div>
+                            <span id="effort-desc-line" class="ts-subtitle">Dengeli akıl yürütme.</span>
                           </div>
-                          <span id="effort-token-badge" class="vp-budget-pill mono">768 tok</span>
                         </div>
 
                         <div class="ts-track" id="ts-track" role="slider" tabindex="0" aria-label="Düşünme Seviyesi" aria-valuemin="0" aria-valuemax="3" aria-valuenow="2">
@@ -526,6 +569,7 @@
                             <span class="ts-dot" data-idx="1"></span>
                             <span class="ts-dot" data-idx="2"></span>
                             <span class="ts-dot" data-idx="3"></span>
+                            <span class="ts-dot ts-dot-max" data-idx="4" hidden></span>
                           </div>
                           <div class="ts-thumb" id="ts-thumb"></div>
                         </div>
@@ -535,6 +579,7 @@
                           <button type="button" class="ts-lbl-btn" data-effort="low">Düşük</button>
                           <button type="button" class="ts-lbl-btn" data-effort="medium">Orta</button>
                           <button type="button" class="ts-lbl-btn" data-effort="high">Yüksek</button>
+                          <button type="button" class="ts-lbl-btn ts-lbl-max" data-effort="max" hidden>Max</button>
                         </div>
                       </div>
 
@@ -551,15 +596,22 @@
                     </div>
                   </div>
 
-                  <button type="button" id="btn-handsfree" class="composer-circle-btn borderless-ico" data-tip="Eller Serbest Sesli Sohbet (VAD)" aria-label="Eller Serbest Mod" aria-pressed="false">
+                  <button type="button" id="btn-handsfree" class="composer-circle-btn borderless-ico" data-tip="Eller Serbest Sesli Sohbet (VAD)" aria-label="Eller Serbest Mod" aria-pressed="false" hidden>
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>
                   </button>
-                  <button type="button" id="btn-mic" class="composer-circle-btn" data-tip="Sesli Konuş" aria-label="Mikrofon">
+                  <button type="button" id="btn-mic" class="composer-circle-btn" data-tip="Sesli Konuş" aria-label="Mikrofon" hidden>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>
                   </button>
 
-                  <button type="button" id="btn-send" class="btn-solid-circle" title="Gönder (Enter)" aria-label="Gönder">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
+                  <button type="button" id="btn-send" class="btn-solid-circle is-voice-mode" title="Sesli Ajan Modunu Başlat" aria-label="Sesli Ajan Modu">
+                    <svg class="send-ico-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
+                    <svg class="send-ico-voice" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <line class="vw-bar b1" x1="4" y1="10" x2="4" y2="14"/>
+                      <line class="vw-bar b2" x1="8" y1="6" x2="8" y2="18"/>
+                      <line class="vw-bar b3" x1="12" y1="3" x2="12" y2="21"/>
+                      <line class="vw-bar b4" x1="16" y1="7" x2="16" y2="17"/>
+                      <line class="vw-bar b5" x1="20" y1="10" x2="20" y2="14"/>
+                    </svg>
                   </button>
                   <button type="button" id="btn-stop" class="btn-solid-circle stop" title="Üretimi Durdur" aria-label="Durdur" hidden>
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2.5"/></svg>
@@ -1576,31 +1628,20 @@
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
       <span>Kaynakları görüntüle</span>
     </button>
-    <button type="button" class="ctx-menu-item" data-msg-act="docx" role="menuitem">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 18 15 15"/></svg>
-      <span>Word (.docx) indir</span>
-    </button>
   </div>
 
-  <!-- Web Sources Rich Modal (Favicons + Title + Domain + Snippet) -->
-  <div id="sources-modal" class="modal-backdrop" hidden role="dialog" aria-modal="true" aria-label="Web Kaynakları">
-    <div class="modal-card sources-modal-card">
-      <div class="modal-head">
-        <div>
-          <h3 id="sources-modal-title">Web Kaynakları</h3>
-          <p>Yanıt oluşturulurken incelenen güncel kaynaklar.</p>
-        </div>
-        <button type="button" id="btn-sources-close" class="icon-btn" aria-label="Kapat">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
-      </div>
-      <div class="modal-body">
-        <div id="sources-modal-list" class="sources-modal-list"></div>
-      </div>
+  <!-- Compact Floating Web Sources Popover (Opens beside Kaynaklar pill, NOT fullscreen!) -->
+  <div id="sources-popover" class="sources-popover" hidden role="dialog" aria-label="Web Kaynakları">
+    <div class="sources-pop-head">
+      <strong id="sources-modal-title">Kaynaklar</strong>
+      <button type="button" id="btn-sources-close" class="icon-btn xs" aria-label="Kapat">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
     </div>
+    <div id="sources-modal-list" class="sources-pop-list"></div>
   </div>
 
-  <script src="js/settings.js?v=20.1"></script>
-  <script src="app.js?v=20.1"></script>
+  <script src="js/settings.js?v=20.10"></script>
+  <script src="app.js?v=20.10"></script>
 </body>
 </html>

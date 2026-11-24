@@ -10,10 +10,11 @@
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 
   const EFFORT_META = {
-    off: { label: "Kapalı", budget: "0 tok", tone: "off", desc: "Doğrudan hızlı yanıt (düşünme adımı kapalı)." },
-    low: { label: "Düşük", budget: "256 tok", tone: "low", desc: "Kısa akıl yürütme (256 token bütçesi)." },
-    medium: { label: "Orta", budget: "768 tok", tone: "medium", desc: "Dengeli akıl yürütme (768 token bütçesi)." },
-    high: { label: "Yüksek", budget: "2048 tok", tone: "high", desc: "Derin analiz ve hata ayıklama (2048 token bütçesi)." },
+    off: { label: "Kapalı", budget: "", tone: "off", desc: "Doğrudan hızlı yanıt." },
+    low: { label: "Düşük", budget: "", tone: "low", desc: "Hızlı ve öz akıl yürütme." },
+    medium: { label: "Orta", budget: "", tone: "medium", desc: "Dengeli akıl yürütme." },
+    high: { label: "Yüksek", budget: "", tone: "high", desc: "Derin analiz ve hata ayıklama." },
+    max: { label: "Max", budget: "", tone: "max", desc: "Maksimum derinlik ve uzun analiz." },
   };
 
   const PROFILE_LABELS = {
@@ -112,8 +113,9 @@
     },
   ];
 
-  const PRISM_E2B_SVG = `<svg viewBox="0 0 24 24" fill="none"><polygon points="12,2.5 21,9 17.5,20.5 6.5,20.5 3,9" stroke="currentColor" stroke-width="1.9" fill="currentColor" fill-opacity="0.18"/><polygon points="13,6 8.5,13 12,13 11,18 15.5,11 12,11" fill="#ffffff" opacity="0.92"/></svg>`;
-  const PRISM_E4B_SVG = `<svg viewBox="0 0 24 24" fill="none"><polygon points="12,2 20.5,7 20.5,17 12,22 3.5,17 3.5,7" stroke="currentColor" stroke-width="1.8" fill="currentColor" fill-opacity="0.18"/><polygon points="12,5.5 17.5,12 12,18.5 6.5,12" stroke="#ffffff" stroke-width="1.4" fill="currentColor" fill-opacity="0.32"/><circle cx="12" cy="12" r="2.1" fill="#ffffff"/></svg>`;
+  const PRISM_E2B_SVG = `<svg viewBox="0 0 24 24" fill="none"><polygon class="pm-spin" points="12,2.2 20.5,8.5 17.3,19.8 6.7,19.8 3.5,8.5" stroke="currentColor" stroke-width="1.5" stroke-opacity="0.55" fill="currentColor" fill-opacity="0.14"/><path class="pm-pulse" d="M12 4.8 L14.4 10.1 L19.6 12 L14.4 13.9 L12 19.2 L9.6 13.9 L4.4 12 L9.6 10.1 Z" fill="#ffffff" fill-opacity="0.95"/><circle cx="12" cy="12" r="2.1" fill="#ccfbf1"/></svg>`;
+  const PRISM_E4B_SVG = `<svg viewBox="0 0 24 24" fill="none"><circle class="pm-spin" cx="12" cy="12" r="9.4" stroke="currentColor" stroke-width="1.35" stroke-dasharray="4 3" stroke-opacity="0.65"/><polygon points="12,3.2 19.6,7.6 19.6,16.4 12,20.8 4.4,16.4 4.4,7.6" stroke="currentColor" stroke-width="1.55" fill="currentColor" fill-opacity="0.16"/><path class="pm-pulse" d="M12 6.2 L14.1 10.2 L18.2 12 L14.1 13.8 L12 17.8 L9.9 13.8 L5.8 12 L9.9 10.2 Z" fill="#ffffff" fill-opacity="0.96"/><circle cx="12" cy="12" r="2" fill="#fef3c7"/></svg>`;
+  const PRISM_ORION_SVG = `<svg viewBox="0 0 24 24" fill="none"><polygon class="pm-spin" points="12,1.8 20.8,6.9 20.8,17.1 12,22.2 3.2,17.1 3.2,6.9" stroke="#fbbf24" stroke-width="1.35" stroke-dasharray="5 3" stroke-opacity="0.72"/><line x1="6.4" y1="15.8" x2="17.6" y2="8.2" stroke="#fde68a" stroke-width="1.4" stroke-opacity="0.7" stroke-linecap="round"/><circle class="pm-pulse" cx="7.4" cy="15.1" r="2.0" fill="#fbbf24"/><circle class="pm-pulse" cx="12" cy="12" r="2.7" fill="#ffffff"/><circle class="pm-pulse" cx="16.6" cy="8.9" r="2.0" fill="#f59e0b"/><circle cx="8.2" cy="7.4" r="1.05" fill="#fde68a" opacity="0.85"/><circle cx="15.8" cy="16.6" r="1.05" fill="#fbbf24" opacity="0.85"/></svg>`;
   const PRISM_SVG = PRISM_E2B_SVG;
 
   const CMD_ICONS = {
@@ -364,13 +366,13 @@
     btnTempChat: $("#btn-temp-chat"),
     tempChatHero: $("#temp-chat-hero"),
     btnTempPersonalize: $("#btn-temp-personalize"),
+    lblTempPersonalize: $("#lbl-temp-personalize"),
+    tempPersMenu: $("#temp-pers-menu"),
     btnChatOutputs: $("#btn-chat-outputs"),
     chatOutputsPopover: $("#chat-outputs-popover"),
     chatOutputsList: $("#chat-outputs-list"),
     chatOutputsCount: $("#chat-outputs-count"),
     copCountLabel: $("#cop-count-label"),
-    btnActorChip: $("#btn-actor-chip"),
-    actorChipLabel: $("#actor-chip-name"),
     ctxMeterPill: $("#ctx-meter-pill"),
     ctxPillRingFg: $("#ctx-pill-ring-fg"),
     ctxMeterPct: $("#ctx-meter-pct"),
@@ -387,7 +389,7 @@
     starterPillsRow: $("#starter-pills-row"),
     msgMoreMenu: $("#msg-more-menu"),
     msgMoreMeta: $("#msg-more-meta"),
-    sourcesModal: $("#sources-modal"),
+    sourcesModal: $("#sources-popover"),
     sourcesModalCount: $("#sources-modal-title"),
     sourcesModalBody: $("#sources-modal-list"),
     btnSourcesModalClose: $("#btn-sources-close"),
@@ -678,12 +680,29 @@
     });
   }
 
-  function toggleTheme() {
+  function toggleTheme(ev) {
     const next = dom.html.getAttribute("data-theme") === "dark" ? "light" : "dark";
     dom.btnThemeToggle.classList.add("is-spinning");
-    setTimeout(() => dom.btnThemeToggle.classList.remove("is-spinning"), 460);
-    if (document.startViewTransition) document.startViewTransition(() => applyTheme(next));
-    else applyTheme(next);
+    setTimeout(() => dom.btnThemeToggle.classList.remove("is-spinning"), 480);
+
+    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+    if (document.startViewTransition && !reduceMotion) {
+      const btnRect = dom.btnThemeToggle?.getBoundingClientRect();
+      const cx = ev?.clientX || (btnRect ? btnRect.left + btnRect.width / 2 : window.innerWidth / 2);
+      const cy = ev?.clientY || (btnRect ? btnRect.top + btnRect.height / 2 : 24);
+      const maxR = Math.hypot(Math.max(cx, window.innerWidth - cx), Math.max(cy, window.innerHeight - cy));
+      const vt = document.startViewTransition(() => applyTheme(next));
+      vt.ready.then(() => {
+        document.documentElement.animate(
+          { clipPath: [`circle(0px at ${cx}px ${cy}px)`, `circle(${Math.ceil(maxR)}px at ${cx}px ${cy}px)`] },
+          { duration: 480, easing: "cubic-bezier(0.22, 1, 0.36, 1)", pseudoElement: "::view-transition-new(root)" }
+        );
+      }).catch(() => {});
+    } else {
+      dom.html.classList.add("is-theme-fading");
+      applyTheme(next);
+      setTimeout(() => dom.html.classList.remove("is-theme-fading"), 400);
+    }
   }
 
   function closeAllPopovers(except = null) {
@@ -755,15 +774,43 @@
     if (labelEl && matchedText) labelEl.textContent = matchedText;
   }
 
-  const EFFORT_LEVELS = ["off", "low", "medium", "high"];
+  const EFFORT_LEVELS_4 = ["off", "low", "medium", "high"];
+  const EFFORT_LEVELS_5 = ["off", "low", "medium", "high", "max"];
   let tsParticlesRaf = null;
   let tsParticles = [];
+  let tsParticlesMode = "";
+
+  function isE4bActive() {
+    return String(state.selectedModelId || "").toLowerCase().includes("e4b");
+  }
+
+  function getActiveEffortLevels() {
+    const id = (state.selectedModelId || "").toLowerCase();
+    return (id.includes("e4b") || id.includes("orion")) ? EFFORT_LEVELS_5 : EFFORT_LEVELS_4;
+  }
+
+  function syncSliderModelCapability() {
+    const id = (state.selectedModelId || "").toLowerCase();
+    const hasMax = id.includes("e4b") || id.includes("orion");
+    const card = dom.thinkingSliderCard;
+    if (card) {
+      card.classList.toggle("has-max", hasMax);
+      $$(".ts-dot-max, .ts-lbl-max", card).forEach((el) => { el.hidden = !hasMax; });
+    }
+    if (dom.tsTrack) {
+      dom.tsTrack.setAttribute("aria-valuemax", hasMax ? "4" : "3");
+    }
+    if (!hasMax && state.thinkingEffort === "max") {
+      state.thinkingEffort = "high";
+    }
+  }
 
   function stopCosmicParticles() {
     if (tsParticlesRaf) {
       cancelAnimationFrame(tsParticlesRaf);
       tsParticlesRaf = null;
     }
+    tsParticlesMode = "";
     const cvs = dom.tsParticlesCanvas;
     if (cvs) {
       const ctx2d = cvs.getContext("2d");
@@ -775,45 +822,69 @@
     const cvs = dom.tsParticlesCanvas;
     if (!cvs) return;
     if (window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) return;
-    if (state.thinkingEffort !== "high" || dom.composerPopover?.hidden) {
+    const effNow = dom.thinkingSliderCard?.dataset.effort || state.thinkingEffort;
+    if ((effNow !== "high" && effNow !== "max") || dom.composerPopover?.hidden) {
       stopCosmicParticles();
       return;
     }
-    if (tsParticlesRaf) return;
+    const isMax = effNow === "max";
+    if (tsParticlesRaf && tsParticlesMode === effNow) return;
+    if (tsParticlesRaf) {
+      cancelAnimationFrame(tsParticlesRaf);
+      tsParticlesRaf = null;
+    }
+    tsParticlesMode = effNow;
+
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const rect = cvs.getBoundingClientRect();
-    const w = Math.max(120, Math.round(rect.width || 240));
-    const h = Math.max(20, Math.round(rect.height || 26));
+    const rect = dom.tsTrack?.getBoundingClientRect() || cvs.getBoundingClientRect();
+    const w = Math.max(180, Math.round(rect.width || 280));
+    const h = Math.max(24, Math.round(rect.height || 32));
     cvs.width = w * dpr;
     cvs.height = h * dpr;
     const g = cvs.getContext("2d");
     g.scale(dpr, dpr);
 
-    if (!tsParticles.length) {
-      for (let i = 0; i < 18; i++) {
-        tsParticles.push({
-          x: Math.random() * w,
-          y: 4 + Math.random() * (h - 8),
-          r: 0.9 + Math.random() * 1.4,
-          vx: -(0.65 + Math.random() * 1.45),
-          alpha: 0.35 + Math.random() * 0.6,
-          tint: i % 3 === 0 ? "#ffe4e6" : (i % 3 === 1 ? "#fda4af" : "#fb7185"),
-        });
-      }
+    const count = isMax ? 34 : 18;
+    tsParticles = [];
+    for (let i = 0; i < count; i++) {
+      tsParticles.push({
+        x: Math.random() * w,
+        y: 4 + Math.random() * (h - 8),
+        r: isMax ? (1.0 + Math.random() * 1.9) : (0.9 + Math.random() * 1.3),
+        vx: isMax ? -(1.85 + Math.random() * 2.9) : -(0.75 + Math.random() * 1.35),
+        trail: isMax ? (5 + Math.random() * 11) : 0,
+        alpha: isMax ? (0.55 + Math.random() * 0.45) : (0.4 + Math.random() * 0.55),
+        tint: isMax
+          ? (i % 4 === 0 ? "#ffffff" : (i % 4 === 1 ? "#fecdd3" : (i % 4 === 2 ? "#fb7185" : "#fda4af")))
+          : (i % 3 === 0 ? "#e0e7ff" : (i % 3 === 1 ? "#c4b5fd" : "#93c5fd")),
+      });
     }
     const tick = () => {
-      if (state.thinkingEffort !== "high" || dom.composerPopover?.hidden) {
+      const curEff = dom.thinkingSliderCard?.dataset.effort || state.thinkingEffort;
+      if (curEff !== effNow || dom.composerPopover?.hidden) {
         stopCosmicParticles();
         return;
       }
       g.clearRect(0, 0, w, h);
       for (const p of tsParticles) {
         p.x += p.vx;
-        if (p.x < -6) {
-          p.x = w - 6 + Math.random() * 6;
+        if (p.x < -14) {
+          p.x = w + Math.random() * 10;
           p.y = 4 + Math.random() * (h - 8);
         }
         g.globalAlpha = p.alpha;
+        if (p.trail > 0) {
+          const grad = g.createLinearGradient(p.x, p.y, p.x + p.trail, p.y);
+          grad.addColorStop(0, p.tint);
+          grad.addColorStop(1, "rgba(255,255,255,0)");
+          g.strokeStyle = grad;
+          g.lineWidth = Math.max(1.2, p.r * 1.15);
+          g.lineCap = "round";
+          g.beginPath();
+          g.moveTo(p.x, p.y);
+          g.lineTo(p.x + p.trail, p.y);
+          g.stroke();
+        }
         g.fillStyle = p.tint;
         g.beginPath();
         g.arc(p.x, p.y, p.r, 0, Math.PI * 2);
@@ -825,17 +896,81 @@
     tsParticlesRaf = requestAnimationFrame(tick);
   }
 
-  function setSliderVisualPosition(frac) {
+  let tsSliderCur = 0;
+  let tsSliderTarget = 0;
+  let tsSliderVel = 0;
+  let tsSliderDragging = false;
+  let tsSliderRaf = null;
+
+  function applySliderGpuFrame(frac) {
     const f = Math.max(0, Math.min(1, frac));
-    if (dom.tsFill) dom.tsFill.style.width = f <= 0.02 ? "0%" : `${Math.round(f * 100)}%`;
-    if (dom.tsThumb) dom.tsThumb.style.left = `calc(13px + (100% - 26px) * ${f.toFixed(4)})`;
+    const track = dom.tsTrack;
+    const trackW = track ? (track.clientWidth || 260) : 260;
+    const travel = Math.max(1, trackW - 32); // 26px thumb + 3px padding each side
+    const thumbX = f * travel;
+    const scale = tsSliderDragging ? 1.07 : 1;
+    if (dom.tsThumb) {
+      dom.tsThumb.style.transform = `translate3d(${thumbX.toFixed(2)}px, 0, 0) scale(${scale})`;
+    }
+    if (dom.tsFill) {
+      const fillFrac = f <= 0.008 ? 0 : Math.min(1, (thumbX + 29) / Math.max(1, trackW));
+      dom.tsFill.style.transform = `scaleX(${fillFrac.toFixed(4)})`;
+      dom.tsFill.style.opacity = f <= 0.008 ? "0" : String(Math.min(1, 0.35 + f * 0.65).toFixed(3));
+    }
+  }
+
+  function runSliderPhysics() {
+    if (tsSliderDragging) {
+      // Silky 120 FPS LERP while dragging
+      tsSliderCur += (tsSliderTarget - tsSliderCur) * 0.38;
+      tsSliderVel = 0;
+      applySliderGpuFrame(tsSliderCur);
+      if (Math.abs(tsSliderTarget - tsSliderCur) > 0.0005 || tsSliderDragging) {
+        tsSliderRaf = requestAnimationFrame(runSliderPhysics);
+      } else {
+        tsSliderRaf = null;
+      }
+      return;
+    }
+    // Apple-like damped spring snap on release / click
+    const stiffness = 0.24;
+    const damping = 0.72;
+    const force = (tsSliderTarget - tsSliderCur) * stiffness;
+    tsSliderVel = (tsSliderVel + force) * damping;
+    tsSliderCur += tsSliderVel;
+    applySliderGpuFrame(tsSliderCur);
+    if (Math.abs(tsSliderTarget - tsSliderCur) > 0.0008 || Math.abs(tsSliderVel) > 0.0008) {
+      tsSliderRaf = requestAnimationFrame(runSliderPhysics);
+    } else {
+      tsSliderCur = tsSliderTarget;
+      tsSliderVel = 0;
+      applySliderGpuFrame(tsSliderCur);
+      tsSliderRaf = null;
+    }
+  }
+
+  function setSliderVisualPosition(frac, immediate = false) {
+    tsSliderTarget = Math.max(0, Math.min(1, frac));
+    if (immediate) {
+      tsSliderCur = tsSliderTarget;
+      tsSliderVel = 0;
+      applySliderGpuFrame(tsSliderCur);
+      return;
+    }
+    if (!tsSliderRaf) {
+      tsSliderRaf = requestAnimationFrame(runSliderPhysics);
+    }
   }
 
   function updateEffortPill(effort, animate = true) {
-    const eff = EFFORT_META[effort] ? effort : "medium";
+    syncSliderModelCapability();
+    const levels = getActiveEffortLevels();
+    const maxIdx = Math.max(1, levels.length - 1);
+    let eff = EFFORT_META[effort] ? effort : "medium";
+    if (!levels.includes(eff)) eff = levels[maxIdx];
     const meta = EFFORT_META[eff];
-    const idx = Math.max(0, EFFORT_LEVELS.indexOf(eff));
-    const frac = idx / 3;
+    const idx = Math.max(0, levels.indexOf(eff));
+    const frac = idx / maxIdx;
     state.thinkingEffort = eff;
 
     if (dom.thinkingSliderCard) {
@@ -845,17 +980,13 @@
       });
     }
     if (dom.tsLevelLabel) dom.tsLevelLabel.textContent = meta.label;
+    const maxBadge = $("#ts-max-ctx-badge");
+    if (maxBadge) maxBadge.hidden = eff !== "max";
     if (dom.tsTrack) {
       dom.tsTrack.setAttribute("aria-valuenow", String(idx));
       dom.tsTrack.setAttribute("aria-valuetext", meta.label);
     }
-    if (!animate && dom.thinkingSliderCard) {
-      dom.thinkingSliderCard.classList.add("is-dragging");
-      setSliderVisualPosition(frac);
-      requestAnimationFrame(() => dom.thinkingSliderCard?.classList.remove("is-dragging"));
-    } else {
-      setSliderVisualPosition(frac);
-    }
+    setSliderVisualPosition(frac, !animate);
 
     if (dom.effortHintBox) dom.effortHintBox.dataset.effort = eff;
     if (dom.effortTokenBadge) dom.effortTokenBadge.textContent = meta.budget;
@@ -863,7 +994,7 @@
     if (dom.effortDescLine) dom.effortDescLine.textContent = meta.desc;
     updateComposerPillLabel();
 
-    if (eff === "high" && dom.composerPopover && !dom.composerPopover.hidden) {
+    if ((eff === "high" || eff === "max") && dom.composerPopover && !dom.composerPopover.hidden) {
       startCosmicParticles();
     } else {
       stopCosmicParticles();
@@ -877,39 +1008,48 @@
 
     const fracFromClientX = (clientX) => {
       const r = track.getBoundingClientRect();
-      if (r.width <= 0) return 0;
-      return Math.max(0, Math.min(1, (clientX - r.left - 13) / Math.max(1, r.width - 26)));
+      if (r.width <= 32) return 0;
+      return Math.max(0, Math.min(1, (clientX - r.left - 16) / Math.max(1, r.width - 32)));
     };
-    const levelFromFrac = (f) => EFFORT_LEVELS[Math.min(3, Math.max(0, Math.round(f * 3)))];
+    const levelFromFrac = (f) => {
+      const levels = getActiveEffortLevels();
+      const maxIdx = Math.max(1, levels.length - 1);
+      return levels[Math.min(maxIdx, Math.max(0, Math.round(f * maxIdx)))];
+    };
 
-    let dragging = false;
+    const syncLiveLabel = (lv) => {
+      if (card.dataset.effort !== lv) {
+        const meta = EFFORT_META[lv];
+        card.dataset.effort = lv;
+        if (dom.tsLevelLabel) dom.tsLevelLabel.textContent = meta.label;
+        const maxBadge = $("#ts-max-ctx-badge");
+        if (maxBadge) maxBadge.hidden = lv !== "max";
+        if (dom.effortDescLine) dom.effortDescLine.textContent = meta.desc;
+        if (dom.effortTokenBadge) dom.effortTokenBadge.textContent = meta.budget;
+        $$(".ts-lbl-btn", card).forEach((b) => b.classList.toggle("active", b.dataset.effort === lv));
+        if (lv === "high" || lv === "max") startCosmicParticles();
+        else stopCosmicParticles();
+      }
+    };
+
     track.addEventListener("pointerdown", (e) => {
-      dragging = true;
+      e.preventDefault();
+      tsSliderDragging = true;
       card.classList.add("is-dragging");
       track.setPointerCapture?.(e.pointerId);
       const f = fracFromClientX(e.clientX);
-      setSliderVisualPosition(f);
-      const lv = levelFromFrac(f);
-      card.dataset.effort = lv;
-      if (dom.tsLevelLabel) dom.tsLevelLabel.textContent = EFFORT_META[lv].label;
-      if (lv === "high") startCosmicParticles();
-      else stopCosmicParticles();
+      setSliderVisualPosition(f, false);
+      syncLiveLabel(levelFromFrac(f));
     });
     track.addEventListener("pointermove", (e) => {
-      if (!dragging) return;
+      if (!tsSliderDragging) return;
       const f = fracFromClientX(e.clientX);
-      setSliderVisualPosition(f);
-      const lv = levelFromFrac(f);
-      if (card.dataset.effort !== lv) {
-        card.dataset.effort = lv;
-        if (dom.tsLevelLabel) dom.tsLevelLabel.textContent = EFFORT_META[lv].label;
-        if (lv === "high") startCosmicParticles();
-        else stopCosmicParticles();
-      }
+      setSliderVisualPosition(f, false);
+      syncLiveLabel(levelFromFrac(f));
     });
     const finishDrag = (e) => {
-      if (!dragging) return;
-      dragging = false;
+      if (!tsSliderDragging) return;
+      tsSliderDragging = false;
       card.classList.remove("is-dragging");
       const f = fracFromClientX(e.clientX);
       updateEffortPill(levelFromFrac(f), true);
@@ -919,14 +1059,16 @@
     track.addEventListener("pointercancel", finishDrag);
 
     track.addEventListener("keydown", (e) => {
-      const curIdx = Math.max(0, EFFORT_LEVELS.indexOf(state.thinkingEffort));
+      const levels = getActiveEffortLevels();
+      const maxIdx = Math.max(1, levels.length - 1);
+      const curIdx = Math.max(0, levels.indexOf(state.thinkingEffort));
       if (e.key === "ArrowRight" || e.key === "ArrowUp") {
         e.preventDefault();
-        updateEffortPill(EFFORT_LEVELS[Math.min(3, curIdx + 1)], true);
+        updateEffortPill(levels[Math.min(maxIdx, curIdx + 1)], true);
         window.YerelSettings?.scheduleAutoSave?.();
       } else if (e.key === "ArrowLeft" || e.key === "ArrowDown") {
         e.preventDefault();
-        updateEffortPill(EFFORT_LEVELS[Math.max(0, curIdx - 1)], true);
+        updateEffortPill(levels[Math.max(0, curIdx - 1)], true);
         window.YerelSettings?.scheduleAutoSave?.();
       }
     });
@@ -944,18 +1086,24 @@
   }
 
   function getShortModelName(m) {
-    if (!m) return "Gemma 4 E2B";
-    return m.id.includes("e4b") ? "Gemma 4 E4B" : "Gemma 4 E2B";
+    if (!m) return "Sage 1";
+    const id = (m.id || "").toLowerCase();
+    if (id.includes("orion") || m.provider === "nvidia_nim") return "Orion";
+    return id.includes("e4b") ? "Aureon 1.1" : "Sage 1";
   }
 
   function updateComposerPillLabel() {
     const m = getActiveModelObj();
     const shortName = getShortModelName(m);
-    const isE4b = m && m.id.includes("e4b");
+    const id = (m?.id || "").toLowerCase();
+    const isOrion = id.includes("orion") || m?.provider === "nvidia_nim";
+    const isE4b = !isOrion && id.includes("e4b");
     dom.composerPrism.classList.toggle("e4b", Boolean(isE4b));
-    dom.composerPrism.innerHTML = isE4b ? PRISM_E4B_SVG : PRISM_E2B_SVG;
+    dom.composerPrism.classList.toggle("orion", Boolean(isOrion));
+    dom.composerPrism.innerHTML = isOrion ? PRISM_ORION_SVG : (isE4b ? PRISM_E4B_SVG : PRISM_E2B_SVG);
     dom.composerPillLabel.textContent = `${shortName} · ${EFFORT_META[state.thinkingEffort]?.label || "Orta"}`;
     dom.topModelPill.textContent = shortName;
+    updateContextMeter();
   }
 
   function syncWebSearchUI(enabled) {
@@ -1012,33 +1160,42 @@
     const dl = state.download || {};
 
     const getModelVisual = (m) => {
-      const isE4b = m.id.includes("e4b");
-      const shortTitle = m.short_name || (isE4b ? "Gemma 4 E4B" : "Gemma 4 E2B");
-      const roleTag = isE4b ? "Derin" : "Turbo";
-      const vramMb = m.vram_estimate_mb || (isE4b ? 5600 : 3400);
+      const id = (m.id || "").toLowerCase();
+      const isOrion = id.includes("orion") || m.provider === "nvidia_nim";
+      const isE4b = !isOrion && id.includes("e4b");
+      const shortTitle = isOrion ? "Orion" : (isE4b ? "Aureon 1.1" : "Sage 1");
+      const roleTag = isOrion ? "Pro" : (isE4b ? "Uzman" : "Hızlı");
+      const subtitle = isOrion
+        ? "Gelişmiş kodlama ve yüksek bağlam."
+        : isE4b
+          ? "Gelişmiş analiz ve uzun hafıza."
+          : "Hızlı, yaratıcı ve görsel odaklı.";
+      const vramMb = m.vram_estimate_mb ?? (isOrion ? 0 : (isE4b ? 5600 : 3400));
       const vramGb = (Number(vramMb) / 1000).toFixed(1);
-      const dlSizeGb = m.download_size_gb || (isE4b ? 6.0 : 4.1);
-      const activeCore = isE4b ? "4.5B" : "2.3B";
-      const svg = isE4b ? PRISM_E4B_SVG : PRISM_E2B_SVG;
+      const dlSizeGb = m.download_size_gb || (isOrion ? 0 : (isE4b ? 6.0 : 4.1));
+      const activeCore = isOrion ? "120B Bulut" : (isE4b ? "4.5B" : "2.3B");
+      const svg = isOrion ? PRISM_ORION_SVG : (isE4b ? PRISM_E4B_SVG : PRISM_E2B_SVG);
+      const variantCls = isOrion ? "orion" : (isE4b ? "e4b" : "");
+      const rowCls = isOrion ? "is-orion" : (isE4b ? "is-e4b" : "");
       const isDownloading = Boolean(dl.active && dl.model_id === m.id);
-      return { isE4b, shortTitle, roleTag, vramMb, vramGb, dlSizeGb, activeCore, svg, isDownloading };
+      return { isOrion, isE4b, variantCls, rowCls, shortTitle, roleTag, subtitle, vramMb, vramGb, dlSizeGb, activeCore, svg, isDownloading };
     };
 
     dom.inspModelCards.innerHTML = state.models
       .map((m) => {
         const v = getModelVisual(m);
         const isSel = m.id === state.selectedModelId;
-        const badgeTxt = v.isDownloading ? `%${Number(dl.percent || 0).toFixed(1)}` : m.cached_locally ? "Hazır" : `↓ İndir (~${v.dlSizeGb} GB)`;
-        const paramsTxt = m.effective_params || v.activeCore;
+        const showBadge = v.isDownloading || (!m.cached_locally && !v.isOrion);
+        const badgeTxt = v.isDownloading ? `%${Number(dl.percent || 0).toFixed(1)}` : `↓ İndir (~${v.dlSizeGb} GB)`;
         return `
-        <button type="button" class="model-mini-card ${v.isE4b ? "is-e4b" : ""} ${isSel ? "selected" : ""} ${v.isDownloading ? "is-downloading" : ""}" data-model-id="${escHtml(m.id)}">
-          <span class="prism-mark md ${v.isE4b ? "e4b" : ""}" aria-hidden="true">${v.svg}</span>
+        <button type="button" class="model-mini-card ${v.rowCls} ${isSel ? "selected" : ""} ${v.isDownloading ? "is-downloading" : ""}" data-model-id="${escHtml(m.id)}">
+          <span class="prism-mark md ${v.variantCls}" aria-hidden="true">${v.svg}</span>
           <div class="model-mini-body">
             <div class="model-mini-top">
-              <span class="model-mini-title">${escHtml(v.shortTitle)} <span class="vp-role-chip ${v.isE4b ? "e4b" : ""}">${escHtml(v.roleTag)}</span></span>
-              <span class="model-badge ${m.cached_locally || v.isDownloading ? "ready" : ""}">${escHtml(badgeTxt)}</span>
+              <span class="model-mini-title">${escHtml(v.shortTitle)} <span class="vp-role-chip ${v.variantCls}">${escHtml(v.roleTag)}</span></span>
+              ${showBadge ? `<span class="model-badge ${v.isDownloading ? "ready" : ""}">${escHtml(badgeTxt)}</span>` : ""}
             </div>
-            <div class="model-mini-desc">${escHtml(paramsTxt)} · ~${escHtml(v.vramMb)} MB VRAM</div>
+            <div class="model-mini-desc">${escHtml(v.subtitle)}</div>
           </div>
           <span class="model-check" aria-hidden="true">${SVG_ICONS.check}</span>
           ${v.isDownloading ? buildModelDlBoxHtml(dl) : ""}
@@ -1050,22 +1207,23 @@
       .map((m) => {
         const v = getModelVisual(m);
         const isSel = m.id === state.selectedModelId;
-        const statusCls = v.isDownloading ? "is-dl-active" : m.cached_locally ? "ready" : "dl-cta";
-        const statusTxt = v.isDownloading ? `%${Number(dl.percent || 0).toFixed(1)}` : m.cached_locally ? "Hazır" : `↓ İndir (${v.dlSizeGb} GB)`;
+        const showStatusPill = v.isDownloading || (!m.cached_locally && !v.isOrion);
+        const statusCls = v.isDownloading ? "is-dl-active" : "dl-cta";
+        const statusTxt = v.isDownloading ? `%${Number(dl.percent || 0).toFixed(1)}` : `↓ İndir (${v.dlSizeGb} GB)`;
         return `
-        <button type="button" class="vp-row ${v.isE4b ? "is-e4b" : ""} ${isSel ? "selected" : ""} ${v.isDownloading ? "is-downloading" : ""}" data-model-id="${escHtml(m.id)}">
+        <button type="button" class="vp-row ${v.rowCls} ${isSel ? "selected" : ""} ${v.isDownloading ? "is-downloading" : ""}" data-model-id="${escHtml(m.id)}">
           <div class="vp-row-main">
-            <span class="prism-mark vp-ico ${v.isE4b ? "e4b" : ""}" aria-hidden="true">${v.svg}</span>
+            <span class="prism-mark vp-ico ${v.variantCls}" aria-hidden="true">${v.svg}</span>
             <div class="vp-model-copy">
               <div class="vp-model-head">
                 <span class="vp-model-title">${escHtml(v.shortTitle)}</span>
-                <span class="vp-role-chip ${v.isE4b ? "e4b" : ""}">${escHtml(v.roleTag)}</span>
+                <span class="vp-role-chip ${v.variantCls}">${escHtml(v.roleTag)}</span>
               </div>
-              <div class="vp-model-sub">${escHtml(v.activeCore)} · ~${escHtml(v.vramGb)} GB VRAM · Ses &amp; Görsel</div>
+              <div class="vp-model-sub">${escHtml(v.subtitle)}</div>
             </div>
             <div class="vp-model-right">
-              <span class="vp-status-pill ${statusCls}" ${!m.cached_locally && !v.isDownloading ? 'data-dl-action="start"' : ""}>${escHtml(statusTxt)}</span>
-              ${m.cached_locally ? `<span class="vp-check-circle" aria-hidden="true">${SVG_ICONS.check}</span>` : ""}
+              ${showStatusPill ? `<span class="vp-status-pill ${statusCls}" ${!m.cached_locally && !v.isDownloading ? 'data-dl-action="start"' : ""}>${escHtml(statusTxt)}</span>` : ""}
+              ${(m.cached_locally || v.isOrion) ? `<span class="vp-check-circle" aria-hidden="true">${SVG_ICONS.check}</span>` : ""}
             </div>
           </div>
           ${v.isDownloading ? buildModelDlBoxHtml(dl) : ""}
@@ -1124,6 +1282,7 @@
     if (!modelId) return;
     state.selectedModelId = modelId;
     renderModelsUI();
+    updateEffortPill(state.thinkingEffort, false);
     window.YerelSettings?.scheduleAutoSave?.();
     showToast(`${getShortModelName(getActiveModelObj())} seçildi`, "ok", 2200);
   }
@@ -1494,7 +1653,7 @@
         const snip = q && globalSearchMap ? globalSearchMap.get(s.id) : "";
         parts.push(`
           <div class="hrow ${s.id === state.activeSessionId ? "active" : ""} ${isPin ? "is-pinned" : ""}" style="--i:${Math.min(rowIdx++, 10)}" data-sid="${escHtml(s.id)}">
-            ${isPin ? `<span class="hrow-pin-ico" aria-hidden="true">${SVG_ICONS.pin}</span>` : `<span class="hrow-dot"></span>`}
+            ${isPin ? `<span class="hrow-pin-ico" aria-hidden="true">${SVG_ICONS.pin}</span>` : `<span class="hrow-chat-ico" aria-hidden="true">${CMD_ICONS.chat}</span>`}
             <span class="hrow-copy-col">
               <span class="hrow-title" title="${escHtml(s.title || "Sohbet")}">${escHtml(s.title || "Sohbet")}</span>
               ${snip && snip !== "Başlık eşleşmesi" ? `<span class="hrow-snippet" title="${escHtml(snip)}">${escHtml(snip)}</span>` : ""}
@@ -1640,28 +1799,56 @@
   }
 
   function updateContextMeter(usedEst = null, limit = null) {
-    if (!dom.ctxMeterPill) return;
+    const activeM = getActiveModelObj();
+    const isCloudActive = Boolean(activeM && (activeM.provider === "nvidia_nim" || activeM.is_cloud || (activeM.id || "").toLowerCase().includes("orion")));
+    const defaultLim = isCloudActive ? Number(activeM.context_length || 262144) : Number(state.contextLength || 32768);
+    const effLimit = Number(limit || defaultLim);
+    const copSec = $("#cop-ctx-section");
+    const copPct = $("#cop-ctx-pct");
+    const copBar = $("#cop-ctx-bar");
+    const copMeta = $("#cop-ctx-meta");
+    const copBtn = $("#btn-cop-compact");
+    const fmtNum = (n) => Number(n || 0).toLocaleString("tr-TR");
+
     if (!state.messages.length) {
-      dom.ctxMeterPill.hidden = true;
+      if (dom.ctxMeterPill) dom.ctxMeterPill.hidden = true;
       if (dom.ctxWarnBanner) dom.ctxWarnBanner.hidden = true;
+      if (copSec) { copSec.classList.remove("is-warn", "is-danger"); }
+      if (copPct) copPct.textContent = "%0";
+      if (copBar) copBar.style.width = "0%";
+      if (copMeta) copMeta.textContent = `0 / ${fmtNum(effLimit)} token`;
+      if (copBtn) copBtn.hidden = true;
       return;
     }
-    const effLimit = Number(limit || state.contextLength || 32768);
+
     let est = usedEst;
     if (est === null) {
       const totalChars = state.messages.reduce((acc, m) => acc + (m.content?.length || 0) + (m.thinking?.length || 0), 0);
       est = Math.round(totalChars / 3.4) + 180;
     }
     const pct = Math.min(100, Math.max(1, Math.round((est / Math.max(1024, effLimit)) * 100)));
-    const dashTotal = 44;
-    const dashOffset = (dashTotal * (1 - pct / 100)).toFixed(1);
+    const dashTotal = 56.55;
+    const dashOffset = (dashTotal * (1 - pct / 100)).toFixed(2);
 
+    if (copSec) {
+      copSec.classList.toggle("is-warn", pct >= 70 && pct < 88);
+      copSec.classList.toggle("is-danger", pct >= 88);
+    }
+    if (copPct) copPct.textContent = `%${pct}`;
+    if (copBar) copBar.style.width = `${pct}%`;
+    if (copMeta) copMeta.textContent = `~${fmtNum(est)} / ${fmtNum(effLimit)} token`;
+    if (copBtn) copBtn.hidden = state.messages.length < 2;
+
+    if (!dom.ctxMeterPill) return;
     dom.ctxMeterPill.hidden = pct < 25;
     if (dom.ctxMeterPct) dom.ctxMeterPct.textContent = `%${pct}`;
     if (dom.ctxPillRingFg) dom.ctxPillRingFg.style.strokeDashoffset = dashOffset;
     dom.ctxMeterPill.classList.toggle("is-warn", pct >= 70 && pct < 88);
     dom.ctxMeterPill.classList.toggle("is-danger", pct >= 88);
-    dom.ctxMeterPill.title = `Bağlam doluluğu: ~${est} / ${effLimit} token (Sıkıştırmak için tıklayın)`;
+    const tipTitle = $("#ctx-tip-title");
+    const tipSub = $("#ctx-tip-sub");
+    if (tipTitle) tipTitle.textContent = `Bağlam Doluluğu: %${pct} (~${est} / ${effLimit})`;
+    if (tipSub) tipSub.textContent = pct >= 80 ? "Hız ve doğruluk için tıklayıp sıkıştırın (/compact)" : "Sıkıştırmak için tıklayın (/compact)";
 
     if (dom.ctxWarnBanner) {
       const showWarn = pct >= 80 && state.messages.length >= 6;
@@ -1797,10 +1984,12 @@
     state.messages = [];
     state.pendingAttachments = [];
     dom.pageBreadcrumb.textContent = "Yeni Sohbet";
+    setDynamicGreeting();
     renderPendingAttachments();
     renderSessionFiles();
     renderAllMessages();
     renderSessionList();
+    syncSendVoiceButton();
     dom.promptInput.focus();
   }
 
@@ -1952,7 +2141,16 @@
     if (!state.messages.length) return;
     if (!state.activeSessionId) state.activeSessionId = newId("chat");
     const firstUser = state.messages.find((m) => m.role === "user");
-    const title = ((firstUser?.content || "Yeni Sohbet").replace(/\s+/g, " ").trim()).slice(0, 44) || "Yeni Sohbet";
+    const existingSess = state.sessions.find((s) => s.id === state.activeSessionId);
+    const forkOrigin = state.messages[0]?.forked_from_title;
+    let title = "";
+    if (existingSess?.title && existingSess.title !== "Yeni Sohbet") {
+      title = existingSess.title;
+    } else if (forkOrigin) {
+      title = `${forkOrigin} - devam`.slice(0, 76);
+    } else {
+      title = ((firstUser?.content || "Yeni Sohbet").replace(/\s+/g, " ").trim()).slice(0, 44) || "Yeni Sohbet";
+    }
     dom.pageBreadcrumb.textContent = title;
     try {
       await apiJson("/api/sessions", {
@@ -2049,12 +2247,30 @@
     renderSessionFiles();
   }
 
+  function syncSendVoiceButton() {
+    const btn = dom.btnSend;
+    if (!btn) return;
+    const hasText = (dom.promptInput?.value || "").length > 0;
+    const hasFiles = Boolean(state.pendingAttachments && state.pendingAttachments.length > 0);
+    const voiceMode = !hasText && !hasFiles;
+    btn.classList.toggle("is-voice-mode", voiceMode);
+    if (voiceMode) {
+      btn.title = state.isRecording ? "Sesli Dinlemeyi Bitir" : "Sesli Ajan Modunu Başlat";
+      btn.setAttribute("aria-label", state.isRecording ? "Sesli Dinlemeyi Bitir" : "Sesli Ajan Modu");
+    } else {
+      btn.title = "Gönder (Enter)";
+      btn.setAttribute("aria-label", "Gönder");
+    }
+  }
+
   function renderPendingAttachments() {
     if (!state.pendingAttachments.length) {
       dom.pendingAttachments.hidden = true;
       dom.pendingAttachments.innerHTML = "";
+      syncSendVoiceButton();
       return;
     }
+    syncSendVoiceButton();
     dom.pendingAttachments.hidden = false;
     dom.pendingAttachments.innerHTML = state.pendingAttachments
       .map((a, i) => {
@@ -2283,21 +2499,22 @@
         }
 
         if (card.kind === "rag_sources") {
-          const items = (card.hits || [])
+          const hits = Array.isArray(card.hits) ? card.hits : [];
+          const items = hits
             .map(
               (h) => `
             <div class="rag-hit-item">
               <div class="rag-hit-head">
                 <span>${escHtml(h.source)}</span>
-                <span class="mono">Sayfa ${escHtml(h.page)}</span>
+                <span class="rag-page-pill mono">s. ${escHtml(h.page)}</span>
               </div>
-              <div class="rag-hit-excerpt">${escHtml(h.excerpt)}...</div>
+              <div class="rag-hit-excerpt">${escHtml(h.excerpt || "")}</div>
             </div>`
             )
             .join("");
           return `
           <details class="rag-sources-card">
-            <summary>${SVG_ICONS.file}<span>${escHtml(card.title || "Yerel Kütüphane Kaynakları")}</span></summary>
+            <summary>${SVG_ICONS.file}<span>Kütüphane · ${hits.length} kaynak</span><span class="rag-chev" aria-hidden="true">▸</span></summary>
             <div class="rag-hit-list">${items}</div>
           </details>`;
         }
@@ -2631,17 +2848,34 @@
             return `\u0000CODEBLOCK_${idx}\u0000`;
           }
 
-          if (cardObj && cardObj.kind === "choice_card" && Array.isArray(cardObj.options)) {
+          if (cardObj && cardObj.kind === "choice_card" && (Array.isArray(cardObj.options) || Array.isArray(cardObj.questions))) {
             const multi = Boolean(cardObj.multi_select);
-            const optsHtml = cardObj.options.slice(0, 12).map((opt) => {
-              const lbl = typeof opt === "string" ? opt : (opt.label || opt.title || "");
-              return `<button type="button" class="yc-choice-opt" data-choice-val="${escHtml(lbl)}">${escHtml(lbl)}</button>`;
-            }).join("");
+            let bodyHtml = "";
+            if (Array.isArray(cardObj.questions) && cardObj.questions.length) {
+              bodyHtml = cardObj.questions.slice(0, 6).map((qObj) => {
+                const qText = qObj.question || qObj.label || qObj.title || "";
+                const opts = Array.isArray(qObj.options) ? qObj.options : (qObj.label ? [qObj.label] : []);
+                const optsHtml = opts.slice(0, 8).map((opt) => {
+                  const lbl = typeof opt === "string" ? opt : (opt.label || opt.title || "");
+                  return `<button type="button" class="yc-choice-opt" data-choice-val="${escHtml(lbl)}">${escHtml(lbl)}</button>`;
+                }).join("");
+                return `<div class="yc-choice-q-block">
+                  ${qText ? `<div class="yc-choice-q-lbl">${escHtml(qText)}</div>` : ""}
+                  <div class="yc-choice-options">${optsHtml}</div>
+                </div>`;
+              }).join("");
+            } else {
+              const optsHtml = cardObj.options.slice(0, 12).map((opt) => {
+                const lbl = typeof opt === "string" ? opt : (opt.label || opt.title || "");
+                return `<button type="button" class="yc-choice-opt" data-choice-val="${escHtml(lbl)}">${escHtml(lbl)}</button>`;
+              }).join("");
+              bodyHtml = `<div class="yc-choice-options">${optsHtml}</div>`;
+            }
             codeBlocks.push(
-              `<div class="yc-choice-card" data-multi="${multi ? "1" : "0"}">
+              `<div class="yc-choice-card" data-multi="${multi || Array.isArray(cardObj.questions) ? "1" : "0"}">
                 <div class="yc-choice-title">${escHtml(cardObj.title || "Seçiminizi yapın")}</div>
                 ${cardObj.subtitle ? `<div class="yc-choice-sub">${escHtml(cardObj.subtitle)}</div>` : ""}
-                <div class="yc-choice-options">${optsHtml}</div>
+                ${bodyHtml}
                 <button type="button" class="yc-choice-submit" disabled>${escHtml(cardObj.submit_label || "Devam Et")}</button>
               </div>`
             );
@@ -2795,8 +3029,71 @@
             );
             return `\u0000CODEBLOCK_${idx}\u0000`;
           }
+          // Universal Fallback for ANY other valid sen_card JSON (e.g. specification_summary, feature_list, etc.)
+          if (cardObj && typeof cardObj === "object") {
+            const title = cardObj.title || cardObj.name || cardObj.heading || "Özet Kartı";
+            const rawList = cardObj.details || cardObj.specs || cardObj.items || cardObj.features || cardObj.facts || cardObj.points || [];
+            let rowsHtml = "";
+            if (Array.isArray(rawList) && rawList.length) {
+              rowsHtml = rawList.slice(0, 12).map((it) => {
+                if (typeof it === "string") {
+                  return `<div class="yc-spec-row"><span class="yc-spec-val" style="text-align:left;">${escHtml(it)}</span></div>`;
+                }
+                const ico = it.icon || it.emoji ? `${escHtml(it.icon || it.emoji)} ` : "";
+                const k = it.point || it.label || it.key || it.title || it.name || "";
+                const v = it.value || it.text || it.description || it.subtitle || "";
+                return `<div class="yc-spec-row"><span class="yc-spec-key">${ico}${escHtml(k)}</span><span class="yc-spec-val">${escHtml(v)}</span></div>`;
+              }).join("");
+            } else {
+              rowsHtml = Object.entries(cardObj)
+                .filter(([k, v]) => !["kind", "title", "name", "heading", "badge", "summary"].includes(k) && (typeof v === "string" || typeof v === "number"))
+                .slice(0, 10)
+                .map(([k, v]) => `<div class="yc-spec-row"><span class="yc-spec-key">${escHtml(k)}</span><span class="yc-spec-val">${escHtml(String(v))}</span></div>`)
+                .join("");
+            }
+            if (rowsHtml || cardObj.summary) {
+              codeBlocks.push(
+                `<div class="yc-spec-card">
+                  <div class="yc-spec-head">
+                    <div class="yc-spec-title">${escHtml(title)}</div>
+                    ${cardObj.badge ? `<span class="yc-green-pill">${escHtml(cardObj.badge)}</span>` : ""}
+                  </div>
+                  ${rowsHtml ? `<div class="yc-spec-rows">${rowsHtml}</div>` : ""}
+                  ${cardObj.summary ? `<div class="yc-summary">${escHtml(cardObj.summary)}</div>` : ""}
+                </div>`
+              );
+              return `\u0000CODEBLOCK_${idx}\u0000`;
+            }
+          }
         } catch (_) {
-          // Fallback to normal code block if malformed JSON
+          // Plain-text / bulleted sen_card (e.g. "🚀 SpaceX Temel Bilgileri\n- Kurucu: Elon Musk") -> render clean card, NEVER raw code block!
+          const rawLines = code.trim().split("\n").map((l) => l.trim()).filter(Boolean);
+          if (rawLines.length && (rawLang === "sen_card" || rawLang === "sen-card" || rawLang === "yerel_card" || rawLang === "yerel-card")) {
+            let cardTitle = "Özet";
+            const startIdx = rawLines[0].startsWith("-") || rawLines[0].startsWith("*") ? 0 : 1;
+            if (startIdx === 1) cardTitle = rawLines[0].replace(/^[#*]+\s*/, "");
+            const rowsHtml = rawLines.slice(startIdx).map((ln) => {
+              const clean = ln.replace(/^[-*•]\s+/, "");
+              const colon = clean.indexOf(":");
+              if (colon > 0 && colon < 36) {
+                return `<div class="yc-spec-row"><span class="yc-spec-key">${escHtml(clean.slice(0, colon).trim())}</span><span class="yc-spec-val">${escHtml(clean.slice(colon + 1).trim())}</span></div>`;
+              }
+              return `<div class="yc-spec-row"><span class="yc-spec-val" style="text-align:left;">${escHtml(clean)}</span></div>`;
+            }).join("");
+            if (rowsHtml) {
+              codeBlocks.push(
+                `<div class="yc-spec-card">
+                  <div class="yc-spec-head"><div class="yc-spec-title">${escHtml(cardTitle)}</div></div>
+                  <div class="yc-spec-rows">${rowsHtml}</div>
+                </div>`
+              );
+              return `\u0000CODEBLOCK_${idx}\u0000`;
+            }
+          }
+          // NEVER leak raw sen_card JSON code blocks to the user
+          if (rawLang === "sen_card" || rawLang === "sen-card" || rawLang === "yerel_card" || rawLang === "yerel-card") {
+            return "";
+          }
         }
       }
 
@@ -3037,10 +3334,17 @@
     return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domName)}&sz=32`;
   }
 
-  function openSourcesModal(sources) {
+  function openSourcesModal(sources, anchorEl = null) {
     if (!dom.sourcesModal || !dom.sourcesModalBody) return;
     const list = Array.isArray(sources) ? sources : [];
-    if (dom.sourcesModalCount) dom.sourcesModalCount.textContent = `Web Kaynakları (${list.length})`;
+    const sameAnchor = !dom.sourcesModal.hidden && anchorEl && dom.sourcesModal._anchor === anchorEl;
+    if (sameAnchor) {
+      dom.sourcesModal.hidden = true;
+      dom.sourcesModal._anchor = null;
+      return;
+    }
+    dom.sourcesModal._anchor = anchorEl;
+    if (dom.sourcesModalCount) dom.sourcesModalCount.textContent = `Kaynaklar (${list.length})`;
     dom.sourcesModalBody.innerHTML = list.map((s) => {
       const host = s.domain || getDomainFromUrl(s.url || "");
       const fav = faviconUrlFor(s.url || host);
@@ -3054,6 +3358,18 @@
       </a>`;
     }).join("") || `<div class="muted-empty">Kaynak bulunamadı</div>`;
     dom.sourcesModal.hidden = false;
+    const pw = dom.sourcesModal.offsetWidth || 344;
+    const ph = Math.min(340, dom.sourcesModal.offsetHeight || 280);
+    if (anchorEl && anchorEl.getBoundingClientRect) {
+      const r = anchorEl.getBoundingClientRect();
+      const left = Math.min(window.innerWidth - pw - 12, Math.max(12, r.left));
+      const top = r.bottom + ph + 12 > window.innerHeight ? Math.max(12, r.top - ph - 8) : r.bottom + 8;
+      dom.sourcesModal.style.left = `${left}px`;
+      dom.sourcesModal.style.top = `${top}px`;
+    } else {
+      dom.sourcesModal.style.left = `${Math.max(12, Math.round((window.innerWidth - pw) / 2))}px`;
+      dom.sourcesModal.style.top = `${Math.max(56, Math.round((window.innerHeight - ph) / 2))}px`;
+    }
   }
 
   function buildWebSearchHtml(ws) {
@@ -3126,16 +3442,20 @@
 
   function createMessageNode(msg, idx, isLive = false) {
     const row = document.createElement("div");
-    row.className = `msg-row ${msg.role}`;
+    row.className = `msg-row ${msg.role}${isLive ? " is-streaming-row" : ""}`;
     row.dataset.msgIdx = String(idx);
 
     if (msg.role === "user") {
-      row.innerHTML = `${buildAttachmentsHtml(msg.attachments)}<div class="user-msg-wrap"><button type="button" class="hact btn-msg-edit" data-tip="Düzenle ve Yeniden Gönder" aria-label="Düzenle">${SVG_ICONS.edit}</button><div class="user-bubble">${escHtml(msg.content || "")}</div></div>`;
+      row.innerHTML = `${buildAttachmentsHtml(msg.attachments)}<div class="user-msg-wrap"><button type="button" class="hact btn-msg-copy btn-user-copy" data-tip="Kopyala" aria-label="Mesajı Kopyala">${SVG_ICONS.copy}</button><div class="user-bubble">${escHtml(msg.content || "")}</div></div>`;
       return row;
     }
 
-    const isE4b = (msg.model_id || state.selectedModelId).includes("e4b");
-    const modelLabel = isE4b ? "Gemma 4 E4B" : "Gemma 4 E2B";
+    const msgMid = (msg.model_id || state.selectedModelId || "").toLowerCase();
+    const isOrion = msgMid.includes("orion");
+    const isE4b = !isOrion && msgMid.includes("e4b");
+    const modelLabel = isOrion ? "Orion" : (isE4b ? "Aureon 1.1" : "Sage 1");
+    const avatarCls = isOrion ? "orion" : (isE4b ? "e4b" : "");
+    const avatarSvg = isOrion ? PRISM_ORION_SVG : (isE4b ? PRISM_E4B_SVG : PRISM_E2B_SVG);
     const statsText = msg.stats
       ? `${msg.stats.tps} tok/sn · ${msg.stats.elapsed_sec}s · ${msg.stats.tokens} token`
       : isLive
@@ -3144,20 +3464,18 @@
 
     const thinkSec = msg.thinking_sec ? `${msg.thinking_sec} sn` : "";
     const thinkDoneLabel = thinkSec ? `${thinkSec} düşündü` : "Düşünme sürecini gör";
-    const wsLiveDoneHtml =
-      !isLive && msg.web_search?.sources?.length
-        ? `<div class="web-search-live-pill"><span class="ws-live-dot"></span><span>${msg.web_search.sources.length} web sitesi araştırıldı</span></div>`
-        : "";
+    const wsLiveDoneHtml = "";
 
     row.innerHTML = `
       <div class="assistant-shell">
         <div class="assistant-avatar-col">
-          <span class="prism-mark sm ${isE4b ? "e4b" : ""} ${isLive ? "is-live" : ""}" aria-hidden="true">${isE4b ? PRISM_E4B_SVG : PRISM_E2B_SVG}</span>
+          <span class="prism-mark sm ${avatarCls} ${isLive ? "is-live" : ""}" aria-hidden="true">${avatarSvg}</span>
         </div>
         <div class="assistant-body-col">
           <div class="assistant-head">
             <div class="assistant-name-row">
               <span class="assistant-name">SEN.AI</span>
+              <span class="assistant-model-sig">${escHtml(modelLabel)}</span>
               ${msg.auto_persona ? `<span class="assistant-meta-pill persona-auto-badge">Uzman: ${escHtml(msg.auto_persona)}</span>` : ""}
             </div>
           </div>
@@ -3244,8 +3562,11 @@
     if (state.isGenerating) return;
     const sliced = state.messages.slice(0, msgIdx + 1).map((m) => JSON.parse(JSON.stringify(m)));
     if (!sliced.length) return;
-    const baseTitle = (dom.pageBreadcrumb.textContent || "Sohbet").replace(/\s*\(Dal\)$/, "");
-    const nextTitle = `${baseTitle} (Dal)`.slice(0, 76);
+    const prevSid = state.activeSessionId;
+    const baseTitle = (dom.pageBreadcrumb.textContent || "Sohbet").replace(/\s*(?:\(Dal\)|-\s*devam)$/i, "").trim() || "Sohbet";
+    const nextTitle = `${baseTitle} - devam`.slice(0, 76);
+    sliced[0].forked_from_title = baseTitle;
+    sliced[0].forked_from_id = prevSid;
     state.activeSessionId = newId("chat");
     state.messages = sliced;
     dom.pageBreadcrumb.textContent = nextTitle;
@@ -3262,6 +3583,19 @@
     dom.dropZone?.classList.toggle("is-empty-chat", !hasMsgs);
     if (dom.chatExportActions) dom.chatExportActions.hidden = !hasMsgs;
     dom.messagesList.innerHTML = "";
+    const forkOriginTitle = state.messages[0]?.forked_from_title;
+    if (forkOriginTitle) {
+      const forkOriginId = state.messages[0]?.forked_from_id || "";
+      const banner = document.createElement("div");
+      const canJump = Boolean(forkOriginId && state.sessions.some((s) => s.id === forkOriginId));
+      banner.className = `fork-origin-banner${canJump ? " is-clickable" : ""}`;
+      banner.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg><span><strong>${escHtml(forkOriginTitle)}</strong> sohbetinden yeni dal oluşturuldu</span>`;
+      if (canJump) {
+        banner.title = "Orijinal sohbete git";
+        banner.addEventListener("click", () => openSession(forkOriginId));
+      }
+      dom.messagesList.appendChild(banner);
+    }
     state.messages.forEach((m, idx) => dom.messagesList.appendChild(createMessageNode(m, idx, false)));
     hydrateRichContent(dom.messagesList);
     updateContextMeter();
@@ -3389,6 +3723,7 @@
     state.messages.push(userMsg);
     state.pendingAttachments = [];
     dom.promptInput.value = "";
+    syncSendVoiceButton();
     autoResizeTextarea();
     renderPendingAttachments();
     renderSessionFiles();
@@ -3712,6 +4047,14 @@
       }
 
       if (dirtyThink || dirtyText) flushFrame();
+      // Safety guard: if model accidentally leaked leading "Düşünme Süreci: ..." paragraph into visible answer, route it to thinking board
+      const leakedThinkM = (assistantMsg.content || "").match(/^\s*(?:Düşünme Süreci|İçsel Düşünme)\s*:\s*([\s\S]+?)\n\s*\n([\s\S]+)$/);
+      if (leakedThinkM) {
+        assistantMsg.thinking = (assistantMsg.thinking ? assistantMsg.thinking + "\n\n" : "") + leakedThinkM[1].trim();
+        assistantMsg.content = leakedThinkM[2].trim();
+        thinkBoard.hidden = false;
+        thinkContentEl.innerHTML = renderThinkingMd(assistantMsg.thinking);
+      }
       // Ensure code-only responses always have a brief Turkish explanation below/above the file card
       if (assistantMsg.content && /```[\s\S]{80,}?```/.test(assistantMsg.content)) {
         const proseOnly = assistantMsg.content
@@ -3727,6 +4070,8 @@
       orbEl.classList.remove("is-live");
       surfaceEl.classList.remove("is-streaming");
       mdEl.classList.remove("is-streaming");
+      msgNode.classList.remove("is-streaming-row");
+      if (wsLiveSlotEl) wsLiveSlotEl.innerHTML = "";
       thinkBoard.classList.remove("is-live");
       if (!thinkBoard.hidden) {
         const sec = assistantMsg.thinking_sec || Math.max(1, Math.round((performance.now() - genStart) / 1000));
@@ -4543,7 +4888,7 @@
     if (dom.activeModeStrip && dom.activeModeLabel) {
       const show = Boolean(state.tempModeLabel);
       dom.activeModeStrip.hidden = !show;
-      if (show) dom.activeModeLabel.textContent = `Mod: ${state.tempModeLabel}`;
+      if (show) dom.activeModeLabel.textContent = state.tempModeLabel;
     }
   }
 
@@ -4737,6 +5082,7 @@
       dom.promptInput.focus();
     } else {
       dom.promptInput.value = "";
+    syncSendVoiceButton();
       autoResizeTextarea();
     }
   }
@@ -5189,7 +5535,8 @@
         if (dom.windowPickerModal) dom.windowPickerModal.hidden = true;
         if (dom.gitStatusModal) dom.gitStatusModal.hidden = true;
         if (dom.dislikeModal) dom.dislikeModal.hidden = true;
-        if (dom.sourcesModal) dom.sourcesModal.hidden = true;
+        if (dom.sourcesModal) { dom.sourcesModal.hidden = true; dom.sourcesModal._anchor = null; }
+        if (dom.tempPersMenu) dom.tempPersMenu.hidden = true;
         if (dom.msgMoreMenu) dom.msgMoreMenu.hidden = true;
         if (dom.chatOutputsPopover) dom.chatOutputsPopover.hidden = true;
         closeRenameModal();
@@ -5202,6 +5549,14 @@
       closeAllPopovers();
       closeSessionCtxMenu();
       stopCosmicParticles();
+      if (dom.sourcesModal && !dom.sourcesModal.hidden && !dom.sourcesModal.contains(e.target) && !e.target.closest(".btn-open-sources")) {
+        dom.sourcesModal.hidden = true;
+        dom.sourcesModal._anchor = null;
+      }
+      if (dom.tempPersMenu && !dom.tempPersMenu.hidden && !dom.tempPersMenu.contains(e.target) && !e.target.closest("#btn-temp-personalize")) {
+        dom.tempPersMenu.hidden = true;
+        dom.btnTempPersonalize?.setAttribute("aria-expanded", "false");
+      }
       if (dom.msgMoreMenu && !dom.msgMoreMenu.hidden && !dom.msgMoreMenu.contains(e.target) && !e.target.closest(".btn-msg-more")) {
         dom.msgMoreMenu.hidden = true;
       }
@@ -5312,11 +5667,29 @@
       }
     });
 
-    dom.btnTempPersonalize?.addEventListener("click", () => {
-      state.temporaryPersonalized = !state.temporaryPersonalized;
-      dom.btnTempPersonalize.classList.toggle("active", state.temporaryPersonalized);
-      dom.btnTempPersonalize.setAttribute("aria-pressed", String(state.temporaryPersonalized));
-      showToast(state.temporaryPersonalized ? "Geçici sohbette kalıcı hafıza aktif" : "Geçici sohbette hafıza kapalı", "ok", 1800);
+    dom.btnTempPersonalize?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (!dom.tempPersMenu) return;
+      const willOpen = dom.tempPersMenu.hidden;
+      dom.tempPersMenu.hidden = !willOpen;
+      dom.btnTempPersonalize.setAttribute("aria-expanded", String(willOpen));
+    });
+    dom.tempPersMenu?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const opt = e.target.closest(".temp-pers-opt");
+      if (!opt) return;
+      const isPers = opt.dataset.tempPers === "on";
+      state.temporaryPersonalized = isPers;
+      $$(".temp-pers-opt", dom.tempPersMenu).forEach((el) => {
+        const act = (el.dataset.tempPers === "on") === isPers;
+        el.classList.toggle("active", act);
+        el.setAttribute("aria-checked", String(act));
+      });
+      if (dom.lblTempPersonalize) {
+        dom.lblTempPersonalize.textContent = isPers ? "Kişiselleştirilmiş" : "Kişiselleştirilmemiş";
+      }
+      dom.tempPersMenu.hidden = true;
+      dom.btnTempPersonalize?.setAttribute("aria-expanded", "false");
     });
 
     dom.btnChatOutputs?.addEventListener("click", (e) => {
@@ -5455,6 +5828,7 @@
 
     dom.promptInput.addEventListener("input", () => {
       autoResizeTextarea();
+      syncSendVoiceButton();
       state.slashActiveIdx = 0;
       renderSlashMenu();
     });
@@ -5501,7 +5875,24 @@
       const btn = e.target.closest(".slash-item");
       if (btn) applySlashCommand(Number(btn.dataset.slashIdx));
     });
-    dom.btnSend.addEventListener("click", () => sendMessage());
+    dom.btnSend.addEventListener("click", () => {
+      const hasText = (dom.promptInput?.value || "").length > 0;
+      const hasFiles = Boolean(state.pendingAttachments && state.pendingAttachments.length > 0);
+      if (!hasText && !hasFiles) {
+        if (state.isRecording) {
+          finishRecording(true);
+        } else {
+          state.handsFree = true;
+          dom.btnHandsFree?.classList.add("active");
+          dom.btnHandsFree?.setAttribute("aria-pressed", "true");
+          showToast("Sesli Ajan Modu başlatıldı — konuşabilirsiniz", "ok", 2600);
+          if (!state.isGenerating) startRecording();
+        }
+        syncSendVoiceButton();
+        return;
+      }
+      sendMessage();
+    });
     dom.btnStop.addEventListener("click", stopGeneration);
 
     dom.btnAttach.addEventListener("click", () => dom.fileInput.click());
@@ -6246,7 +6637,8 @@
 
       const srcBtn = e.target.closest(".btn-open-sources");
       if (srcBtn) {
-        if (msg.web_search?.sources?.length) openSourcesModal(msg.web_search.sources);
+        e.stopPropagation();
+        if (msg.web_search?.sources?.length) openSourcesModal(msg.web_search.sources, srcBtn);
         return;
       }
 
@@ -6486,15 +6878,13 @@
   async function checkAuthState() {
     try {
       const me = await apiJson("/api/auth/me");
-      state.actor = me;
-      window.YerelSettings?.setAdminVisible?.(Boolean(me.is_admin));
-      if (dom.btnActorChip && dom.actorChipLabel) {
-        const showChip = !me.is_local || !me.is_admin;
-        dom.btnActorChip.hidden = !showChip;
-        dom.btnActorChip.classList.toggle("is-guest", me.role === "guest");
-        dom.actorChipLabel.textContent = me.role === "guest" ? "Misafir · Giriş" : (me.display_name || me.actor_id || "Hesap");
-      }
-      if (dom.btnGuestContinue) dom.btnGuestContinue.hidden = !me.allow_guest;
+      const actor = me.actor || {};
+      const isLocal = Boolean(me.is_local);
+      const isAdmin = actor.role === "admin" || isLocal;
+      state.actor = { ...actor, is_admin: isAdmin, is_local: isLocal };
+      document.documentElement.classList.toggle("is-remote-guest", !isLocal);
+      window.YerelSettings?.setAdminVisible?.(isAdmin);
+      if (dom.btnGuestContinue) dom.btnGuestContinue.hidden = !me.allow_guest_access;
       applyPinUiState({ pin_enabled: me.pin_enabled, local_bypass: me.local_bypass, unlocked: me.unlocked });
       return Boolean(me.unlocked);
     } catch (_) {
@@ -6659,23 +7049,54 @@
   }
 
   function setDynamicGreeting() {
-    if (!dom.heroGreetingLead) return;
+    const titleEl = $("#hero-greeting-title");
     const h = new Date().getHours();
-    let txt = "Merhaba";
-    if (h >= 5 && h < 12) txt = "Günaydın";
-    else if (h >= 12 && h < 18) txt = "İyi günler";
-    else if (h >= 18 && h < 23) txt = "İyi akşamlar";
-    else txt = "İyi geceler";
-    dom.heroGreetingLead.textContent = txt;
+    let timeLead = "Merhaba";
+    if (h >= 5 && h < 12) timeLead = "Günaydın";
+    else if (h >= 12 && h < 18) timeLead = "İyi günler";
+    else if (h >= 18 && h < 23) timeLead = "İyi akşamlar";
+    else timeLead = "İyi geceler";
+
+    const variants = [
+      `${timeLead}, nasıl yardımcı olabilirim?`,
+      `${timeLead}! Bugün birlikte ne üretelim?`,
+      "Aklında ne var, nereden başlayalım?",
+      "Hazırım, bugün ne üzerinde çalışıyoruz?",
+      "Bir fikrin, kodun ya da sorun mu var?",
+      "Yeni bir fikirle mi başlayalım, analizle mi?",
+      `${timeLead}, bugün hangi konuyu çözelim?`,
+    ];
+    const picked = variants[Math.floor(Math.random() * variants.length)];
+    if (titleEl) {
+      titleEl.textContent = picked;
+    } else if (dom.heroGreetingLead) {
+      dom.heroGreetingLead.textContent = timeLead;
+    }
+    if (dom.promptInput) {
+      const placeholders = [
+        "SEN.AI'ye bir şey sor, dosya bırak veya / yaz...",
+        "Bir soru sor, kod yapıştır veya / ile komut seç...",
+        "Bugün neyi araştıralım veya tasarlayalım?",
+        "Aklındaki fikri yaz, belge sürükle veya / kullan...",
+        "Karşılaştırma, tablo, kod veya hızlı bir soru yaz...",
+        "Mesajını yaz, görsel bırak veya / ile hızlan...",
+      ];
+      dom.promptInput.placeholder = placeholders[Math.floor(Math.random() * placeholders.length)];
+    }
   }
 
   async function init() {
-    applyTheme(localStorage.getItem("yerelai_theme") || "dark");
+    applyTheme(localStorage.getItem("yerelai_theme") || "light");
     if (localStorage.getItem("yerelai_sidebar_collapsed") === "1") {
       dom.studioShell?.classList.add("sidebar-collapsed");
       dom.btnCollapseSidebar?.classList.add("active");
     }
     setDynamicGreeting();
+    syncSendVoiceButton();
+    $("#btn-cop-compact")?.addEventListener("click", () => {
+      if (dom.chatOutputsPopover) dom.chatOutputsPopover.hidden = true;
+      runManualCompact();
+    });
     wireEvents();
 
     // Mobile new-chat button & live code <pre> scroll intent tracking

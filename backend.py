@@ -269,6 +269,7 @@ THINKING_EFFORT_BUDGETS = {
     "low": 256,
     "medium": 768,
     "high": 2048,
+    "max": 4096,
 }
 
 CODE_AND_TEXT_EXTS = {
@@ -473,7 +474,17 @@ def _resolve_request_actor(request: Request, cfg: Optional[Dict[str, Any]] = Non
         if _SAFE_GUEST_COOKIE_RE.match(raw_guest):
             guest_id = raw_guest
         else:
-            guest_id = f"guest_{secrets.token_hex(8)}"
+            cf_ip = (
+                request.headers.get("cf-connecting-ip")
+                or (request.headers.get("x-forwarded-for") or "").split(",")[0]
+                or (request.client.host if request.client else "")
+            ).strip()
+            ua = (request.headers.get("user-agent") or "").strip()
+            if cf_ip or ua:
+                fp_raw = f"senai-device-v1|{cf_ip}|{ua}".encode("utf-8", errors="ignore")
+                guest_id = f"guest_{hashlib.sha256(fp_raw).hexdigest()[:16]}"
+            else:
+                guest_id = f"guest_{secrets.token_hex(8)}"
             request.state.new_guest_cookie = guest_id
         actor = {"id": guest_id, "role": "guest", "username": "misafir", "display_name": "Misafir"}
         request.state.senai_actor = actor
@@ -487,6 +498,8 @@ def _resolve_request_actor(request: Request, cfg: Optional[Dict[str, Any]] = Non
 def _sanitize_config_for_client(cfg: Dict[str, Any], is_admin: bool) -> Dict[str, Any]:
     out = dict(cfg or {})
     out["default_model_id"] = _normalize_model_id(out.get("default_model_id"))
+    out["nvidia_api_key_set"] = bool((out.get("nvidia_api_key") or os.environ.get("NVIDIA_API_KEY") or "").strip())
+    out.pop("nvidia_api_key", None)
     if is_admin:
         return out
     for secret_key in ("auth_secret", "access_pin_hash", "github_token", "cf_tunnel_token", "cf_named_token"):
@@ -1226,7 +1239,7 @@ class EngineManager:
             return False
         return True
 
-    def load_model(self, model_id: str, lora_id: str = "", lora_scale: float = 1.0, gpu_profile: Optional[str] = None) -> None:
+    def load_model(self, model_id: str, lora_id: str = "", lora_scale: float = 1.0, gpu_profile: Optional[str] = None, ignore_stream_id: Optional[str] = None) -> None:
         model_id = _normalize_model_id(model_id)
         with self.lock:
             registry = load_json(REGISTRY_PATH, {"models": []})
@@ -1252,7 +1265,8 @@ class EngineManager:
             ):
                 self.touch()
                 return
-            if self.active_generations > 0:
+            other_active = sum(1 for sid in self.active_streams if sid != ignore_stream_id)
+            if other_active > 0:
                 raise RuntimeError("Aktif yanıt üretimi devam ederken model değiştirilemez.")
             if self.state == "loading":
                 return
@@ -1306,6 +1320,7 @@ class EngineManager:
                 ctx_val = str(cfg_ctx)
 
                 parallel_slots = "1" if profile == "low_vram" else str(MAX_CONCURRENT_REQUESTS)
+                self.active_parallel_slots = int(parallel_slots)
                 cmd = [
                     str(LLAMA_SERVER_BIN),
                     "-m", str(gguf_path),
@@ -2093,7 +2108,7 @@ class LocalRagLibrary:
                 pos += chunk_size - overlap
         return chunks
 
-    def add_document(self, path: Path, orig_name: str, project_id: Optional[str] = None) -> Dict[str, Any]:
+    def add_document(self, path: Path, orig_name: str, project_id: Optional[str] = None, owner_id: Optional[str] = None) -> Dict[str, Any]:
         import numpy as np
 
         raw_chunks = self._extract_chunks(path, orig_name)
@@ -2101,16 +2116,19 @@ class LocalRagLibrary:
             raise ValueError("Belgeden okunabilir metin çıkarılamadı.")
 
         clean_pid = (project_id or "").strip() or None
+        clean_owner = (owner_id or "").strip() or None
         doc_id = uuid.uuid4().hex[:10]
         for ch in raw_chunks:
             ch["doc_id"] = doc_id
             ch["project_id"] = clean_pid
+            ch["owner_id"] = clean_owner
 
         doc_entry = {
             "id": doc_id,
             "name": orig_name,
             "path": str(path),
             "project_id": clean_pid,
+            "owner_id": clean_owner,
             "chunk_count": len(raw_chunks),
             "added_at": datetime.now().isoformat(timespec="seconds"),
         }
@@ -3202,7 +3220,6 @@ async def pin_auth_middleware(request: Request, call_next):
             or path == "/api/sessions/export-all"
             or (path == "/api/config" and method in ("PUT", "POST", "DELETE"))
             or (path.startswith("/api/extensions") and method != "GET")
-            or (path.startswith("/api/library") and method != "GET")
             or (path.startswith("/api/dataset") and path != "/api/dataset/rate")
             or path.startswith("/api/sandbox")
         )
@@ -3653,6 +3670,15 @@ async def api_models():
     use_gguf_engine = LLAMA_SERVER_BIN.exists()
     for m in reg.get("models", []):
         entry = dict(m)
+        if m.get("provider") == "nvidia_nim":
+            entry["gguf_cached"] = True
+            entry["bnb_cached"] = True
+            entry["cached_locally"] = True
+            entry["is_cloud"] = True
+            entry["local_snapshot"] = "NVIDIA NIM Cloud"
+            entry["download_size_gb"] = 0.0
+            models.append(entry)
+            continue
         snap = _resolve_local_hf_snapshot(m["hf_repo"])
         gguf_paths = _resolve_local_gguf(m)
         entry["gguf_cached"] = gguf_paths is not None
@@ -3711,6 +3737,12 @@ async def api_put_config(req: ConfigUpdateRequest):
 
 @app.post("/api/model/load")
 async def api_load_model(req: LoadModelRequest):
+    reg = load_json(REGISTRY_PATH, {"models": []})
+    m_meta = next((m for m in reg.get("models", []) if m.get("id") == req.model_id), {})
+    if m_meta.get("provider") == "nvidia_nim":
+        st = engine.get_status()
+        st["cloud_model_ready"] = True
+        return st
     if engine.state == "loading":
         return engine.get_status()
     threading.Thread(
@@ -3787,15 +3819,21 @@ async def api_get_upload(filename: str):
 
 
 @app.get("/api/library")
-async def api_list_library(project_id: Optional[str] = None):
+async def api_list_library(request: Request, project_id: Optional[str] = None):
+    actor = _resolve_request_actor(request)
+    is_admin = actor.get("role") == "admin"
+    actor_id = actor.get("id")
     docs = rag_library.list_docs()
+    if not is_admin:
+        docs = [d for d in docs if d.get("owner_id") in (actor_id, None, "", "local-admin")]
     if project_id:
         docs = [d for d in docs if d.get("project_id") in (project_id, None, "")]
     return {"docs": docs}
 
 
 @app.post("/api/library/upload")
-async def api_upload_library(file: UploadFile = File(...), project_id: Optional[str] = Form(None)):
+async def api_upload_library(request: Request, file: UploadFile = File(...), project_id: Optional[str] = Form(None)):
+    actor = _resolve_request_actor(request)
     orig_name = file.filename or "belge.txt"
     ext = Path(orig_name).suffix.lower()
     if ext not in (".pdf", ".docx", ".txt", ".md", ".csv"):
@@ -3804,7 +3842,7 @@ async def api_upload_library(file: UploadFile = File(...), project_id: Optional[
     target = LIBRARY_DIR / saved_name
     target.write_bytes(await file.read())
     try:
-        doc = await asyncio.to_thread(rag_library.add_document, target, orig_name, project_id)
+        doc = await asyncio.to_thread(rag_library.add_document, target, orig_name, project_id, actor.get("id"))
         return {"ok": True, "doc": doc}
     except Exception as exc:
         target.unlink(missing_ok=True)
@@ -3812,7 +3850,16 @@ async def api_upload_library(file: UploadFile = File(...), project_id: Optional[
 
 
 @app.delete("/api/library/{doc_id}")
-async def api_delete_library(doc_id: str):
+async def api_delete_library(request: Request, doc_id: str):
+    actor = _resolve_request_actor(request)
+    is_admin = actor.get("role") == "admin"
+    actor_id = actor.get("id")
+    docs = rag_library.list_docs()
+    target = next((d for d in docs if d.get("id") == doc_id), None)
+    if target and not is_admin:
+        owner = target.get("owner_id")
+        if owner and owner != actor_id:
+            raise HTTPException(status_code=403, detail="Yalnızca kendi yüklediğiniz belgeleri silebilirsiniz.")
     await asyncio.to_thread(rag_library.delete_document, doc_id)
     return {"ok": True}
 
@@ -3923,6 +3970,8 @@ async def api_chat(req: ChatRequest, request: Request):
     effort = (req.thinking_effort or gen_cfg.get("thinking_effort", "medium")).lower()
     if effort not in THINKING_EFFORT_BUDGETS:
         effort = "medium"
+    if effort == "max" and ("e4b" not in model_id.lower() and "orion" not in model_id.lower()):
+        effort = "high"
     think_budget = THINKING_EFFORT_BUDGETS[effort]
     enable_thinking = effort != "off"
 
@@ -4100,11 +4149,12 @@ async def api_chat(req: ChatRequest, request: Request):
                 def _on_site_progress(cnt: int, dom: str) -> None:
                     loop.call_soon_threadsafe(prog_q.put_nowait, (cnt, dom))
 
+                search_max_results = 9 if m_meta.get("provider") == "nvidia_nim" else 5
                 search_task = asyncio.create_task(
                     asyncio.to_thread(
                         _perform_web_search,
                         last_user_msg,
-                        5,
+                        search_max_results,
                         hist_for_search,
                         effective_web_search,
                         req.user_city,
@@ -4171,36 +4221,43 @@ async def api_chat(req: ChatRequest, request: Request):
             if engine.active_profile == "low_vram" and desired_ctx > 16384:
                 desired_ctx = 8192
 
-            async with _MODEL_LOAD_ASYNC_LOCK:
-                wait_dl = time.time() + 95.0
-                while engine.state == "loading" and time.time() < wait_dl:
-                    await asyncio.sleep(0.25)
-                with engine.lock:
-                    desired_backend = "gguf_turbo" if engine._should_use_gguf(m_meta, lora_id or "") else "pytorch_bnb"
-                    backend_alive = (
-                        (engine.llama_proc is not None and engine.llama_proc.poll() is None)
-                        if desired_backend == "gguf_turbo"
-                        else (engine.model is not None)
-                    )
-                    need_load = (
-                        not backend_alive
-                        or engine.engine_backend != desired_backend
-                        or engine.active_model_id != model_id
-                        or engine.active_lora_id != (lora_id or "")
-                        or abs(engine.applied_lora_scale - lora_scale) > 1e-3
-                        or (desired_backend == "gguf_turbo" and engine.active_context_length != desired_ctx)
-                    )
-                if need_load:
-                    yield _format_sse({"type": "status", "stage": "loading", "message": f"{model_id} GPU'ya yükleniyor..."})
-                    await asyncio.to_thread(engine.load_model, model_id, lora_id or "", lora_scale)
+            is_cloud_nim = m_meta.get("provider") == "nvidia_nim"
+            if is_cloud_nim:
+                active_backend = "nvidia_nim"
+                model = None
+                processor = None
+                torch = None
+            else:
+                async with _MODEL_LOAD_ASYNC_LOCK:
+                    wait_dl = time.time() + 95.0
+                    while engine.state == "loading" and time.time() < wait_dl:
+                        await asyncio.sleep(0.25)
+                    with engine.lock:
+                        desired_backend = "gguf_turbo" if engine._should_use_gguf(m_meta, lora_id or "") else "pytorch_bnb"
+                        backend_alive = (
+                            (engine.llama_proc is not None and engine.llama_proc.poll() is None)
+                            if desired_backend == "gguf_turbo"
+                            else (engine.model is not None)
+                        )
+                        need_load = (
+                            not backend_alive
+                            or engine.engine_backend != desired_backend
+                            or engine.active_model_id != model_id
+                            or engine.active_lora_id != (lora_id or "")
+                            or abs(engine.applied_lora_scale - lora_scale) > 1e-3
+                            or (desired_backend == "gguf_turbo" and engine.active_context_length != desired_ctx)
+                        )
+                    if need_load:
+                        yield _format_sse({"type": "status", "stage": "loading", "message": f"{model_id} GPU'ya yükleniyor..."})
+                        await asyncio.to_thread(engine.load_model, model_id, lora_id or "", lora_scale, None, stream_id)
 
-            with engine.lock:
-                engine.state = "generating"
-                engine.touch()
-                active_backend = engine.engine_backend
-                model = engine.model
-                processor = engine.processor
-                torch = engine.torch
+                with engine.lock:
+                    engine.state = "generating"
+                    engine.touch()
+                    active_backend = engine.engine_backend
+                    model = engine.model
+                    processor = engine.processor
+                    torch = engine.torch
 
             yield _format_sse({"type": "status", "stage": "preparing", "message": "Bağlam ve medya hazırlanıyor..."})
 
@@ -4305,12 +4362,12 @@ async def api_chat(req: ChatRequest, request: Request):
                         "2) SONSÜZ SORU DÖNGÜSÜ YASAĞI: Kullanıcı tercihini belirttiyse veya doğrudan öneri istediyse ASLA tekrar soru sorup erteleme ve ASLA 'Bir Dram Örneği' gibi isimsiz şablon yazma; doğrudan GERÇEK film/ürün/mekân/plan isimlerini ver!\n"
                         "3) DOĞRU KAPANIŞ KALIBI: Çoklu seçim/öneri listesinde '**Benim ilk tercihim:**', analiz/ilişki/karşılaştırmada '**Benim yorumum:**' kullan (ilişki analizinde asla 'Benim ilk tercihim' deme!).\n"
                         "4) TEKRAR YASAĞI: Görsel kart (```sen_card) kullandığın yanıtta karttaki maddeleri üstte/altta düz metinle tekrar etme.\n"
-                        "5) MARKDOWN DİSİPLİNİ: Madde başlarında '*' yerine '-' kullan; cümle ortasına rastgele emoji serpiştirme."
+                        "5) MARKDOWN VE EMOJİ DİSİPLİNİ: Madde başlarında '-' kullan; başlık ve liste maddelerinde konuya uygun, göze hoş gelen canlı emojiler (🚀, ⚡, 🎯, 📌, 💡, ✅, 🎬 vb.) kullanarak metni akıcı ve okunaklı kıl."
                     ).strip()
             else:
                 eff_system_prompt = (
                     f"{eff_system_prompt}\n\n"
-                    "[TEKNİK SUNUM TONU]: Kod, tablo ve teknik analizleri hatasız, öz ve tertemiz sun; giriş/özet başlıklarında gerekirse sade tek bir emoji (✨, 📊, ⚡) kullanabilirsin."
+                    "[TEKNİK SUNUM TONU]: Kod, tablo ve teknik analizleri hatasız, öz ve tertemiz sun; başlık ve önemli maddelerde okunabilirliği artıran sade, yerinde emojiler (✨, 📊, ⚡, 🧩, ✅) kullan."
                 ).strip()
 
             # Contextual Rich Visual Cards (checks recent 3 user turns so follow-ups like 'Yerli olsun' or 'Spor ve iş odaklı olsun' ALWAYS trigger cards!)
@@ -4320,8 +4377,9 @@ async def api_chat(req: ChatRequest, request: Request):
                 and not is_brief_request
                 and not is_broad_clarify_request
                 and re.search(
-                    r"(?:uyum|uyumlu\s+mu|karşılaştır|kıyasla|\bvs\b|hangisi\s+daha\s+iyi|farkı\s+ne|burç.*uyum|aşk\s+uyumu|arcana|tarot|"
-                    r"öner\w*|tavsiye|film|dizi|kitap|oyun|mekan|mekân|gezi|rota|plan\w*|program|rutin|tarif|liste\s+yap|puanla|incele|koltuk|kumaş|klavye|kulaklık|telefon|laptop|ürün)",
+                    r"(?:uyum|uyumlu\s+mu|karşılaştır|kıyas\w*|\bvs\b|hangisi(?:\s+daha\s+iyi)?|farkı\s+ne|alınır\s+mı|en\s+iyi|burç.*uyum|aşk\s+uyumu|arcana|tarot|"
+                    r"öner\w*|tavsiye|film|dizi|kitap|oyun|mekan|mekân|gezi|rota|plan\w*|program|rutin|tarif|liste\s+yap|puanla|incele|"
+                    r"koltuk|kumaş|klavye|mouse|fare|monitör|ekran\s*kartı|işlemci|gpu|cpu|kulaklık|telefon|laptop|tablet|saat|kamera|araba|otomobil|televizyon|\btv\b|ayakkabı|parfüm|ürün|model|marka)",
                     recent_user_context,
                     re.I,
                 )
@@ -4329,7 +4387,9 @@ async def api_chat(req: ChatRequest, request: Request):
             if is_visual_card_turn:
                 eff_system_prompt = (
                     f"{eff_system_prompt}\n\n"
-                    "[GÖRSEL KART ZORUNLULUĞU]: Bu yanıtta önerilerini veya analizini düz '*' maddeleri yerine MUTLAKA TAM OLARAK BİR TANE geçerli ```sen_card JSON bloğu içinde sun! "
+                    "[GÖRSEL KART ZORUNLULUĞU]: Bu yanıtta önerilerini, ürün/cihaz karşılaştırmalarını veya analizini düz Markdown tablosu ya da '*' maddeleri yerine MUTLAKA TAM OLARAK BİR TANE geçerli ```sen_card JSON bloğu içinde sun! "
+                    "Özellikle 2 ürün/cihaz/model karşılaştırmalarında Markdown tablosu ÇİZME; doğrudan görselli `image_compare` (veya çoklu öneride `media_list`) kartı üret. "
+                    "KRİTİK: `media_list` içindeki `title` alanına HER ZAMAN GERÇEK FİLM / DİZİ / ÜRÜN ADINI yaz (ör. 'Oppenheimer', 'Past Lives', 'Dune'); ASLA 'Biyografi/Gerilim', 'Dram/Romantik', 'Bilim Kurgu Epik' gibi tür/kategori adı yazma! Tür veya kısa etiketi `badge` alanına yaz. "
                     "ÖNEMLİ: 'image_query' alanına her zaman nesnenin tam adını ve türünü İngilizce/Türkçe açık yaz (ör. 'Eskiya 1996 Turkish movie poster', 'Keychron K6 mechanical keyboard', 'full size mechanical keyboard', 'TKL tenkeyless mechanical keyboard'); ASLA sadece 'Tam Boyut' veya 'TKL' gibi tek kelime bırakma ve ASLA URL uydurma:\n"
                     "1) Görselli Film / Dizi / Ürün / Tarot Listesi (somut gerçek isimlerle!): "
                     '```sen_card\n{"kind":"media_list","title":"Seçtiğim Öneriler","items":[{"title":"Eşkıya","year":"1996","subtitle":"Türk sinemasının unutulmaz suç, dram ve intikam klasiği.","badge":"İlk önerim","score":"8.2","image_query":"Eskiya 1996 movie poster"},{"title":"Av Mevsimi","year":"2010","subtitle":"Şener Şen ve Cem Yılmaz\'dan sürükleyici polisiye cinayet soruşturması.","score":"7.4","image_query":"Av Mevsimi 2010 film poster"}]}\n```\n'
@@ -4405,11 +4465,20 @@ async def api_chat(req: ChatRequest, request: Request):
                 fb_hint = _get_recent_rating_feedback_hint()
                 if fb_hint:
                     eff_system_prompt = f"{eff_system_prompt}\n\n{fb_hint}".strip()
+            if is_cloud_nim:
+                eff_system_prompt = (
+                    f"{eff_system_prompt}\n\n"
+                    "[ORION PRO ZENGİN ÇIKTI YETENEKLERİ]: Sen yüksek bağlamlı Pro modelsin. Kullanıcının isteğine en uygun görsel/yapısal formatı proaktif ve eksiksiz kullan:\n"
+                    "1. Karşılaştırma / Ürün / Film / Mekan önerilerinde sade düz metin yerine gerçek isimler ve `image_query` içeren ```sen_card``` (`image_compare` veya `media_list`) görselli kartları kullan.\n"
+                    "2. Sayısal veri, plan, kıyaslama veya bütçe analizlerinde düzenli Markdown tabloları (otomatik Excel'e aktarılabilir) ve uygun olduğunda ```chart``` (Chart.js JSON) veya ```mermaid``` diyagramları üret.\n"
+                    "3. Tercih netleştirme gerektiğinde ```sen_card``` (`choice_card`) kullan; web/arayüz istendiğinde tek dosya canlı önizlenebilir HTML/CSS/JS üret."
+                ).strip()
+
             if enable_thinking:
                 eff_system_prompt = (
                     f"{eff_system_prompt}\n\n"
-                    "KRİTİK DÜŞÜNME DİLİ KURALI: İçsel düşünme (thought/reasoning) kanalında ASLA İngilizce ('Thinking Process:', 'Analyze the Request:') yazma! "
-                    "Düşünmeye HER ZAMAN 'Düşünme Süreci:' diyerek başla ve her kelimeyi %100 akıcı TÜRKÇE yaz."
+                    "KRİTİK DÜŞÜNME KURALI: İçsel düşünme (reasoning/thought) kanalını %100 akıcı Türkçe yaz ('Thinking Process:' yazma). "
+                    "ÖNEMLİ: Kullanıcıya görünen ana cevaba ASLA 'Düşünme Süreci:' veya içsel planlama metni yazma; ana cevap doğrudan kullanıcıya hitap eden temiz yanıtla başlamalıdır."
                 ).strip()
             if not is_consultative_q and last_user_msg and re.search(r"\b(?:html|web\s*sitesi|landing\s*page|arayüz|dashboard|portfolyo|css\s+tasarım|web\s+sayfa)\b", last_user_msg, re.I):
                 eff_system_prompt = (
@@ -4515,12 +4584,6 @@ async def api_chat(req: ChatRequest, request: Request):
                                 doc_blocks.append(ctx)
 
                 text_body = m.content.strip()
-                if idx_m == last_user_idx and rag_hits:
-                    rag_ctx = "\n\n".join(f"[{h['source']} · Sayfa {h['page']}]\n{h['text']}" for h in rag_hits)
-                    web_prefix = (
-                        f"[ARKA PLAN KÜTÜPHANE KAYNAKLARI — KULLANICI GÖNDERMEDİ]\n{rag_ctx}\n[/ARKA PLAN]\n"
-                        "KURAL: Soruyu yukarıdaki yerel belge parçalarına dayanarak, kaynak ve sayfa belirterek doğrudan ve doğal Türkçe yanıtla.\n\n"
-                    ) + web_prefix
                 if doc_blocks:
                     joined_docs = "\n\n---\n\n".join(doc_blocks)
                     text_body = f"{joined_docs}\n\n---\n\nKullanıcı İsteği:\n{text_body or 'Bu dokümanı/tabloyu detaylı incele ve özetle.'}"
@@ -4539,51 +4602,59 @@ async def api_chat(req: ChatRequest, request: Request):
             total_max_tokens = min(4096, answer_max_tokens + think_budget)
 
             # ------------------------------------------------------------------
-            # PATH A: GGUF Turbo (llama-server CUDA) — ~70-110+ tok/s on RTX 4060
+            # PATH A: GGUF Turbo (llama-server CUDA) OR NVIDIA NIM Cloud (Orion)
             # ------------------------------------------------------------------
-            if active_backend == "gguf_turbo":
+            if active_backend in ("gguf_turbo", "nvidia_nim"):
+                is_nvidia_cloud = active_backend == "nvidia_nim"
                 openai_msgs: List[Dict[str, Any]] = []
-                if eff_system_prompt:
-                    openai_msgs.append({"role": "system", "content": eff_system_prompt})
+                eff_sys_with_rag = eff_system_prompt
+                if rag_hits:
+                    rag_ctx = "\n\n".join(f"[{h['source']} · Sayfa {h['page']}]\n{h['text']}" for h in rag_hits)
+                    eff_sys_with_rag = (
+                        f"{eff_sys_with_rag}\n\n"
+                        f"[YEREL KÜTÜPHANE KAYNAKLARI]\n{rag_ctx}\n[/YEREL KÜTÜPHANE KAYNAKLARI]\n"
+                        "KURAL: Kullanıcının sorusunu yukarıdaki yerel belge parçalarına dayanarak, gereksiz selamlama yapmadan doğrudan, kaynak/sayfa belirterek ve akıcı Türkçe yanıtla."
+                    ).strip()
+                if eff_sys_with_rag:
+                    openai_msgs.append({"role": "system", "content": eff_sys_with_rag})
 
                 for turn in prepared_turns:
-                    if turn["role"] == "user" and (turn["img_paths"] or turn["aud_paths"]):
+                    if turn["role"] == "user" and (turn["img_paths"] or (turn["aud_paths"] and not is_nvidia_cloud)):
                         parts_oai: List[Dict[str, Any]] = []
                         for ip in turn["img_paths"]:
                             mime = mimetypes.guess_type(str(ip))[0] or "image/jpeg"
                             b64 = base64.b64encode(ip.read_bytes()).decode("ascii")
                             parts_oai.append({"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}})
-                        for ap in turn["aud_paths"]:
-                            wav, _ = librosa.load(str(ap), sr=16000, mono=True)
-                            buf_wav = io.BytesIO()
-                            sf.write(buf_wav, wav.astype("float32"), 16000, format="WAV", subtype="PCM_16")
-                            b64_a = base64.b64encode(buf_wav.getvalue()).decode("ascii")
-                            parts_oai.append({"type": "input_audio", "input_audio": {"data": b64_a, "format": "wav"}})
+                        if not is_nvidia_cloud:
+                            for ap in turn["aud_paths"]:
+                                wav, _ = librosa.load(str(ap), sr=16000, mono=True)
+                                buf_wav = io.BytesIO()
+                                sf.write(buf_wav, wav.astype("float32"), 16000, format="WAV", subtype="PCM_16")
+                                b64_a = base64.b64encode(buf_wav.getvalue()).decode("ascii")
+                                parts_oai.append({"type": "input_audio", "input_audio": {"data": b64_a, "format": "wav"}})
                         parts_oai.append({"type": "text", "text": turn["text"]})
                         openai_msgs.append({"role": "user", "content": parts_oai})
                     else:
                         openai_msgs.append({"role": turn["role"], "content": turn["text"]})
 
-                if enable_thinking and openai_msgs and openai_msgs[-1].get("role") == "user":
-                    tr_think_cue = "\n\n[Not: Düşünme sürecini de tamamen Türkçe yaz, 'Thinking Process' yazma.]"
-                    last_c = openai_msgs[-1]["content"]
-                    if isinstance(last_c, str):
-                        openai_msgs[-1]["content"] = last_c + tr_think_cue
-                    elif isinstance(last_c, list) and last_c and last_c[-1].get("type") == "text":
-                        last_c[-1]["text"] = str(last_c[-1].get("text", "")) + tr_think_cue
-
-                # Dynamic Context Window Guard & Auto-Compaction (8K / 16K / 32K, preserves newest turns + summarizes old ones)
-                ctx_limit = int(engine.active_context_length or desired_ctx or 32768)
-                max_prompt_tokens = int(ctx_limit * 0.78)
+                # Dynamic Per-Slot Context Window Guard & Auto-Compaction
+                if is_nvidia_cloud:
+                    ctx_limit = int(m_meta.get("context_length") or 262144)
+                    max_prompt_tokens = int(ctx_limit * 0.85)
+                else:
+                    slot_div = max(1, int(getattr(engine, "active_parallel_slots", 1) or 1))
+                    total_ctx = int(engine.active_context_length or desired_ctx or 32768)
+                    ctx_limit = max(2048, total_ctx // slot_div)
+                    max_prompt_tokens = int(ctx_limit * 0.72)
 
                 def _est_msg_tokens(msg_obj: Dict[str, Any]) -> int:
                     c = msg_obj.get("content", "")
                     if isinstance(c, str):
-                        return max(4, int(len(c) / 3.4) + 6)
+                        return max(4, int(len(c) / 2.6) + 8)
                     total_c = 0
                     for p in c:
                         if p.get("type") == "text":
-                            total_c += int(len(p.get("text", "")) / 3.4)
+                            total_c += int(len(p.get("text", "")) / 2.6)
                         else:
                             total_c += 320
                     return max(16, total_c)
@@ -4627,23 +4698,49 @@ async def api_chat(req: ChatRequest, request: Request):
                     est_ctx_tokens -= _est_msg_tokens(removed)
 
                 avail_out_tokens = max(1024, ctx_limit - est_ctx_tokens - 160)
-                hard_cap = 6144 if engine.active_profile == "low_vram" else 10240
-                effective_max_tokens = min(hard_cap, avail_out_tokens, answer_max_tokens + think_budget)
-
-                llama_payload: Dict[str, Any] = {
-                    "messages": openai_msgs,
-                    "stream": True,
-                    "stream_options": {"include_usage": True},
-                    "temperature": float(eff_temp if eff_temp > 0.05 else 0.0),
-                    "top_p": float(top_p),
-                    "top_k": 64,
-                    "max_tokens": int(effective_max_tokens),
-                    "chat_template_kwargs": {"enable_thinking": enable_thinking},
-                    "reasoning_budget": int(think_budget) if enable_thinking else 0,
-                }
+                if is_nvidia_cloud:
+                    nv_key = (cfg.get("nvidia_api_key") or os.environ.get("NVIDIA_API_KEY") or "").strip()
+                    if not nv_key:
+                        raise RuntimeError("Orion (NVIDIA NIM) için geçerli bir NVIDIA API anahtarı bulunamadı.")
+                    stream_url = "https://integrate.api.nvidia.com/v1/chat/completions"
+                    stream_headers = {"Authorization": f"Bearer {nv_key}", "Content-Type": "application/json"}
+                    nv_max_tok = int(min(16384, max(4096, answer_max_tokens + think_budget)))
+                    llama_payload: Dict[str, Any] = {
+                        "model": m_meta.get("api_model") or "nvidia/nemotron-3.5-lightning-30b-a3b",
+                        "messages": openai_msgs,
+                        "stream": True,
+                        "stream_options": {"include_usage": True},
+                        "temperature": float(eff_temp if eff_temp > 0.05 else 0.0),
+                        "top_p": float(top_p),
+                        "max_tokens": nv_max_tok,
+                    }
+                    if not enable_thinking:
+                        llama_payload["chat_template_kwargs"] = {"enable_thinking": False}
+                    else:
+                        llama_payload["reasoning_effort"] = "low" if effort == "low" else ("medium" if effort == "medium" else "high")
+                    gen_status_msg = "Yanıt üretiliyor (Orion · Bulut)..."
+                else:
+                    hard_cap = 6144 if engine.active_profile == "low_vram" else 10240
+                    effective_max_tokens = min(hard_cap, avail_out_tokens, answer_max_tokens + think_budget)
+                    stream_url = f"{LLAMA_SERVER_URL}/v1/chat/completions"
+                    stream_headers = {}
+                    llama_payload = {
+                        "messages": openai_msgs,
+                        "stream": True,
+                        "stream_options": {"include_usage": True},
+                        "cache_prompt": bool(not rag_hits and len(prepared_turns) > 1),
+                        "temperature": float(eff_temp if eff_temp > 0.05 else 0.0),
+                        "top_p": float(top_p),
+                        "top_k": 64,
+                        "min_p": 0.05,
+                        "max_tokens": int(effective_max_tokens),
+                        "chat_template_kwargs": {"enable_thinking": enable_thinking},
+                        "reasoning_budget": int(think_budget) if enable_thinking else 0,
+                    }
+                    gen_status_msg = "Yanıt üretiliyor (GGUF Turbo)..."
 
                 t0 = time.perf_counter()
-                yield _format_sse({"type": "status", "stage": "generating", "message": "Yanıt üretiliyor (GGUF Turbo)...", "effort": effort})
+                yield _format_sse({"type": "status", "stage": "generating", "message": gen_status_msg, "effort": effort})
 
                 parser = _ThinkingStreamParser()
                 full_thinking: List[str] = []
@@ -4653,10 +4750,10 @@ async def api_chat(req: ChatRequest, request: Request):
                 streamed_pieces = 0
 
                 async with httpx.AsyncClient(timeout=None) as client:
-                    async with client.stream("POST", f"{LLAMA_SERVER_URL}/v1/chat/completions", json=llama_payload) as lresp:
+                    async with client.stream("POST", stream_url, json=llama_payload, headers=stream_headers) as lresp:
                         if lresp.status_code != 200:
                             err_body = (await lresp.aread()).decode("utf-8", errors="replace")[:400]
-                            raise RuntimeError(f"llama-server HTTP {lresp.status_code}: {err_body}")
+                            raise RuntimeError(f"{'NVIDIA NIM' if is_nvidia_cloud else 'llama-server'} HTTP {lresp.status_code}: {err_body}")
                         async for raw_line in lresp.aiter_lines():
                             if (stop_ev is not None and stop_ev.is_set()) or engine.stop_event.is_set():
                                 break
@@ -5473,34 +5570,24 @@ async def api_list_dataset():
 
 
 def _get_recent_rating_feedback_hint() -> str:
+    """Return concise style notes ONLY from explicit dislike reasons (never quote truncated liked text!)."""
     entries = _load_dataset_entries()
     if not entries:
         return ""
-    recent_dislikes: List[str] = []
-    recent_likes: List[str] = []
+    reasons: List[str] = []
+    seen = set()
     for e in reversed(entries):
-        msgs = e.get("messages") or []
-        u_txt = next((m.get("content", "").strip() for m in msgs if m.get("role") == "user"), "")
-        a_txt = next((m.get("content", "").strip() for m in msgs if m.get("role") == "assistant"), "")
-        if not u_txt or not a_txt:
+        if e.get("rating") != "dislike":
             continue
-        r = e.get("rating")
-        if r == "dislike" and len(recent_dislikes) < 2:
-            short_a = re.sub(r"\s+", " ", a_txt)[:110]
-            recent_dislikes.append(f"'{u_txt[:55]}' sorusunda şu tarz yanıt beğenilmedi: \"{short_a}...\"")
-        elif r == "like" and len(recent_likes) < 2:
-            short_a = re.sub(r"\s+", " ", a_txt)[:110]
-            recent_likes.append(f"'{u_txt[:55]}' sorusunda şu netlik ve format beğenildi: \"{short_a}...\"")
-        if len(recent_dislikes) >= 2 and len(recent_likes) >= 2:
+        reason = str(e.get("reason") or "").strip()
+        if reason and reason not in seen:
+            seen.add(reason)
+            reasons.append(reason)
+        if len(reasons) >= 2:
             break
-    if not recent_dislikes and not recent_likes:
+    if not reasons:
         return ""
-    lines = ["[KULLANICI BEĞENİ (👍/👎) GERİ BİLDİRİMLERİ — YANIT TARZINI BUNA GÖRE AYARLA]:"]
-    for item in recent_likes:
-        lines.append(f"- 👍 {item}")
-    for item in recent_dislikes:
-        lines.append(f"- 👎 {item} (Bu hatayı veya yüzeyselliği tekrarlama!)")
-    return "\n".join(lines)
+    return "[KULLANICI TERCİH NOTU]: Şu noktalara dikkat et: " + "; ".join(reasons) + "."
 
 
 @app.post("/api/dataset/rate")

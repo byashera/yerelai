@@ -76,7 +76,7 @@ function loadWindowState() {
         x: typeof raw.x === "number" ? raw.x : undefined,
         y: typeof raw.y === "number" ? raw.y : undefined,
         maximized: Boolean(raw.maximized),
-        theme: raw.theme === "light" || raw.theme === "system" ? raw.theme : "dark",
+        theme: raw.theme === "dark" || raw.theme === "system" ? raw.theme : "light",
         minimizeToTray: raw.minimizeToTray !== false,
         companionHotkey: ALLOWED_HOTKEYS.has(raw.companionHotkey) ? raw.companionHotkey : "Alt+Space",
       };
@@ -86,7 +86,7 @@ function loadWindowState() {
     width: 1380,
     height: 880,
     maximized: false,
-    theme: "dark",
+    theme: "light",
     minimizeToTray: true,
     companionHotkey: "Alt+Space",
   };

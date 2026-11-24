@@ -49,6 +49,21 @@
       "capabilities": ["text", "audio", "image", "thinking", "coding"],
       "description": "QAT Q4_0 exact hedef + Q8_0 mmproj + MTP drafter. 8 GB sınıfında 32k bağlamla yüksek kalite ve MTP hızlandırması.",
       "badge": "QAT · MTP · 8GB"
+    },
+    {
+      "id": "nvidia-orion-super-vl",
+      "name": "Orion · Nemotron 3.5 Lightning (30B-A3B Bulut)",
+      "short_name": "Orion",
+      "provider": "nvidia_nim",
+      "api_model": "nvidia/nemotron-3.5-lightning-30b-a3b",
+      "hf_repo": "",
+      "effective_params": "30B (3B Aktif MoE) · Bulut",
+      "vram_estimate_mb": 0,
+      "context_length": 262144,
+      "download_size_gb": 0,
+      "capabilities": ["text", "thinking", "coding"],
+      "description": "Gelişmiş kodlama ve yüksek bağlam.",
+      "badge": "Pro"
     }
   ]
 }
