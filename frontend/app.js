@@ -178,7 +178,7 @@
     activeSessionId: null,
     messages: [],
     pendingAttachments: [],
-    selectedModelId: "gemma-4-e2b-4bit",
+    selectedModelId: "gemma-4-e2b-qat-mtp",
     selectedLoraId: "",
     gpuProfile: "auto",
     contextLength: 32768,
@@ -825,7 +825,7 @@
 
     const getModelVisual = (m) => {
       const isE4b = m.id.includes("e4b");
-      const shortTitle = isE4b ? "Gemma 4 E4B" : "Gemma 4 E2B";
+      const shortTitle = m.short_name || (isE4b ? "Gemma 4 E4B" : "Gemma 4 E2B");
       const roleTag = isE4b ? "Derin" : "Turbo";
       const vramMb = m.vram_estimate_mb || (isE4b ? 5600 : 3400);
       const vramGb = (Number(vramMb) / 1000).toFixed(1);

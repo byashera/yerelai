@@ -124,6 +124,35 @@ LLAMA_SERVER_BIN = _detect_llama_server_bin()
 LLAMA_SERVER_PORT = int(os.environ.get("LLAMA_SERVER_PORT", "8071"))
 LLAMA_SERVER_URL = f"http://127.0.0.1:{LLAMA_SERVER_PORT}"
 
+_MTP_SUPPORT: Optional[bool] = None
+
+
+def _llama_supports_mtp() -> bool:
+    """Check once whether the active llama-server build exposes the Gemma 4 MTP drafter flags."""
+    global _MTP_SUPPORT
+    if _MTP_SUPPORT is not None:
+        return _MTP_SUPPORT
+    if not LLAMA_SERVER_BIN.exists():
+        _MTP_SUPPORT = False
+        return False
+    try:
+        flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+        proc = subprocess.run(
+            [str(LLAMA_SERVER_BIN), "--help"],
+            capture_output=True,
+            text=True,
+            timeout=25,
+            creationflags=flags,
+        )
+        output = (proc.stdout or "") + (proc.stderr or "")
+        _MTP_SUPPORT = "draft-mtp" in output
+    except Exception as exc:
+        logger.warning("llama-server MTP capability check failed: %s", exc)
+        _MTP_SUPPORT = False
+    if not _MTP_SUPPORT:
+        logger.warning("llama-server build does not advertise draft-mtp support")
+    return _MTP_SUPPORT
+
 OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 LORAS_DIR.mkdir(parents=True, exist_ok=True)
@@ -334,12 +363,46 @@ def _resolve_local_hf_snapshot(repo_id: str) -> Optional[Path]:
     return None
 
 
-def _resolve_local_gguf(model_meta: Dict[str, Any]) -> Optional[Tuple[Path, Path]]:
-    """Return (gguf_path, mmproj_path) if both files exist cleanly on disk (checks local clone + shared user dirs)."""
-    gguf_dir_name = model_meta.get("gguf_dir") or ""
+def _gguf_file_specs(model_meta: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Return the GGUF files required by a model: target, mmproj and optional MTP drafter."""
+    base_repo = model_meta.get("gguf_repo") or ""
     gguf_file = model_meta.get("gguf_file") or ""
     mmproj_file = model_meta.get("mmproj_file") or ""
-    if not (gguf_dir_name and gguf_file and mmproj_file):
+    if not (base_repo and gguf_file and mmproj_file):
+        return []
+    specs: List[Dict[str, Any]] = [
+        {
+            "kind": "target",
+            "repo": base_repo,
+            "file": gguf_file,
+            "sha256": str(model_meta.get("gguf_sha256") or "").lower(),
+            "min_size": 500_000_000,
+        },
+        {
+            "kind": "mmproj",
+            "repo": model_meta.get("mmproj_repo") or base_repo,
+            "file": mmproj_file,
+            "sha256": str(model_meta.get("mmproj_sha256") or "").lower(),
+            "min_size": 100_000_000,
+        },
+    ]
+    mtp_file = model_meta.get("mtp_file") or ""
+    if mtp_file:
+        specs.append({
+            "kind": "mtp",
+            "repo": model_meta.get("mtp_repo") or base_repo,
+            "file": mtp_file,
+            "sha256": str(model_meta.get("mtp_sha256") or "").lower(),
+            "min_size": 10_000_000,
+        })
+    return specs
+
+
+def _resolve_local_gguf(model_meta: Dict[str, Any]) -> Optional[Tuple[Path, Path, Optional[Path]]]:
+    """Return (target, mmproj, mtp_or_None) when every required file exists cleanly on disk."""
+    gguf_dir_name = model_meta.get("gguf_dir") or ""
+    specs = _gguf_file_specs(model_meta)
+    if not (gguf_dir_name and specs):
         return None
     search_roots = [
         GGUF_DIR,
@@ -349,14 +412,17 @@ def _resolve_local_gguf(model_meta: Dict[str, Any]) -> Optional[Tuple[Path, Path
     ]
     for root in search_roots:
         folder = root / gguf_dir_name
-        m_path = folder / gguf_file
-        mm_path = folder / mmproj_file
-        try:
-            if m_path.exists() and mm_path.exists():
-                if m_path.stat().st_size > 500_000_000 and mm_path.stat().st_size > 100_000_000:
-                    return m_path, mm_path
-        except OSError:
-            continue
+        found: List[Path] = []
+        for spec in specs:
+            candidate = folder / spec["file"]
+            try:
+                if not candidate.exists() or candidate.stat().st_size < int(spec["min_size"]):
+                    break
+            except OSError:
+                break
+            found.append(candidate)
+        if len(found) == len(specs):
+            return found[0], found[1], (found[2] if len(found) > 2 else None)
     return None
 
 
@@ -522,14 +588,34 @@ class EngineManager:
             logger.warning("HfApi.get_paths_info failed for %s/%s: %s", repo_id, filename, exc)
         return 0
 
-    def _download_gguf_model_files(self, model_meta: Dict[str, Any], update_load_msg: bool = False) -> Tuple[Path, Path]:
+    @staticmethod
+    def _verify_gguf_sha256(path: Path, expected: str) -> None:
+        expected = (expected or "").strip().lower()
+        if not expected:
+            return
+        digest = hashlib.sha256()
+        with open(path, "rb") as fp:
+            for chunk in iter(lambda: fp.read(8 * 1024 * 1024), b""):
+                digest.update(chunk)
+        actual = digest.hexdigest()
+        if not hmac.compare_digest(actual, expected):
+            try:
+                path.unlink()
+            except OSError:
+                pass
+            raise RuntimeError(f"SHA-256 doğrulaması başarısız: {path.name}")
+        logger.info("SHA-256 verified: %s", path.name)
+
+    def _download_gguf_model_files(self, model_meta: Dict[str, Any], update_load_msg: bool = False) -> Tuple[Path, Path, Optional[Path]]:
         from huggingface_hub import hf_hub_url
 
-        repo_id = model_meta["gguf_repo"]
+        specs = _gguf_file_specs(model_meta)
+        if not specs:
+            raise ValueError("Bu model için GGUF dosya tanımı eksik.")
         gguf_dir = GGUF_DIR / model_meta["gguf_dir"]
         gguf_dir.mkdir(parents=True, exist_ok=True)
-        files = [model_meta["gguf_file"], model_meta["mmproj_file"]]
         short_name = "Gemma 4 E4B" if "e4b" in model_meta["id"] else "Gemma 4 E2B"
+        file_count = len(specs)
 
         self.download_cancel_event.clear()
         with self.download_lock:
@@ -538,9 +624,9 @@ class EngineManager:
                 "status": "downloading",
                 "model_id": model_meta["id"],
                 "model_name": short_name,
-                "file_name": files[0],
+                "file_name": specs[0]["file"],
                 "file_index": 1,
-                "file_count": len(files),
+                "file_count": file_count,
                 "downloaded_bytes": 0,
                 "total_bytes": 0,
                 "percent": 0.0,
@@ -550,15 +636,15 @@ class EngineManager:
             })
 
         try:
-            file_sizes = [self._get_remote_file_size(repo_id, fn) for fn in files]
+            file_sizes = [self._get_remote_file_size(spec["repo"], spec["file"]) for spec in specs]
             total_bytes = sum(s for s in file_sizes if s > 0)
 
             completed_before = 0
-            for idx, fn in enumerate(files):
-                target = gguf_dir / fn
-                part = gguf_dir / f"{fn}.part"
+            for idx, spec in enumerate(specs):
+                target = gguf_dir / spec["file"]
+                part = gguf_dir / f"{spec['file']}.part"
                 expected = file_sizes[idx]
-                if target.exists() and target.stat().st_size > 1_000_000 and (expected == 0 or target.stat().st_size == expected):
+                if target.exists() and target.stat().st_size >= int(spec["min_size"]) and (expected == 0 or target.stat().st_size == expected):
                     completed_before += target.stat().st_size
                 elif part.exists():
                     completed_before += part.stat().st_size
@@ -574,12 +660,15 @@ class EngineManager:
             ema_speed = 0.0
 
             with httpx.Client(follow_redirects=True, timeout=httpx.Timeout(30.0, read=90.0)) as client:
-                for idx, fn in enumerate(files):
+                for idx, spec in enumerate(specs):
+                    fn = spec["file"]
+                    repo_id = spec["repo"]
                     target = gguf_dir / fn
                     part = gguf_dir / f"{fn}.part"
                     expected = file_sizes[idx]
 
-                    if target.exists() and target.stat().st_size > 1_000_000 and (expected == 0 or target.stat().st_size == expected):
+                    if target.exists() and target.stat().st_size >= int(spec["min_size"]) and (expected == 0 or target.stat().st_size == expected):
+                        self._verify_gguf_sha256(target, spec.get("sha256") or "")
                         accumulated_done += target.stat().st_size
                         result_paths.append(target)
                         continue
@@ -587,20 +676,21 @@ class EngineManager:
                     existing_part = part.stat().st_size if part.exists() else 0
                     if expected > 0 and existing_part >= expected:
                         os.replace(part, target)
+                        self._verify_gguf_sha256(target, spec.get("sha256") or "")
                         accumulated_done += target.stat().st_size
                         result_paths.append(target)
                         continue
 
                     url = hf_hub_url(repo_id=repo_id, filename=fn)
                     headers = {"Range": f"bytes={existing_part}-"} if existing_part > 0 else {}
-                    logger.info("Downloading %s (%d/%d) from %s (resume=%d)", fn, idx + 1, len(files), repo_id, existing_part)
+                    logger.info("Downloading %s (%d/%d) from %s (resume=%d)", fn, idx + 1, file_count, repo_id, existing_part)
 
                     with self.download_lock:
                         self.download_state["file_name"] = fn
                         self.download_state["file_index"] = idx + 1
                     if update_load_msg:
                         with self.lock:
-                            self.load_message = f"{short_name} indiriliyor ({idx + 1}/{len(files)})..."
+                            self.load_message = f"{short_name} indiriliyor ({idx + 1}/{file_count})..."
 
                     with client.stream("GET", url, headers=headers) as resp:
                         if resp.status_code not in (200, 206):
@@ -653,6 +743,7 @@ class EngineManager:
                                             self.load_message = f"{short_name} indiriliyor: %{pct:.1f} ({ema_speed:.1f} MB/sn)"
 
                     os.replace(part, target)
+                    self._verify_gguf_sha256(target, spec.get("sha256") or "")
                     accumulated_done += target.stat().st_size
                     result_paths.append(target)
 
@@ -668,7 +759,7 @@ class EngineManager:
                     "error": "",
                 })
             logger.info("GGUF download completed for %s (%d bytes)", model_meta["id"], accumulated_done)
-            return result_paths[0], result_paths[1]
+            return result_paths[0], result_paths[1], (result_paths[2] if len(result_paths) > 2 else None)
         except InterruptedError as exc:
             with self.download_lock:
                 self.download_state.update({
@@ -961,6 +1052,9 @@ class EngineManager:
                 profile = "low_vram"
             else:
                 profile = "turbo"
+            if profile == "turbo" and total_vram_mb > 0 and total_vram_mb <= 5000:
+                logger.warning("Turbo profile requested on %dMB VRAM; using low_vram safety profile", total_vram_mb)
+                profile = "low_vram"
 
             self.active_profile = profile
             self.detected_vram_mb = total_vram_mb
@@ -971,7 +1065,7 @@ class EngineManager:
                 if paths is None:
                     paths = self._download_gguf_model_files(model_meta, update_load_msg=True)
 
-                gguf_path, mmproj_path = paths
+                gguf_path, mmproj_path, mtp_path = paths
                 with self.lock:
                     self.load_message = f"GGUF Turbo CUDA sunucusu başlatılıyor ({model_meta['name']})..."
 
@@ -1009,6 +1103,32 @@ class EngineManager:
                     cmd.extend(["--lora-scaled", f"{lora_path}:{float(lora_scale):.2f}"])
                     lora_note = f" + LoRA:{lora_id} ({lora_scale:.1f}x)"
 
+                base_cmd = list(cmd)
+                use_mtp = bool(mtp_path)
+                mtp_note = ""
+                if use_mtp and not _llama_supports_mtp():
+                    logger.warning(
+                        "llama-server does not support draft-mtp; loading %s without MTP",
+                        model_meta["id"],
+                    )
+                    use_mtp = False
+                if use_mtp:
+                    mtp_cfg = model_meta.get("mtp_n_max") or {}
+                    if isinstance(mtp_cfg, dict):
+                        mtp_n_max = int(mtp_cfg.get(profile, mtp_cfg.get("default", 2)))
+                    else:
+                        mtp_n_max = int(mtp_cfg)
+                    mtp_n_max = max(1, min(4, mtp_n_max))
+                    cmd = base_cmd + [
+                        "-md", str(mtp_path),
+                        "--spec-type", "draft-mtp",
+                        "-ngld", "all",
+                        "--spec-draft-n-max", str(mtp_n_max),
+                    ]
+                    mtp_note = f" + MTP:{mtp_n_max} draft"
+                else:
+                    cmd = base_cmd
+
                 llama_env = os.environ.copy()
                 extra_dll_dirs = [
                     str(LLAMA_SERVER_BIN.parent),
@@ -1022,44 +1142,77 @@ class EngineManager:
                 if pre_smi.get("available"):
                     self._baseline_vram_mb = int(pre_smi["system_used_mb"])
 
-                log_fp = open(LLAMA_LOG_PATH, "w", encoding="utf-8", errors="replace")
                 flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
-                proc = subprocess.Popen(
-                    cmd,
-                    stdout=log_fp,
-                    stderr=subprocess.STDOUT,
-                    env=llama_env,
-                    creationflags=flags,
-                )
-                with self.lock:
-                    self.llama_proc = proc
-                    self._llama_log_fp = log_fp
 
-                deadline = time.time() + 90.0
-                healthy = False
-                while time.time() < deadline:
-                    if proc.poll() is not None:
+                def _spawn_and_wait(launch_cmd: List[str]) -> subprocess.Popen:
+                    log_fp = open(LLAMA_LOG_PATH, "w", encoding="utf-8", errors="replace")
+                    proc = subprocess.Popen(
+                        launch_cmd,
+                        stdout=log_fp,
+                        stderr=subprocess.STDOUT,
+                        env=llama_env,
+                        creationflags=flags,
+                    )
+                    with self.lock:
+                        self.llama_proc = proc
+                        self._llama_log_fp = log_fp
+
+                    deadline = time.time() + 90.0
+                    while time.time() < deadline:
+                        if proc.poll() is not None:
+                            try:
+                                log_fp.flush()
+                            except Exception:
+                                pass
+                            tail = ""
+                            try:
+                                tail = LLAMA_LOG_PATH.read_text(encoding="utf-8", errors="replace")[-1200:]
+                            except Exception:
+                                pass
+                            try:
+                                log_fp.close()
+                            except Exception:
+                                pass
+                            with self.lock:
+                                self.llama_proc = None
+                                self._llama_log_fp = None
+                            raise RuntimeError(f"llama-server çıkış kodu {proc.returncode}: {tail.strip()}")
                         try:
-                            log_fp.flush()
+                            r = httpx.get(f"{LLAMA_SERVER_URL}/health", timeout=1.5)
+                            if r.status_code == 200:
+                                return proc
                         except Exception:
                             pass
-                        tail = ""
-                        try:
-                            tail = LLAMA_LOG_PATH.read_text(encoding="utf-8", errors="replace")[-1200:]
-                        except Exception:
-                            pass
-                        raise RuntimeError(f"llama-server çıkış kodu {proc.returncode}: {tail.strip()}")
+                        time.sleep(0.4)
+
                     try:
-                        r = httpx.get(f"{LLAMA_SERVER_URL}/health", timeout=1.5)
-                        if r.status_code == 200:
-                            healthy = True
-                            break
+                        proc.kill()
                     except Exception:
                         pass
-                    time.sleep(0.4)
-
-                if not healthy:
+                    try:
+                        log_fp.close()
+                    except Exception:
+                        pass
+                    with self.lock:
+                        self.llama_proc = None
+                        self._llama_log_fp = None
                     raise RuntimeError("llama-server 90 saniye içinde hazır olmadı.")
+
+                try:
+                    proc = _spawn_and_wait(cmd)
+                except RuntimeError as exc:
+                    if not use_mtp:
+                        raise
+                    logger.warning(
+                        "MTP launch failed for %s (%s); retrying without MTP",
+                        model_meta["id"],
+                        exc,
+                    )
+                    with self.lock:
+                        self.load_message = "MTP başlatılamadı; MTP'siz yeniden deneniyor..."
+                    use_mtp = False
+                    mtp_note = ""
+                    proc = _spawn_and_wait(base_cmd)
 
                 post_smi = _query_nvidia_smi()
                 vram_delta = max(0, int(post_smi.get("system_used_mb", 0)) - self._baseline_vram_mb)
@@ -1074,9 +1227,9 @@ class EngineManager:
                     self.engine_backend = "gguf_turbo"
                     self.state = "ready"
                     self._vram_cache_ts = 0.0
-                    self.load_message = f"GGUF Turbo Hazır · {model_meta['name']}{lora_note} ({profile_tag})"
+                    self.load_message = f"GGUF Turbo Hazır · {model_meta['name']}{lora_note}{mtp_note} ({profile_tag})"
                     self.touch()
-                logger.info("GGUF Turbo ready: %s%s pid=%s", model_id, lora_note, proc.pid)
+                logger.info("GGUF Turbo ready: %s%s%s pid=%s", model_id, lora_note, mtp_note, proc.pid)
                 return
 
             # PyTorch bitsandbytes fallback (used for PyTorch PEFT LoRA or when llama-server unavailable)
@@ -2768,7 +2921,7 @@ async def api_models():
         entry["bnb_cached"] = snap is not None
         entry["cached_locally"] = (gguf_paths is not None) if (use_gguf_engine and m.get("gguf_repo")) else (snap is not None)
         entry["local_snapshot"] = str(gguf_paths[0]) if gguf_paths else (str(snap) if snap else "")
-        entry["download_size_gb"] = 6.0 if "e4b" in m["id"] else 4.1
+        entry["download_size_gb"] = float(m.get("download_size_gb") or (6.0 if "e4b" in m["id"] else 4.1))
         models.append(entry)
     return {
         "models": models,
@@ -3020,7 +3173,7 @@ async def api_chat(req: ChatRequest, request: Request):
 
     cfg = load_json(CONFIG_PATH, {})
     gen_cfg = cfg.get("generation", {})
-    model_id = req.model_id or cfg.get("default_model_id", "gemma-4-e2b-4bit")
+    model_id = req.model_id or cfg.get("default_model_id", "gemma-4-e2b-qat-mtp")
     lora_id = req.lora_id if req.lora_id is not None else cfg.get("active_lora_id", "")
     lora_scale = float(req.lora_scale if req.lora_scale is not None else cfg.get("lora_scale", 1.0))
 
@@ -3323,6 +3476,11 @@ async def api_chat(req: ChatRequest, request: Request):
                 for m in req.messages[-2:]
                 for a in (m.attachments or [])
             )
+            has_audio_attachment = any(
+                str((a.get("kind") if isinstance(a, dict) else getattr(a, "kind", "")) or "").lower() == "audio"
+                for m in req.messages
+                for a in (m.attachments or [])
+            )
             if req.skill_id == "web-tasarimci" or (last_user_msg and re.search(r"\b(?:html|css|web\s*sitesi|landing\s*page|arayüz|dashboard|portfolyo|ui\s*tasarım|bento)\b", last_user_msg, re.I)):
                 auto_persona_name = "Web & UI Tasarımcısı"
                 auto_persona_prompt = "Aktif Uzmanlık: Kıdemli Web & UI/UX Tasarımcısı (Apple/Linear/Vercel tasarım sistemi, modern CSS Grid & mikro-etkileşimler)."
@@ -3502,6 +3660,13 @@ async def api_chat(req: ChatRequest, request: Request):
                         "veriler uygunsa düzenli Markdown tablosu kullan. İnternete erişemediğini asla söyleme (yalnızca açıkça internet yok uyarısı verildiyse hariç)."
                     )
                 eff_system_prompt = f"{eff_system_prompt}\n\n{web_rule}".strip()
+
+            if has_audio_attachment:
+                eff_system_prompt = (
+                    f"{eff_system_prompt}\n\n"
+                    "[SES KAYDI YETENEĞİ]: Bu konuşmada kullanıcı bir ses kaydı ekledi. Ses kaydını dinleyebilir ve içeriğini anlayabilirsin. "
+                    "'Ses kaydı göndermediniz', 'ses kaydı yok' veya 'ses kaydıyla etkileşim kuramıyorum' deme; duyduğun içeriği doğrudan yanıtına aktar."
+                ).strip()
 
             files_db = load_json(FILES_META_PATH, {})
             last_user_idx = max((i for i, msg in enumerate(req.messages) if msg.role == "user"), default=-1)

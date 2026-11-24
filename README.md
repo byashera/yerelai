@@ -43,7 +43,7 @@
 - **Tek Tıkla `.xlsx` / `.docx` / `.pdf` & Split-Pane Kod Editörü:** Markdown tablolarından formüllü Excel çalışma kitabı, Word/PDF dışa aktarımı ve canlı HTML/CSS/JS/Python önizleme.
 
 ### ⚡ Yerel GPU Motoru, Türkçe Ses & Canlı 👍/👎 Geri Bildirim Motoru
-- **Gemma 4 (`E2B` & `E4B`) GGUF CUDA Turbo:** `llama-server` üzerinde Flash Attention, Q8 KV Cache ve `--cache-reuse` ile **60+ tok/sn** yerel üretim hızı.
+- **Gemma 4 (`E2B` & `E4B`) QAT + MTP Turbo:** `llama-server` üzerinde QAT Q4_0 hedef, Q8_0 mmproj, Flash Attention, Q8 KV Cache, `--cache-reuse` ve MTP drafter ile 8 GB sınıfında **E2B'de 150+ tok/sn, E4B'de 90+ tok/sn** yerel üretim hızı (donanıma göre değişir).
 - **Akıllı Uzman Yönlendirme:** Konuya göre otomatik uzman modu (`Web & UI Tasarımcısı`, `Veri & Excel Analisti`, `Kıdemli Yazılımcı`, `Çevirmen`, `Özet & Editör`).
 - **Doğal Türkçe Sesli Sohbet (TTS & STT):** Emojileri ve kod bloklarını atlayarak yalnızca konuşma metnini doğal Neural seslerle (`Ahmet` / `Emel`) seslendirir; tam ekran dalga formlu canlı sesli sohbet modu sunar.
 - **Canlı Etkili & Kalıcı 👍 / 👎 Sistemi:** Mesaj beğenileri sohbet geçmişinde kalıcı olarak saklanır, tekrar dokunulduğunda geri alınabilir (mükerrer kayıt üretmez), modelin sonraki canlı yanıt tarzını anında besler ve Unsloth uyumlu **SFT / DPO** eğitim seti oluşturur.
@@ -68,7 +68,7 @@ cd yerelai
 
 > **İpucu:** `.\Baslat.bat` (veya `powershell -NoProfile -ExecutionPolicy Bypass -File .\kurulum.ps1`) ilk çalıştırmada hem Python/CUDA hem de Electron masaüstü bağımlılıklarını otomatik kurar ve masaüstünüze **SEN.AI Studio** kısayolu oluşturur. Doğrudan `python backend.py` veya `cd desktop && npm install && npm start` komutlarını çalıştırsanız bile sistem otomatik olarak kurulu CUDA ortamına (`venv` / `.unsloth`) geçiş yapar.
 >
-> **İlk Model İndirme:** `.gguf` model ağırlıkları (3.4 GB – 5.6 GB) Git deposunda yer almaz. Bilgisayarınızda daha önce indirilmiş `models/gguf` varsa otomatik tanınır; ilk kez kuruyorsanız açılan arayüzde **Ayarlar → Modeller** sekmesinden **Gemma 4 E2B / E4B (GGUF Turbo)** modelini tek tıkla indirebilirsiniz.
+> **İlk Model İndirme:** `.gguf` model ağırlıkları (3.2 GB – 4.8 GB) Git deposunda yer almaz. Bilgisayarınızda daha önce indirilmiş `models/gguf` varsa otomatik tanınır; ilk kez kuruyorsanız açılan arayüzde **Ayarlar → Modeller** sekmesinden **Gemma 4 E2B / E4B (QAT + MTP)** modelini tek tıkla indirebilirsiniz.
 
 - **Masaüstü Uygulaması (Electron):** `.\Baslat.bat` veya `YerelAI_Masaustu.vbs` (manuel başlatma için `cd desktop && npm install && npm start`)
 - **Yerel Wi-Fi (LAN) Erişimi:** `lan_ac.bat` dosyasına sağ tıklayıp **Yönetici olarak çalıştır** seçin.
