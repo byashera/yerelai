@@ -82,6 +82,29 @@ struct ChatView: View {
                             floatingComposer
                         }
 
+                        // In-App Dynamic Island Style Completion Pill
+                        if let pill = server.completedPillText {
+                            VStack {
+                                HStack(spacing: 7) {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .font(.caption.weight(.bold))
+                                        .foregroundStyle(.green)
+                                    Text(pill)
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(.primary)
+                                        .lineLimit(1)
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 8)
+                                .senGlassCapsule(interactive: false)
+                                .shadow(color: Color.black.opacity(0.14), radius: 14, y: 6)
+                                .padding(.top, 6)
+                                Spacer()
+                            }
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                            .allowsHitTesting(false)
+                        }
+
                         // iOS 26 Floating Liquid Glass (+) Popover Menu
                         if showPlusMenu {
                             Color.black.opacity(0.04)
@@ -170,17 +193,12 @@ struct ChatView: View {
                         ToolbarItem(placement: .topBarTrailing) {
                             HStack(spacing: 6) {
                                 if server.messages.isEmpty {
-                                    Button {
-                                        SenHaptics.light()
-                                        withAnimation(.spring(response: 0.3, dampingFraction: 0.82)) {
+                                    TemporaryHoldButton(isActive: server.isTemporaryChat) {
+                                        withAnimation(.spring(response: 0.32, dampingFraction: 0.80)) {
                                             server.isTemporaryChat.toggle()
                                         }
-                                    } label: {
-                                        Image(systemName: server.isTemporaryChat ? "checkmark.bubble" : "circle.dashed")
-                                            .font(.system(size: 16, weight: .semibold))
-                                            .foregroundStyle(Color.primary)
                                     }
-                                    .accessibilityLabel(server.isTemporaryChat ? "Geçici Sohbeti Kapat" : "Geçici Sohbet")
+                                    .accessibilityLabel(server.isTemporaryChat ? "Geçici Sohbeti Kapat (Basılı Tut)" : "Geçici Sohbet (Basılı Tut)")
                                 } else {
                                     Button {
                                         SenHaptics.light()
@@ -397,9 +415,11 @@ struct ChatView: View {
     private func requestInitialPermissionsIfNeeded() async {
         guard initialPreviewScreen == nil, !didRequestInitialPerms else { return }
         didRequestInitialPerms = true
-        try? await Task.sleep(for: .milliseconds(700))
+        try? await Task.sleep(for: .milliseconds(650))
+        await LiveNotificationManager.shared.requestNotificationPermission()
+        try? await Task.sleep(for: .milliseconds(450))
         location.requestInitialAuthorization()
-        try? await Task.sleep(for: .milliseconds(500))
+        try? await Task.sleep(for: .milliseconds(450))
         if AVCaptureDevice.authorizationStatus(for: .video) == .notDetermined {
             _ = await AVCaptureDevice.requestAccess(for: .video)
         }
@@ -537,15 +557,11 @@ struct ChatView: View {
                         )
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 18)
-                    Text(server.connectionRoute == .disconnected ? "Sunucu bekleniyor · Ayarlar'dan bağlanın" : "\(server.connectionRoute.rawValue) · \(server.activeModelName)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .padding(.top, 2)
                 }
 
                 if !inputFocused {
-                    let cols = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
-                    LazyVGrid(columns: cols, spacing: 10) {
+                    let cols = [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)]
+                    LazyVGrid(columns: cols, spacing: 8) {
                         bentoCard(
                             title: "Hava Durumu",
                             subtitle: "Konuma göre canlı tahmin",
@@ -611,30 +627,31 @@ struct ChatView: View {
                 server.sendMessage(prompt)
             }
         } label: {
-            VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 9) {
                 Image(systemName: icon)
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.system(size: 13.5, weight: .semibold))
                     .foregroundStyle(tint)
-                    .frame(width: 32, height: 32)
+                    .frame(width: 28, height: 28)
                     .background {
                         Circle().fill(tint.opacity(0.14))
                     }
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 1.5) {
                     Text(title)
-                        .font(.subheadline.weight(.bold))
+                        .font(.caption.weight(.bold))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
                     Text(subtitle)
-                        .font(.caption2)
+                        .font(.system(size: 10.5))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(13)
+            .padding(.horizontal, 11)
+            .padding(.vertical, 10)
         }
         .buttonStyle(SenSpringButtonStyle())
-        .senGlassRounded(radius: 18, interactive: true)
+        .senGlassRounded(radius: 15, interactive: true)
         .opacity(bentoAppeared ? 1 : 0)
         .offset(y: bentoAppeared ? 0 : 14)
         .animation(.spring(duration: 0.48, bounce: 0.18).delay(delay), value: bentoAppeared)
@@ -756,7 +773,7 @@ struct ChatView: View {
 
     private var floatingComposer: some View {
         let isEmpty = draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && pendingPhotos.isEmpty
-        let hasActivePills = server.webSearchEnabled || server.useLibraryEnabled
+        let hasActivePills = server.webSearchEnabled
         let isExpanded = inputFocused || !isEmpty || hasActivePills
         let cornerRadius: CGFloat = isExpanded ? 28 : 24
 
@@ -840,18 +857,6 @@ struct ChatView: View {
                                     SenHaptics.light()
                                     withAnimation(.spring(response: 0.28, dampingFraction: 0.80)) {
                                         server.webSearchEnabled = false
-                                    }
-                                }
-                            }
-                            if server.useLibraryEnabled {
-                                composerInsidePill(
-                                    title: "Kütüphane",
-                                    icon: "books.vertical.fill",
-                                    tint: Color.indigo
-                                ) {
-                                    SenHaptics.light()
-                                    withAnimation(.spring(response: 0.28, dampingFraction: 0.80)) {
-                                        server.useLibraryEnabled = false
                                     }
                                 }
                             }
@@ -1026,12 +1031,6 @@ struct ChatView: View {
             plusMenuRow(icon: "globe", title: "Web'de araştır", isActive: server.webSearchEnabled) {
                 withAnimation(.spring(response: 0.28, dampingFraction: 0.80)) {
                     server.webSearchEnabled.toggle()
-                    showPlusMenu = false
-                }
-            }
-            plusMenuRow(icon: "books.vertical", title: "Kütüphane", isActive: server.useLibraryEnabled) {
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.80)) {
-                    server.useLibraryEnabled.toggle()
                     showPlusMenu = false
                 }
             }
@@ -2218,5 +2217,88 @@ struct ContextSheetView: View {
         }
         .padding(.horizontal, 18)
         .padding(.top, 22)
+    }
+}
+
+// MARK: - Press-and-Hold (1.2s) Tactile Temporary Chat Toggle with Progressive Haptics
+
+struct TemporaryHoldButton: View {
+    let isActive: Bool
+    let onTrigger: () -> Void
+
+    @State private var isHolding: Bool = false
+    @State private var holdProgress: CGFloat = 0
+    @State private var holdTask: Task<Void, Never>? = nil
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(Color.primary.opacity(isHolding ? 0.16 : 0.0), lineWidth: 2.2)
+                .frame(width: 28, height: 28)
+
+            Circle()
+                .trim(from: 0, to: holdProgress)
+                .stroke(isActive ? Color.orange : Color.blue, style: StrokeStyle(lineWidth: 2.4, lineCap: .round))
+                .frame(width: 28, height: 28)
+                .rotationEffect(.degrees(-90))
+
+            Image(systemName: isActive ? "checkmark.bubble.fill" : "circle.dashed")
+                .font(.system(size: 15.5, weight: .semibold))
+                .foregroundStyle(isActive ? Color.blue : Color.primary)
+                .scaleEffect(isHolding ? 0.90 : 1.0)
+        }
+        .frame(width: 32, height: 32)
+        .contentShape(Circle())
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in
+                    guard !isHolding else { return }
+                    beginHold()
+                }
+                .onEnded { _ in
+                    cancelHold()
+                }
+        )
+        .animation(.snappy(duration: 0.16), value: isHolding)
+    }
+
+    private func beginHold() {
+        isHolding = true
+        holdProgress = 0
+        SenHaptics.light()
+        let totalSteps = 12
+        let stepMs = 100 // 1.2 seconds total hold
+        holdTask?.cancel()
+        holdTask = Task { @MainActor in
+            let softGen = UIImpactFeedbackGenerator(style: .soft)
+            softGen.prepare()
+            for step in 1...totalSteps {
+                try? await Task.sleep(for: .milliseconds(stepMs))
+                if Task.isCancelled { return }
+                withAnimation(.linear(duration: 0.10)) {
+                    holdProgress = CGFloat(step) / CGFloat(totalSteps)
+                }
+                if step % 3 == 0 && step < totalSteps {
+                    softGen.impactOccurred(intensity: 0.45 + CGFloat(step) * 0.04)
+                }
+            }
+            if !Task.isCancelled {
+                SenHaptics.success()
+                onTrigger()
+                isHolding = false
+                withAnimation(.easeOut(duration: 0.18)) {
+                    holdProgress = 0
+                }
+            }
+        }
+    }
+
+    private func cancelHold() {
+        holdTask?.cancel()
+        holdTask = nil
+        isHolding = false
+        withAnimation(.easeOut(duration: 0.18)) {
+            holdProgress = 0
+        }
     }
 }

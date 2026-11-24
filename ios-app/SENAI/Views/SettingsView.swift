@@ -67,7 +67,7 @@ struct SettingsView: View {
                     .padding(16)
                     .background { cardBackground }
 
-                    // Group 1: Sunucu & Bağlantı
+                    // Group 1: Sunucu & Tercihler (Kompakt Mobil Düzen)
                     VStack(spacing: 0) {
                         Button {
                             showServerAddresses = true
@@ -80,57 +80,26 @@ struct SettingsView: View {
                             )
                         }
                         .buttonStyle(.plain)
-                    }
-                    .background { cardBackground }
 
-                    // Group 2: SEN.AI'yı Özelleştir
-                    VStack(spacing: 0) {
+                        Divider().padding(.leading, 48).opacity(0.35)
+
                         HStack(spacing: 12) {
                             Image(systemName: "globe")
-                                .font(.system(size: 17))
+                                .font(.system(size: 16))
                                 .foregroundStyle(.primary)
-                                .frame(width: 24)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Web Araştırması Etiketi")
-                                    .font(.body)
-                                    .foregroundStyle(.primary)
-                                Text("Kapalıyken ürün/mekân soruları yine oto-aranır")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                            }
+                                .frame(width: 22)
+                            Text("Canlı Web Araştırması")
+                                .font(.subheadline)
+                                .foregroundStyle(.primary)
                             Spacer()
                             Toggle("", isOn: $server.webSearchEnabled)
                                 .labelsHidden()
                         }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
+                        .padding(.horizontal, 15)
+                        .padding(.vertical, 9)
 
-                        Divider().padding(.leading, 52).opacity(0.4)
+                        Divider().padding(.leading, 48).opacity(0.35)
 
-                        HStack(spacing: 12) {
-                            Image(systemName: "books.vertical")
-                                .font(.system(size: 17))
-                                .foregroundStyle(.primary)
-                                .frame(width: 24)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Yerel Kütüphane (RAG)")
-                                    .font(.body)
-                                    .foregroundStyle(.primary)
-                                Text("Yüklü PDF/belgelerden yanıt üretir")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            Toggle("", isOn: $server.useLibraryEnabled)
-                                .labelsHidden()
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
-                    }
-                    .background { cardBackground }
-
-                    // Group 3: Genel & Sesli İletişim
-                    VStack(spacing: 0) {
                         Menu {
                             Button("Açık (Beyaz)") { themePref = "light" }
                             Button("Koyu") { themePref = "dark" }
@@ -140,7 +109,7 @@ struct SettingsView: View {
                         }
                         .buttonStyle(.plain)
 
-                        Divider().padding(.leading, 52).opacity(0.4)
+                        Divider().padding(.leading, 48).opacity(0.35)
 
                         Menu {
                             Button("Ahmet (Erkek · Neural)") { server.ttsVoice = "tr-TR-AhmetNeural" }
@@ -148,14 +117,14 @@ struct SettingsView: View {
                         } label: {
                             settingsRow(
                                 icon: "waveform",
-                                title: "Sesli İletişim",
+                                title: "Sesli Asistan",
                                 detail: server.ttsVoice.contains("Emel") ? "Emel" : "Ahmet",
                                 showChevron: true
                             )
                         }
                         .buttonStyle(.plain)
 
-                        Divider().padding(.leading, 52).opacity(0.4)
+                        Divider().padding(.leading, 48).opacity(0.35)
 
                         settingsRow(
                             icon: "cpu",

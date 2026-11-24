@@ -49,11 +49,39 @@ targets:
         NSMicrophoneUsageDescription: "SEN.AI sesli mesaj göndermek için mikrofonunuzu kullanır."
         NSSpeechRecognitionUsageDescription: "SEN.AI Türkçe sesli komutlarınızı metne çevirmek için konuşma tanıma izni kullanır."
         NSLocationWhenInUseUsageDescription: "SEN.AI bulunduğunuz şehrin anlık hava durumunu gösterebilmek için konum bilginize erişir."
+        NSSupportsLiveActivities: true
+    dependencies:
+      - target: SENAIWidgets
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.senai.app
         PRODUCT_NAME: SENAI
         INFOPLIST_FILE: SENAI/Info.plist
+        GENERATE_INFOPLIST_FILE: "NO"
+        CODE_SIGNING_ALLOWED: "NO"
+        CODE_SIGNING_REQUIRED: "NO"
+        CODE_SIGN_IDENTITY: ""
+
+  SENAIWidgets:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: SENAIWidgets
+      - path: SENAI/Models/LiveActivityAttributes.swift
+    info:
+      path: SENAIWidgets/Info.plist
+      properties:
+        CFBundleDisplayName: "SEN.AI Live"
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.senai.app.widgets
+        PRODUCT_NAME: SENAIWidgets
+        INFOPLIST_FILE: SENAIWidgets/Info.plist
         GENERATE_INFOPLIST_FILE: "NO"
         CODE_SIGNING_ALLOWED: "NO"
         CODE_SIGNING_REQUIRED: "NO"

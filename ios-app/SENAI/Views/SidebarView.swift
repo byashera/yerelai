@@ -4,6 +4,7 @@ import SwiftUI
 
 struct SidebarView: View {
     @EnvironmentObject private var server: ServerManager
+    @Environment(\.colorScheme) private var colorScheme
     @AppStorage("senai_theme") private var themePref: String = "light"
     @Binding var isPresented: Bool
     @Binding var showSettings: Bool
@@ -159,24 +160,22 @@ struct SidebarView: View {
                     server.startNewChat()
                     closeDrawer()
                 } label: {
-                    HStack(spacing: 7) {
+                    HStack(spacing: 8) {
                         Image(systemName: "square.and.pencil")
                             .font(.system(size: 15, weight: .bold))
-                        Text("Sohbet")
+                        Text("Yeni Sohbet")
                             .font(.subheadline.weight(.bold))
                     }
                     .foregroundStyle(.white)
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 12)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 13)
                     .background {
                         Capsule()
-                            .fill(Color.blue)
+                            .fill(LinearGradient(colors: [Color(red: 0.14, green: 0.45, blue: 0.98), Color(red: 0.34, green: 0.28, blue: 0.92)], startPoint: .leading, endPoint: .trailing))
                             .shadow(color: Color.blue.opacity(0.32), radius: 10, y: 4)
                     }
                 }
                 .buttonStyle(SenSpringButtonStyle())
-
-                Spacer()
 
                 Button {
                     SenHaptics.light()
@@ -185,35 +184,35 @@ struct SidebarView: View {
                         showSettings = true
                     }
                 } label: {
-                    ZStack {
-                        Circle()
-                            .fill(Color.primary.opacity(0.06))
-                            .frame(width: 46, height: 46)
-                        Circle()
-                            .fill(Color(white: 0.48))
-                            .frame(width: 34, height: 34)
-                        Text("SA")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(Color.white)
-                    }
+                    Image(systemName: "gearshape.fill")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(Color.primary)
+                        .frame(width: 46, height: 46)
                 }
                 .buttonStyle(SenSpringButtonStyle())
                 .senGlassCircle(interactive: true)
                 .accessibilityLabel("Ayarlar")
             }
-            .padding(.horizontal, 18)
+            .padding(.horizontal, 16)
             .padding(.bottom, 16)
             .padding(.top, 10)
             .background {
+                let bg = sidebarBackgroundColor
                 LinearGradient(
-                    colors: [Color(.systemBackground).opacity(0), Color(.systemBackground).opacity(0.95)],
+                    colors: [bg.opacity(0), bg.opacity(0.96)],
                     startPoint: .top,
                     endPoint: .bottom
                 )
                 .ignoresSafeArea()
             }
         }
-        .background(Color(.systemBackground).ignoresSafeArea())
+        .background(sidebarBackgroundColor.ignoresSafeArea())
+        .overlay(alignment: .trailing) {
+            Rectangle()
+                .fill(colorScheme == .dark ? Color.white.opacity(0.08) : Color.black.opacity(0.06))
+                .frame(width: 0.7)
+                .ignoresSafeArea()
+        }
         .alert("Sohbeti Yeniden Adlandır", isPresented: Binding(
             get: { renameTarget != nil },
             set: { if !$0 { renameTarget = nil } }
@@ -242,6 +241,12 @@ struct SidebarView: View {
         } message: {
             Text("“\(deleteTarget?.title ?? "Bu sohbet")” kalıcı olarak silinecek.")
         }
+    }
+
+    private var sidebarBackgroundColor: Color {
+        colorScheme == .dark
+            ? Color(red: 0.088, green: 0.118, blue: 0.192)
+            : Color(red: 0.968, green: 0.970, blue: 0.978)
     }
 
     private func closeDrawer() {
@@ -285,12 +290,11 @@ struct SidebarView: View {
                 closeDrawer()
             }
         } label: {
-            HStack(spacing: 12) {
-                if isPinned {
-                    Image(systemName: "bubble.left")
-                        .font(.system(size: 15, weight: .regular))
-                        .foregroundStyle(Color.primary)
-                }
+            HStack(spacing: 11) {
+                Image(systemName: isPinned ? "pin.fill" : (isActive ? "bubble.left.fill" : "bubble.left"))
+                    .font(.system(size: isPinned ? 13 : 14, weight: .medium))
+                    .foregroundStyle(isActive ? Color.blue : (isPinned ? Color.orange : Color.secondary.opacity(0.85)))
+                    .frame(width: 18)
                 Text(s.title)
                     .font(.body.weight(isActive ? .medium : .regular))
                     .foregroundStyle(Color.primary)

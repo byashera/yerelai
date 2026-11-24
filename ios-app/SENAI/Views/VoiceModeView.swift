@@ -1,6 +1,6 @@
 import SwiftUI
 
-// MARK: - ChatGPT / Gemini Live Style Full-Screen Liquid Voice Mode
+// MARK: - ChatGPT / Gemini Live Style Hands-Free Auto-VAD Voice Mode
 
 struct VoiceModeView: View {
     @EnvironmentObject private var server: ServerManager
@@ -10,6 +10,7 @@ struct VoiceModeView: View {
     @StateObject private var voice = VoiceInputManager()
 
     @State private var lastTranscript: String = ""
+    @State private var isMuted: Bool = false
 
     private enum LivePhase {
         case idle, listening, thinking, speaking
@@ -27,7 +28,7 @@ struct VoiceModeView: View {
         case .listening: return "Dinliyorum..."
         case .thinking: return "SEN.AI düşünüyor..."
         case .speaking: return "SEN.AI konuşuyor..."
-        case .idle: return "Konuşmak için dokun"
+        case .idle: return isMuted ? "Mikrofon kapalı" : "Konuşmaya hazır"
         }
     }
 
@@ -51,7 +52,6 @@ struct VoiceModeView: View {
 
     var body: some View {
         ZStack {
-            // Deep Immersive Live Backdrop with Reactive Glow
             ZStack {
                 if colorScheme == .dark {
                     Color(red: 0.035, green: 0.045, blue: 0.085)
@@ -68,12 +68,11 @@ struct VoiceModeView: View {
                     startRadius: 20,
                     endRadius: 340
                 )
-                .animation(.easeInOut(duration: 0.6), value: phase)
+                .animation(.easeInOut(duration: 0.55), value: phase)
             }
             .ignoresSafeArea()
 
             VStack(spacing: 22) {
-                // Top Live Pill
                 HStack {
                     Spacer()
                     HStack(spacing: 8) {
@@ -93,70 +92,66 @@ struct VoiceModeView: View {
 
                 Spacer()
 
-                // ChatGPT / Gemini Live Morphing Liquid Plasma Orb
+                // Audio-Synchronized Morphing Liquid Plasma Orb
                 TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: reduceMotion)) { timeline in
                     let t = timeline.date.timeIntervalSinceReferenceDate
+                    let liveBoost: CGFloat = phase == .listening ? voice.audioLevel : (phase == .speaking ? CGFloat(0.35 + 0.35 * abs(sin(t * 5.2))) : 0.12)
                     let energy: Double = {
                         switch phase {
-                        case .listening: return 1.35
+                        case .listening: return 0.9 + Double(liveBoost) * 1.4
                         case .speaking: return 1.15
-                        case .thinking: return 0.92
-                        case .idle: return 0.42
+                        case .thinking: return 0.95
+                        case .idle: return 0.38
                         }
                     }()
+                    let dynamicOrbSize: CGFloat = 162 + liveBoost * 34
 
                     ZStack {
-                        // Outer Expanding Audio Aura Rings
                         ForEach(0..<3, id: \.self) { i in
-                            let wave = (t * (0.35 + energy * 0.25) + Double(i) * 0.33).truncatingRemainder(dividingBy: 1.0)
+                            let wave = (t * (0.34 + energy * 0.22) + Double(i) * 0.33).truncatingRemainder(dividingBy: 1.0)
                             Circle()
                                 .stroke(
-                                    primaryTint.opacity((1.0 - wave) * (phase == .idle ? 0.18 : 0.38)),
-                                    lineWidth: 1.6
+                                    primaryTint.opacity((1.0 - wave) * (phase == .idle ? 0.15 : (0.28 + Double(liveBoost) * 0.32))),
+                                    lineWidth: 1.5 + liveBoost * 1.2
                                 )
-                                .frame(width: 150 + CGFloat(wave) * 125, height: 150 + CGFloat(wave) * 125)
+                                .frame(width: 146 + CGFloat(wave) * (115 + liveBoost * 50), height: 146 + CGFloat(wave) * (115 + liveBoost * 50))
                         }
 
-                        // Morphing Organic Fluid Plasma Sphere (Canvas)
                         Canvas { ctx, size in
                             let cx = size.width / 2
                             let cy = size.height / 2
-                            let baseR: CGFloat = 78
+                            let baseR: CGFloat = 76 + liveBoost * 16
 
-                            // 3 overlapping drifting liquid blobs forming an organic ChatGPT/Gemini Live orb
                             let blobs: [(CGFloat, CGFloat, CGFloat, Color)] = [
-                                (CGFloat(sin(t * 1.4 * energy)) * 12, CGFloat(cos(t * 1.1 * energy)) * 10, baseR * 0.94, primaryTint.opacity(0.88)),
-                                (CGFloat(cos(t * 1.7 * energy + 1.4)) * 14, CGFloat(sin(t * 1.3 * energy + 0.8)) * 12, baseR * 0.86, secondaryTint.opacity(0.80)),
-                                (CGFloat(sin(t * 2.1 * energy + 2.6)) * 10, CGFloat(cos(t * 1.8 * energy + 2.0)) * 11, baseR * 0.72, Color.white.opacity(colorScheme == .dark ? 0.35 : 0.48)),
+                                (CGFloat(sin(t * 1.5 * energy)) * (11 + liveBoost * 10), CGFloat(cos(t * 1.2 * energy)) * (10 + liveBoost * 8), baseR * 0.95, primaryTint.opacity(0.90)),
+                                (CGFloat(cos(t * 1.8 * energy + 1.4)) * (13 + liveBoost * 10), CGFloat(sin(t * 1.4 * energy + 0.8)) * (11 + liveBoost * 9), baseR * 0.86, secondaryTint.opacity(0.82)),
+                                (CGFloat(sin(t * 2.2 * energy + 2.6)) * 10, CGFloat(cos(t * 1.9 * energy + 2.0)) * 10, baseR * 0.70, Color.white.opacity(colorScheme == .dark ? 0.38 : 0.50)),
                             ]
                             for (dx, dy, r, col) in blobs {
-                                let breath = 1.0 + CGFloat(sin(t * 2.4 * energy)) * 0.055
-                                let rr = r * breath
+                                let rr = r * (1.0 + liveBoost * 0.12)
                                 let rect = CGRect(x: cx + dx - rr, y: cy + dy - rr, width: rr * 2, height: rr * 2)
                                 ctx.fill(Path(ellipseIn: rect), with: .color(col))
                             }
                         }
-                        .frame(width: 240, height: 240)
+                        .frame(width: 260, height: 260)
                         .blur(radius: 16)
                         .mask {
                             Circle()
-                                .frame(width: 168 + CGFloat(sin(t * 2.6 * energy)) * (phase == .idle ? 3 : 9),
-                                       height: 168 + CGFloat(cos(t * 2.2 * energy)) * (phase == .idle ? 3 : 9))
+                                .frame(width: dynamicOrbSize, height: dynamicOrbSize)
                         }
                         .overlay {
-                            // Crisp Liquid Glass Specular Rim on the Orb
                             Circle()
                                 .strokeBorder(
                                     LinearGradient(
-                                        colors: [Color.white.opacity(0.75), Color.white.opacity(0.12), primaryTint.opacity(0.45)],
+                                        colors: [Color.white.opacity(0.75), Color.white.opacity(0.12), primaryTint.opacity(0.48)],
                                         startPoint: .topLeading,
                                         endPoint: .bottomTrailing
                                     ),
                                     lineWidth: 1.4
                                 )
-                                .frame(width: 168, height: 168)
+                                .frame(width: dynamicOrbSize, height: dynamicOrbSize)
                         }
-                        .shadow(color: primaryTint.opacity(0.42), radius: 28, y: 10)
+                        .shadow(color: primaryTint.opacity(0.38 + Double(liveBoost) * 0.25), radius: 24 + liveBoost * 14, y: 10)
                     }
                     .frame(height: 270)
                     .contentShape(Circle())
@@ -165,14 +160,14 @@ struct VoiceModeView: View {
                     }
                 }
 
-                // Smooth Live Equalizer Bars
+                // Real Audio-Reactive Spectrum Bars
                 VoiceWaveformBars(
                     isActive: phase != .idle,
+                    level: phase == .listening ? voice.audioLevel : (phase == .speaking ? 0.65 : 0.25),
                     tint: primaryTint
                 )
-                .frame(height: 30)
+                .frame(height: 36)
 
-                // Status & Live Subtitle
                 VStack(spacing: 10) {
                     Text(statusTitle)
                         .font(.title3.weight(.bold))
@@ -186,7 +181,7 @@ struct VoiceModeView: View {
                             return String(last.content.prefix(140))
                         }
                         if !lastTranscript.isEmpty { return "“\(lastTranscript)”" }
-                        return "Türkçe olarak doğalca konuşabilirsin."
+                        return "Konuşmaya başlayın, durduğunuzda otomatik yanıtlanır."
                     }()
 
                     Text(previewText)
@@ -199,27 +194,31 @@ struct VoiceModeView: View {
 
                 Spacer()
 
-                // Floating Liquid Glass Control Dock
                 SenGlassContainer(spacing: 20) {
                     HStack(spacing: 24) {
                         Button {
                             SenHaptics.light()
-                            server.stopSpeaking()
-                            server.stopGeneration()
+                            isMuted.toggle()
+                            if isMuted {
+                                voice.stopRecording(onFinal: nil)
+                                server.stopSpeaking()
+                            } else if !server.isGenerating {
+                                beginHandsFreeListen()
+                            }
                         } label: {
-                            Image(systemName: "speaker.slash.fill")
+                            Image(systemName: isMuted ? "mic.slash.fill" : "speaker.slash.fill")
                                 .font(.system(size: 18, weight: .semibold))
-                                .foregroundStyle(.primary)
+                                .foregroundStyle(isMuted ? .orange : .primary)
                                 .frame(width: 54, height: 54)
                         }
                         .buttonStyle(SenSpringButtonStyle())
                         .senGlassCircle(interactive: true)
-                        .accessibilityLabel("Sesi Sustur")
+                        .accessibilityLabel(isMuted ? "Mikrofonu Aç" : "Sustur")
 
                         Button {
                             toggleMicAction()
                         } label: {
-                            Image(systemName: voice.isRecording ? "stop.fill" : "mic.fill")
+                            Image(systemName: voice.isRecording ? "arrow.up" : "mic.fill")
                                 .font(.system(size: 24, weight: .bold))
                                 .foregroundStyle(.white)
                                 .contentTransition(.symbolEffect(.replace))
@@ -252,45 +251,77 @@ struct VoiceModeView: View {
                 .padding(.bottom, 28)
             }
         }
+        .onAppear {
+            if !isMuted && !server.isGenerating {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    beginHandsFreeListen()
+                }
+            }
+        }
+        .onChange(of: server.speakingMessageId) { oldVal, newVal in
+            // Auto-resume listening once AI finishes speaking
+            if oldVal != nil && newVal == nil && !isMuted && !server.isGenerating {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+                    if !voice.isRecording && !isMuted && !server.isGenerating {
+                        beginHandsFreeListen()
+                    }
+                }
+            }
+        }
         .onDisappear {
             voice.stopRecording(onFinal: nil)
             server.stopSpeaking()
         }
     }
 
+    private func beginHandsFreeListen() {
+        server.stopSpeaking()
+        voice.startAutoListening(
+            onPartial: { partial in
+                lastTranscript = partial
+            },
+            onAutoFinal: { finalTxt in
+                lastTranscript = finalTxt
+                server.sendMessage(finalTxt, autoSpeak: true)
+            }
+        )
+    }
+
     private func toggleMicAction() {
         SenHaptics.medium()
+        isMuted = false
         if voice.isRecording {
             voice.stopRecording { finalTxt in
                 lastTranscript = finalTxt
                 server.sendMessage(finalTxt, autoSpeak: true)
             }
         } else {
-            server.stopSpeaking()
-            voice.toggleRecording { partial in
-                lastTranscript = partial
-            }
+            beginHandsFreeListen()
         }
     }
 }
 
 private struct VoiceWaveformBars: View {
     let isActive: Bool
+    let level: CGFloat
     let tint: Color
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
             let t = timeline.date.timeIntervalSinceReferenceDate
             HStack(spacing: 5) {
-                ForEach(0..<11, id: \.self) { i in
-                    let centerBoost = 1.0 - abs(Double(i) - 5.0) * 0.12
-                    let phase = Double(i) * 0.62
-                    let wave = isActive
-                        ? (0.28 + 0.72 * abs(sin(t * 4.6 + phase))) * centerBoost
-                        : (0.18 + 0.14 * abs(sin(t * 1.4 + phase))) * centerBoost
+                ForEach(0..<13, id: \.self) { i in
+                    let distFromCenter = abs(Double(i) - 6.0)
+                    let centerEnvelope = max(0.28, 1.0 - distFromCenter * 0.11)
+                    let phase = Double(i) * 0.58
+                    let rawWave = 0.35 + 0.65 * abs(sin(t * 5.2 + phase))
+                    let amplitude = isActive
+                        ? max(0.18, Double(level) * rawWave * centerEnvelope)
+                        : (0.14 + 0.08 * abs(sin(t * 1.4 + phase))) * centerEnvelope
                     Capsule()
-                        .fill(tint.opacity(isActive ? 0.88 : 0.34))
-                        .frame(width: 4, height: max(6, CGFloat(wave) * 28))
+                        .fill(tint.opacity(isActive ? (0.55 + Double(level) * 0.45) : 0.30))
+                        .frame(width: 4, height: max(6, CGFloat(amplitude) * 34))
+                        .animation(.interactiveSpring(response: 0.14, dampingFraction: 0.72), value: level)
                 }
             }
         }

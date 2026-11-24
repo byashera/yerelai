@@ -42,6 +42,7 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
     ]
 
     @Published var isCompacting: Bool = false
+    @Published var completedPillText: String? = nil
 
     override init() {
         super.init()
@@ -370,6 +371,7 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
         searchingSitesCount = 0
         searchingDomain = ""
         statusLine = images.isEmpty ? "" : "Görsel yükleniyor..."
+        LiveNotificationManager.shared.beginGeneration(modelName: activeModelName)
 
         streamTask = Task {
             var uploadedAtts: [[String: Any]] = []
@@ -485,6 +487,19 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
             }
             if !isTemporaryChat {
                 Task { await saveCurrentSession() }
+            }
+            if !finalSpokenText.isEmpty {
+                LiveNotificationManager.shared.finishGeneration(modelName: activeModelName, preview: finalSpokenText)
+                if !autoSpeak {
+                    let preview = String(finalSpokenText.replacingOccurrences(of: "\n", with: " ").prefix(48))
+                    completedPillText = "\(activeModelName) · Yanıt hazır" + (preview.isEmpty ? "" : " — \(preview)")
+                    Task {
+                        try? await Task.sleep(for: .seconds(3.2))
+                        completedPillText = nil
+                    }
+                }
+            } else {
+                LiveNotificationManager.shared.cancelGeneration()
             }
             if autoSpeak, !finalSpokenText.isEmpty {
                 Task { await toggleSpeak(messageId: assistantId, text: finalSpokenText) }
@@ -809,6 +824,8 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio, options: [.duckOthers])
             try AVAudioSession.sharedInstance().setActive(true)
             let player = try AVAudioPlayer(data: data)
+            player.enableRate = true
+            player.rate = 1.18
             player.delegate = self
             audioPlayer = player
             player.play()
