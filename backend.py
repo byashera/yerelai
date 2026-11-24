@@ -4149,6 +4149,15 @@ async def api_chat(req: ChatRequest, request: Request):
                         "sources": web_result["sources"],
                         "warning": web_result["warning"],
                     })
+                else:
+                    yield _format_sse({
+                        "type": "web_search",
+                        "skipped": True,
+                        "online": True,
+                        "query": "",
+                        "sources": [],
+                        "warning": "",
+                    })
                 cards_to_emit = web_result.get("rich_cards") or ([web_result["rich_card"]] if web_result.get("rich_card") else [])
                 for card_obj in cards_to_emit:
                     yield _format_sse({
@@ -5664,6 +5673,16 @@ async def api_offline_tts(payload: Dict[str, Any]):
         return Response(content=audio_bytes, media_type=media_type, headers={"X-TTS-Engine": engine_tag})
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.middleware("http")
+async def _no_stale_frontend_cache(request: Request, call_next):
+    response = await call_next(request)
+    p = request.url.path or "/"
+    if p == "/" or p.endswith((".html", ".css", ".js")) and not p.startswith("/vendor/"):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+    return response
 
 
 if FRONTEND_DIR.exists():

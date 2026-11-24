@@ -368,9 +368,9 @@
     chatOutputsPopover: $("#chat-outputs-popover"),
     chatOutputsList: $("#chat-outputs-list"),
     chatOutputsCount: $("#chat-outputs-count"),
-    btnChatOutputsClose: $("#btn-chat-outputs-close"),
+    copCountLabel: $("#cop-count-label"),
     btnActorChip: $("#btn-actor-chip"),
-    actorChipLabel: $("#actor-chip-label"),
+    actorChipLabel: $("#actor-chip-name"),
     ctxMeterPill: $("#ctx-meter-pill"),
     ctxPillRingFg: $("#ctx-pill-ring-fg"),
     ctxMeterPct: $("#ctx-meter-pct"),
@@ -388,9 +388,9 @@
     msgMoreMenu: $("#msg-more-menu"),
     msgMoreMeta: $("#msg-more-meta"),
     sourcesModal: $("#sources-modal"),
-    sourcesModalCount: $("#sources-modal-count"),
-    sourcesModalBody: $("#sources-modal-body"),
-    btnSourcesModalClose: $("#btn-sources-modal-close"),
+    sourcesModalCount: $("#sources-modal-title"),
+    sourcesModalBody: $("#sources-modal-list"),
+    btnSourcesModalClose: $("#btn-sources-close"),
     pinLockOverlay: $("#pin-lock-overlay"),
     inpLoginUsername: $("#inp-login-username"),
     inpPinUnlock: $("#inp-pin-unlock"),
@@ -839,7 +839,7 @@
     state.thinkingEffort = eff;
 
     if (dom.thinkingSliderCard) {
-      dom.thinkingSliderCard.dataset.level = eff;
+      dom.thinkingSliderCard.dataset.effort = eff;
       $$(".ts-lbl-btn", dom.thinkingSliderCard).forEach((b) => {
         b.classList.toggle("active", b.dataset.effort === eff);
       });
@@ -890,7 +890,7 @@
       const f = fracFromClientX(e.clientX);
       setSliderVisualPosition(f);
       const lv = levelFromFrac(f);
-      card.dataset.level = lv;
+      card.dataset.effort = lv;
       if (dom.tsLevelLabel) dom.tsLevelLabel.textContent = EFFORT_META[lv].label;
       if (lv === "high") startCosmicParticles();
       else stopCosmicParticles();
@@ -900,8 +900,8 @@
       const f = fracFromClientX(e.clientX);
       setSliderVisualPosition(f);
       const lv = levelFromFrac(f);
-      if (card.dataset.level !== lv) {
-        card.dataset.level = lv;
+      if (card.dataset.effort !== lv) {
+        card.dataset.effort = lv;
         if (dom.tsLevelLabel) dom.tsLevelLabel.textContent = EFFORT_META[lv].label;
         if (lv === "high") startCosmicParticles();
         else stopCosmicParticles();
@@ -2009,6 +2009,9 @@
       dom.chatOutputsCount.textContent = String(items.length);
       dom.chatOutputsCount.hidden = items.length === 0;
     }
+    if (dom.copCountLabel) {
+      dom.copCountLabel.textContent = `${items.length} öğe`;
+    }
     if (dom.chatOutputsList) {
       if (!items.length) {
         dom.chatOutputsList.innerHTML = `<div class="muted-empty">Bu sohbette henüz dosya veya çıktı yok</div>`;
@@ -3037,7 +3040,7 @@
   function openSourcesModal(sources) {
     if (!dom.sourcesModal || !dom.sourcesModalBody) return;
     const list = Array.isArray(sources) ? sources : [];
-    if (dom.sourcesModalCount) dom.sourcesModalCount.textContent = `${list.length} site`;
+    if (dom.sourcesModalCount) dom.sourcesModalCount.textContent = `Web Kaynakları (${list.length})`;
     dom.sourcesModalBody.innerHTML = list.map((s) => {
       const host = s.domain || getDomainFromUrl(s.url || "");
       const fav = faviconUrlFor(s.url || host);
@@ -3647,7 +3650,7 @@
             assistantMsg.web_search = ev;
             webSlotEl.innerHTML = buildWebSearchHtml(ev);
             if (wsLiveSlotEl) {
-              const cnt = Array.isArray(ev.sources) ? ev.sources.length : wsLiveCount;
+              const cnt = ev.skipped ? 0 : (Array.isArray(ev.sources) ? ev.sources.length : 0);
               wsLiveSlotEl.innerHTML = cnt > 0
                 ? `<div class="web-search-live-pill"><span class="ws-live-dot"></span><span>${cnt} web sitesi araştırıldı</span></div>`
                 : "";
@@ -3663,9 +3666,14 @@
             scrollToBottom(true);
           } else if (ev.type === "status") {
             if (ev.stage === "web_search" && wsLiveSlotEl) {
-              wsLiveCount = Math.max(wsLiveCount + 1, Number(ev.count || 1));
-              const domTxt = ev.domain ? `<span class="ws-live-domain mono">(${escHtml(ev.domain)})</span>` : "";
-              wsLiveSlotEl.innerHTML = `<div class="web-search-live-pill is-live"><span class="ws-live-dot"></span><span>${wsLiveCount} web sitesi inceleniyor...</span>${domTxt}</div>`;
+              const sc = Number(ev.sites_count || ev.count || 0);
+              if (sc > 0 && ev.domain) {
+                wsLiveCount = Math.max(wsLiveCount, sc);
+                const domTxt = `<span class="ws-live-domain mono">(${escHtml(ev.domain)})</span>`;
+                wsLiveSlotEl.innerHTML = `<div class="web-search-live-pill is-live"><span class="ws-live-dot"></span><span>${wsLiveCount} web sitesi inceleniyor...</span>${domTxt}</div>`;
+              } else if (ev.message && !ev.domain && wsLiveCount === 0) {
+                wsLiveSlotEl.innerHTML = `<div class="web-search-live-pill is-live"><span class="ws-live-dot"></span><span>${escHtml(ev.message)}</span></div>`;
+              }
             }
             if (ev.message && !assistantMsg.content) statsEl.textContent = ev.message;
           } else if (ev.type === "thinking_delta" || ev.type === "thinking") {
@@ -3673,6 +3681,9 @@
             dirtyThink = true;
             scheduleFlush();
           } else if (ev.type === "answer_delta" || ev.type === "text") {
+            if (wsLiveSlotEl && (!assistantMsg.web_search || assistantMsg.web_search.skipped || !(assistantMsg.web_search.sources?.length > 0))) {
+              wsLiveSlotEl.innerHTML = "";
+            }
             assistantMsg.content += ev.delta || "";
             dirtyText = true;
             scheduleFlush();
@@ -6266,7 +6277,7 @@
         if (dom.msgMoreMeta) {
           dom.msgMoreMeta.textContent = [dtStr, spdStr].filter(Boolean).join(" · ") || "SEN.AI Yanıtı";
         }
-        const srcItem = $('[data-mm-act="sources"]', dom.msgMoreMenu);
+        const srcItem = $("#msg-more-sources-btn", dom.msgMoreMenu) || $('[data-msg-act="sources"]', dom.msgMoreMenu);
         if (srcItem) srcItem.hidden = !(msg.web_search?.sources?.length > 0);
         const r = moreBtn.getBoundingClientRect();
         dom.msgMoreMenu.hidden = false;
@@ -6378,9 +6389,9 @@
     // Floating ••• Message More Menu Actions
     dom.msgMoreMenu?.addEventListener("click", (e) => {
       e.stopPropagation();
-      const btn = e.target.closest("[data-mm-act]");
+      const btn = e.target.closest("[data-msg-act]");
       if (!btn) return;
-      const act = btn.dataset.mmAct;
+      const act = btn.dataset.msgAct;
       const idx = state.activeMoreMenuMsgIdx;
       dom.msgMoreMenu.hidden = true;
       state.activeMoreMenuMsgIdx = null;
@@ -6650,11 +6661,11 @@
   function setDynamicGreeting() {
     if (!dom.heroGreetingLead) return;
     const h = new Date().getHours();
-    let txt = "Bugün";
-    if (h >= 5 && h < 12) txt = "Günaydın,";
-    else if (h >= 12 && h < 18) txt = "İyi günler,";
-    else if (h >= 18 && h < 23) txt = "İyi akşamlar,";
-    else txt = "İyi geceler,";
+    let txt = "Merhaba";
+    if (h >= 5 && h < 12) txt = "Günaydın";
+    else if (h >= 12 && h < 18) txt = "İyi günler";
+    else if (h >= 18 && h < 23) txt = "İyi akşamlar";
+    else txt = "İyi geceler";
     dom.heroGreetingLead.textContent = txt;
   }
 

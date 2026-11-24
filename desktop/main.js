@@ -282,7 +282,7 @@ function createMainWindow(backendOk = true) {
     show: false,
     icon: iconPath,
     title: "SEN.AI",
-    backgroundColor: eff === "light" ? "#f3eee4" : "#14161c",
+    backgroundColor: eff === "light" ? "#f9f9f8" : "#171719",
     titleBarStyle: "hidden",
     titleBarOverlay: getTitleBarOverlayColors(winState.theme),
     webPreferences: {
@@ -294,7 +294,9 @@ function createMainWindow(backendOk = true) {
   });
 
   if (backendOk) {
-    mainWin.loadURL(BACKEND_URL);
+    session.defaultSession.clearCache().catch(() => {}).finally(() => {
+      if (mainWin && !mainWin.isDestroyed()) mainWin.loadURL(BACKEND_URL);
+    });
   } else {
     mainWin.loadURL(buildBackendErrorHtml());
   }
