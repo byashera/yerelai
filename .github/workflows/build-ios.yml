@@ -1,4 +1,4 @@
-name: Build SEN.AI iOS (.ipa & Simulator)
+name: Build SEN.AI iOS (.ipa)
 
 on:
   workflow_dispatch:
@@ -9,7 +9,7 @@ on:
 
 jobs:
   build-ios:
-    name: Build SEN-AI.ipa, Appetize Simulator & Screenshots
+    name: Build SEN-AI.ipa
     runs-on: macos-latest
 
     steps:
@@ -51,78 +51,9 @@ jobs:
           zip -qry SEN-AI.ipa Payload
           ls -lh SEN-AI.ipa
 
-      - name: Build SENAI.app for iOS Simulator (Appetize.io & Screenshots)
-        working-directory: ios-app
-        run: |
-          xcodebuild \
-            -project SENAI.xcodeproj \
-            -scheme SENAI \
-            -configuration Release \
-            -sdk iphonesimulator \
-            -destination "generic/platform=iOS Simulator" \
-            -derivedDataPath build-sim \
-            CODE_SIGNING_ALLOWED=NO \
-            clean build
-          mkdir -p dist-sim
-          OUT_ZIP="$PWD/dist-sim/SEN-AI-Simulator.app.zip"
-          (cd build-sim/Build/Products/Release-iphonesimulator && zip -qry "$OUT_ZIP" SENAI.app)
-          ls -lh "$OUT_ZIP"
-
-      - name: Capture Multi-Screen & Live Tunnel iPhone Simulator Screenshots
-        working-directory: ios-app
-        continue-on-error: true
-        env:
-          SENAI_PIN: ${{ secrets.SENAI_PIN }}
-        run: |
-          mkdir -p dist-shots
-          UDID=$(xcrun simctl list devices available | grep -E "iPhone 16 Pro|iPhone 16|iPhone 15" | head -n 1 | sed -E 's/.*\(([0-9A-F-]+)\).*/\1/')
-          echo "Using Simulator UDID: $UDID"
-          if [ -n "$UDID" ]; then
-            xcrun simctl boot "$UDID" || true
-            xcrun simctl bootstatus "$UDID" -b
-            xcrun simctl install "$UDID" build-sim/Build/Products/Release-iphonesimulator/SENAI.app
-
-            # 5 Essential Light-Mode Screenshots (User requested max 5 shots)
-            xcrun simctl ui "$UDID" appearance light
-
-            capture_shot() {
-              local screen="$1"
-              local outfile="$2"
-              xcrun simctl terminate "$UDID" com.senai.app || true
-              xcrun simctl launch "$UDID" com.senai.app --preview-screen "$screen"
-              sleep 3
-              xcrun simctl io "$UDID" screenshot "dist-shots/$outfile"
-            }
-
-            capture_shot "welcome"         "01-welcome-composer-light.png"
-            capture_shot "sidebar"         "02-sidebar-drawer-light.png"
-            capture_shot "models"          "03-models-liquid-light.png"
-            capture_shot "spotlight_table" "04-spotlight-table-light.png"
-            capture_shot "chat"            "05-chat-rich-cards-light.png"
-
-            xcrun simctl shutdown "$UDID" || true
-            ls -lh dist-shots
-          fi
-
       - name: Upload SEN-AI.ipa artifact
         uses: actions/upload-artifact@v4
         with:
           name: SEN-AI-iOS-IPA
           path: ios-app/dist/SEN-AI.ipa
-          retention-days: 30
-
-      - name: Upload Appetize.io Simulator App (.app.zip)
-        uses: actions/upload-artifact@v4
-        with:
-          name: SEN-AI-Simulator-App
-          path: ios-app/dist-sim/SEN-AI-Simulator.app.zip
-          retention-days: 30
-
-      - name: Upload iPhone Simulator Screenshots (Light & Dark)
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: SEN-AI-Simulator-Screenshots
-          path: ios-app/dist-shots/*.png
-          if-no-files-found: ignore
           retention-days: 30

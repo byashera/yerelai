@@ -1,3 +1,5 @@
+import AVFoundation
+import Photos
 import PhotosUI
 import SwiftUI
 
@@ -21,30 +23,38 @@ struct ChatView: View {
     @State private var bentoAppeared: Bool = false
     @State private var showRenameAlert: Bool = false
     @State private var renameDraft: String = ""
+    @State private var showDeleteConfirm: Bool = false
     @State private var showScrollToBottom: Bool = false
     @State private var scrollToBottomTrigger: Int = 0
     @State private var showPlusMenu: Bool = false
     @State private var showTemporarySheet: Bool = false
     @State private var showContextSheet: Bool = false
+    @State private var sidebarDragOffset: CGFloat = 0
     @State private var greetingIndex: Int = Int.random(in: 0..<6)
     @State private var placeholderIndex: Int = Int.random(in: 0..<6)
     @State private var containerWidth: CGFloat = 393
+    @AppStorage("senai_initial_perms_v1") private var didRequestInitialPerms: Bool = false
     @FocusState private var inputFocused: Bool
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         let drawerWidth = min(containerWidth * 0.82, 324)
+        let currentOffset: CGFloat = showSidebar
+            ? min(drawerWidth, max(0, drawerWidth + sidebarDragOffset))
+            : min(drawerWidth, max(0, sidebarDragOffset))
+        let sidebarProgress: CGFloat = drawerWidth > 0 ? (currentOffset / drawerWidth) : 0
 
         ZStack(alignment: .leading) {
-            // Left Slide-Over Sidebar (revealed as main chat window slides right, matching IMG_5022.jpg)
-            if showSidebar {
+            // Left Slide-Over Sidebar (interactive 1:1 finger tracking + spring snap)
+            if showSidebar || sidebarDragOffset > 0 {
                 SidebarView(
                     isPresented: $showSidebar,
                     showSettings: $showSettings,
                     showModelSheet: $showModelSheet
                 )
                 .frame(width: drawerWidth)
-                .transition(.move(edge: .leading))
+                .offset(x: -drawerWidth * 0.18 * (1 - sidebarProgress))
+                .opacity(0.45 + 0.55 * sidebarProgress)
             }
 
             NavigationStack {
@@ -182,19 +192,18 @@ struct ChatView: View {
                                         )
                                     }
                                     .buttonStyle(.plain)
+                                    .fixedSize(horizontal: true, vertical: false)
                                     .accessibilityLabel("Bağlam Kullanımı: Yüzde \(server.contextPercent)")
 
-                                    Button {
-                                        greetingIndex = Int.random(in: 0..<6)
-                                        placeholderIndex = Int.random(in: 0..<6)
-                                        server.startNewChat()
-                                    } label: {
-                                        Image(systemName: "square.and.pencil")
-                                    }
-                                    .accessibilityLabel("Yeni Sohbet")
-
-                                    if !server.isTemporaryChat {
-                                        Menu {
+                                    Menu {
+                                        Button {
+                                            greetingIndex = Int.random(in: 0..<6)
+                                            placeholderIndex = Int.random(in: 0..<6)
+                                            server.startNewChat()
+                                        } label: {
+                                            Label("Yeni Sohbet", systemImage: "square.and.pencil")
+                                        }
+                                        if !server.isTemporaryChat {
                                             Section(server.currentSessionTitle) {
                                                 ShareLink(item: server.currentTranscriptForShare) {
                                                     Label("Paylaş", systemImage: "square.and.arrow.up")
@@ -215,16 +224,16 @@ struct ChatView: View {
                                                 }
                                                 Divider()
                                                 Button(role: .destructive) {
-                                                    Task { await server.deleteSession(server.activeSessionId) }
+                                                    showDeleteConfirm = true
                                                 } label: {
                                                     Label("Sil", systemImage: "trash")
                                                 }
                                             }
-                                        } label: {
-                                            Image(systemName: "ellipsis")
                                         }
-                                        .accessibilityLabel("Sohbet Seçenekleri")
+                                    } label: {
+                                        Image(systemName: "ellipsis")
                                     }
+                                    .accessibilityLabel("Sohbet Seçenekleri")
                                 }
                             }
                         }
@@ -236,6 +245,14 @@ struct ChatView: View {
                             let next = renameDraft
                             Task { await server.renameSession(server.activeSessionId, newTitle: next) }
                         }
+                    }
+                    .alert("Sohbeti Sil?", isPresented: $showDeleteConfirm) {
+                        Button("İptal", role: .cancel) {}
+                        Button("Sil", role: .destructive) {
+                            Task { await server.deleteSession(server.activeSessionId) }
+                        }
+                    } message: {
+                        Text("“\(server.currentSessionTitle)” sohbeti kalıcı olarak silinecek.")
                     }
                     .sheet(isPresented: $showSettings) {
                         SettingsView()
@@ -299,10 +316,10 @@ struct ChatView: View {
                     }
                 }
                 .mask {
-                    RoundedRectangle(cornerRadius: showSidebar ? 36 : 0, style: .continuous)
+                    RoundedRectangle(cornerRadius: 36 * sidebarProgress, style: .continuous)
                         .ignoresSafeArea()
                 }
-                .shadow(color: Color.black.opacity(showSidebar ? 0.14 : 0), radius: 24, x: -6, y: 0)
+                .shadow(color: Color.black.opacity(0.14 * sidebarProgress), radius: 24, x: -6, y: 0)
                 .overlay {
                     if showSidebar {
                         Color.white.opacity(0.001)
@@ -314,7 +331,7 @@ struct ChatView: View {
                             }
                     }
                 }
-                .offset(x: showSidebar ? drawerWidth : 0)
+                .offset(x: currentOffset)
             }
             .background {
                 SenAmbientBackground()
@@ -325,7 +342,71 @@ struct ChatView: View {
                 }
                 .ignoresSafeArea()
             }
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 16, coordinateSpace: .global)
+                    .onChanged { value in
+                        let tx = value.translation.width
+                        let ty = value.translation.height
+                        guard abs(tx) > abs(ty) * 1.35 else { return }
+                        if !showSidebar {
+                            guard value.startLocation.x < 56, tx > 0 else { return }
+                            inputFocused = false
+                            showPlusMenu = false
+                            sidebarDragOffset = min(drawerWidth, tx)
+                        } else {
+                            guard tx < 0 else { return }
+                            sidebarDragOffset = max(-drawerWidth, tx)
+                        }
+                    }
+                    .onEnded { value in
+                        let tx = value.translation.width
+                        let predicted = value.predictedEndTranslation.width
+                        if !showSidebar {
+                            if value.startLocation.x < 56 && (tx > 72 || predicted > 130) {
+                                SenHaptics.light()
+                                withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
+                                    showSidebar = true
+                                    sidebarDragOffset = 0
+                                }
+                            } else {
+                                withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                                    sidebarDragOffset = 0
+                                }
+                            }
+                        } else {
+                            if tx < -64 || predicted < -120 {
+                                SenHaptics.light()
+                                withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
+                                    showSidebar = false
+                                    sidebarDragOffset = 0
+                                }
+                            } else {
+                                withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                                    sidebarDragOffset = 0
+                                }
+                            }
+                        }
+                    }
+            )
+            .task {
+                await requestInitialPermissionsIfNeeded()
+            }
             .animation(.spring(response: 0.34, dampingFraction: 0.86), value: showSidebar)
+    }
+
+    private func requestInitialPermissionsIfNeeded() async {
+        guard initialPreviewScreen == nil, !didRequestInitialPerms else { return }
+        didRequestInitialPerms = true
+        try? await Task.sleep(for: .milliseconds(700))
+        location.requestInitialAuthorization()
+        try? await Task.sleep(for: .milliseconds(500))
+        if AVCaptureDevice.authorizationStatus(for: .video) == .notDetermined {
+            _ = await AVCaptureDevice.requestAccess(for: .video)
+        }
+        try? await Task.sleep(for: .milliseconds(400))
+        if PHPhotoLibrary.authorizationStatus(for: .readWrite) == .notDetermined {
+            _ = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
+        }
     }
 
     // MARK: - Native iOS 26 Toolbar Model & Thinking Sheet Trigger
@@ -630,13 +711,15 @@ struct ChatView: View {
                         .frame(height: 28)
                         .id("BOTTOM_ANCHOR")
                         .onAppear {
-                            withAnimation(.snappy(duration: 0.22)) {
-                                showScrollToBottom = false
+                            if showScrollToBottom {
+                                withAnimation(.snappy(duration: 0.20)) {
+                                    showScrollToBottom = false
+                                }
                             }
                         }
                         .onDisappear {
-                            if !server.messages.isEmpty {
-                                withAnimation(.snappy(duration: 0.22)) {
+                            if !server.messages.isEmpty && !showScrollToBottom {
+                                withAnimation(.snappy(duration: 0.20)) {
                                     showScrollToBottom = true
                                 }
                             }
@@ -674,7 +757,8 @@ struct ChatView: View {
     private var floatingComposer: some View {
         let isEmpty = draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && pendingPhotos.isEmpty
         let hasActivePills = server.webSearchEnabled || server.useLibraryEnabled
-        let cornerRadius: CGFloat = 24
+        let isExpanded = inputFocused || !isEmpty || hasActivePills
+        let cornerRadius: CGFloat = isExpanded ? 28 : 24
 
         return VStack(spacing: 8) {
             // Soft White / Liquid Glass Scroll-to-Bottom (↓) button
@@ -790,26 +874,27 @@ struct ChatView: View {
                     .lineLimit(1...6)
                     .font(.body)
                     .focused($inputFocused)
-                    .padding(.vertical, 9)
+                    .padding(.vertical, isExpanded ? 11 : 6)
 
                     trailingActionButton(isEmpty: isEmpty)
                         .animation(.spring(response: 0.28, dampingFraction: 0.76), value: isEmpty)
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
+                .padding(.horizontal, isExpanded ? 10 : 8)
+                .padding(.vertical, isExpanded ? 8 : 4)
             }
             .background {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(colorScheme == .dark ? Color.white.opacity(0.04) : Color.white.opacity(0.65))
+                    .fill(colorScheme == .dark ? Color.white.opacity(0.05) : Color.white.opacity(0.72))
             }
             .senGlassRounded(radius: cornerRadius, interactive: false)
             .shadow(
                 color: Color.black.opacity(colorScheme == .dark ? 0.28 : 0.07),
-                radius: 14,
-                y: 4
+                radius: isExpanded ? 16 : 10,
+                y: isExpanded ? 5 : 3
             )
-            .padding(.horizontal, 12)
+            .padding(.horizontal, isExpanded ? 12 : 24)
             .padding(.bottom, 8)
+            .animation(.spring(response: 0.34, dampingFraction: 0.80), value: isExpanded)
         }
     }
 
@@ -1704,7 +1789,7 @@ struct ModelBadgeIcon: View {
             }
         }
         .onAppear {
-            guard !reduceMotion else { return }
+            guard !reduceMotion, isSelected else { return }
             withAnimation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true)) {
                 pulse = true
             }

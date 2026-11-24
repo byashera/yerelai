@@ -13,6 +13,7 @@ struct SidebarView: View {
     @State private var searchText: String = ""
     @State private var renameTarget: ChatSessionSummary? = nil
     @State private var renameDraft: String = ""
+    @State private var deleteTarget: ChatSessionSummary? = nil
 
     private var filtered: [ChatSessionSummary] {
         let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -227,6 +228,20 @@ struct SidebarView: View {
                 }
             }
         }
+        .alert("Sohbeti Sil?", isPresented: Binding(
+            get: { deleteTarget != nil },
+            set: { if !$0 { deleteTarget = nil } }
+        )) {
+            Button("İptal", role: .cancel) { deleteTarget = nil }
+            Button("Sil", role: .destructive) {
+                if let target = deleteTarget {
+                    deleteTarget = nil
+                    Task { await server.deleteSession(target.id) }
+                }
+            }
+        } message: {
+            Text("“\(deleteTarget?.title ?? "Bu sohbet")” kalıcı olarak silinecek.")
+        }
     }
 
     private func closeDrawer() {
@@ -308,7 +323,7 @@ struct SidebarView: View {
             }
             Divider()
             Button(role: .destructive) {
-                Task { await server.deleteSession(s.id) }
+                deleteTarget = s
             } label: {
                 Label("Sil", systemImage: "trash")
             }
