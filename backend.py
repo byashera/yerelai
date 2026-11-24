@@ -63,7 +63,7 @@ if __name__ == "__main__" and not os.environ.get("SENAI_BOOTSTRAPPED"):
 
 import httpx
 import uvicorn
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import Body, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -97,10 +97,39 @@ CONFIG_PATH = BASE_DIR / "config.json"
 REGISTRY_PATH = MODELS_DIR / "registry.json"
 LORA_REGISTRY_PATH = LORAS_DIR / "registry.json"
 SESSIONS_PATH = OUTPUTS_DIR / "sessions.json"
+USERS_META_PATH = OUTPUTS_DIR / "users.json"
+USERS_DATA_DIR = OUTPUTS_DIR / "users"
 DATASET_PATH = OUTPUTS_DIR / "train_dataset.jsonl"
 FILES_META_PATH = OUTPUTS_DIR / "files_meta.json"
 LOG_PATH = BASE_DIR / "backend.log"
 LLAMA_LOG_PATH = BASE_DIR / "llama_server.log"
+
+MAX_CONCURRENT_REQUESTS = 3
+_MODEL_LOAD_ASYNC_LOCK = asyncio.Lock()
+
+_LEGACY_MODEL_ID_MAP: Dict[str, str] = {
+    "gemma-4-e2b-4bit": "gemma-4-e2b-qat-mtp",
+    "gemma-4-e4b-4bit": "gemma-4-e4b-qat-mtp",
+}
+
+
+def _normalize_model_id(model_id: Optional[str]) -> str:
+    """Normalize legacy or missing model IDs to active registry entries."""
+    raw = str(model_id or "").strip()
+    if not raw:
+        return "gemma-4-e2b-qat-mtp"
+    if raw in _LEGACY_MODEL_ID_MAP:
+        return _LEGACY_MODEL_ID_MAP[raw]
+    reg = load_json(REGISTRY_PATH, {"models": []})
+    ids = [str(m.get("id") or "") for m in reg.get("models", []) if m.get("id")]
+    if raw in ids:
+        return raw
+    low = raw.lower()
+    if "e4b" in low:
+        return next((mid for mid in ids if "e4b" in mid.lower()), "gemma-4-e4b-qat-mtp")
+    if "e2b" in low:
+        return next((mid for mid in ids if "e2b" in mid.lower()), "gemma-4-e2b-qat-mtp")
+    return ids[0] if ids else raw
 
 def _detect_llama_server_bin() -> Path:
     env_bin = os.environ.get("LLAMA_SERVER_BIN")
@@ -155,6 +184,7 @@ def _llama_supports_mtp() -> bool:
 
 OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+USERS_DATA_DIR.mkdir(parents=True, exist_ok=True)
 LORAS_DIR.mkdir(parents=True, exist_ok=True)
 GGUF_DIR.mkdir(parents=True, exist_ok=True)
 CHAT_LOGS_DIR = BASE_DIR / "chat_logs"
@@ -262,6 +292,7 @@ def load_json(path: Path, default: Any) -> Any:
 
 
 def save_json(path: Path, data: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
@@ -273,6 +304,11 @@ def _clamp(val: float, lo: float, hi: float) -> float:
 
 
 AUTH_COOKIE_NAME = "yerelai_session"
+USER_COOKIE_NAME = "senai_user_token"
+GUEST_COOKIE_NAME = "senai_guest_id"
+_USERS_LOCK = threading.RLock()
+_SAFE_ACTOR_ID_RE = re.compile(r"^[a-z0-9_-]{3,48}$")
+_SAFE_GUEST_COOKIE_RE = re.compile(r"^guest_[a-f0-9]{12,32}$")
 
 
 def _hash_pin(pin: str, salt_hex: Optional[str] = None) -> str:
@@ -330,6 +366,132 @@ def _is_local_request(request: Request) -> bool:
         return False
     host = request.client.host if request.client else ""
     return host in ("127.0.0.1", "::1", "localhost")
+
+
+def _load_users() -> List[Dict[str, Any]]:
+    with _USERS_LOCK:
+        items = load_json(USERS_META_PATH, [])
+        return items if isinstance(items, list) else []
+
+
+def _save_users(items: List[Dict[str, Any]]) -> None:
+    with _USERS_LOCK:
+        save_json(USERS_META_PATH, items)
+
+
+def _make_user_token(user_id: str, pin_hash: str, cfg: Dict[str, Any]) -> str:
+    secret = _get_auth_secret(cfg)
+    ts = str(int(time.time()))
+    payload = f"{user_id}:{ts}:{pin_hash[:16]}"
+    sig = hmac.new(secret.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).hexdigest()
+    return f"{user_id}.{ts}.{sig}"
+
+
+def _verify_user_token(token: str, users: List[Dict[str, Any]], cfg: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    if not token or token.count(".") != 2:
+        return None
+    uid, ts, sig = token.split(".", 2)
+    if not ts.isdigit() or not _SAFE_ACTOR_ID_RE.match(uid):
+        return None
+    if abs(time.time() - int(ts)) > 30 * 86400:
+        return None
+    user = next((u for u in users if u.get("id") == uid and u.get("enabled", True)), None)
+    if not user:
+        return None
+    pin_h = str(user.get("pin_hash") or "")
+    secret = _get_auth_secret(cfg)
+    expected = hmac.new(secret.encode("utf-8"), f"{uid}:{ts}:{pin_h[:16]}".encode("utf-8"), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(sig, expected):
+        return None
+    return user
+
+
+def _safe_actor_dir(actor_id: str) -> Path:
+    clean = str(actor_id or "").strip().lower()
+    if not _SAFE_ACTOR_ID_RE.match(clean):
+        raise HTTPException(status_code=400, detail="Geçersiz kullanıcı kimliği.")
+    target = (USERS_DATA_DIR / clean).resolve()
+    if USERS_DATA_DIR.resolve() not in target.parents:
+        raise HTTPException(status_code=400, detail="Geçersiz veri yolu.")
+    target.mkdir(parents=True, exist_ok=True)
+    return target
+
+
+def _actor_sessions_path(actor: Dict[str, Any]) -> Path:
+    if actor.get("id") == "owner":
+        return SESSIONS_PATH
+    return _safe_actor_dir(str(actor.get("id") or "")) / "sessions.json"
+
+
+def _actor_memories_path(actor: Dict[str, Any]) -> Path:
+    if actor.get("id") == "owner":
+        return MEMORIES_PATH
+    return _safe_actor_dir(str(actor.get("id") or "")) / "memories.json"
+
+
+def _resolve_request_actor(request: Request, cfg: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    cached = getattr(request.state, "senai_actor", None)
+    if cached is not None:
+        return cached
+
+    cfg = cfg if cfg is not None else load_json(CONFIG_PATH, {})
+    if _is_native_ios_client(request):
+        actor = {"id": "owner", "role": "admin", "username": "admin", "display_name": "Admin"}
+        request.state.senai_actor = actor
+        return actor
+
+    pin_enabled = bool(cfg.get("pin_enabled") and cfg.get("access_pin_hash"))
+    local_bypass = bool(cfg.get("pin_local_bypass", True))
+    is_local = _is_local_request(request)
+    if is_local and (not pin_enabled or local_bypass):
+        actor = {"id": "owner", "role": "admin", "username": "admin", "display_name": "Admin"}
+        request.state.senai_actor = actor
+        return actor
+
+    admin_tok = request.cookies.get(AUTH_COOKIE_NAME, "")
+    if _verify_auth_token(admin_tok, cfg):
+        actor = {"id": "owner", "role": "admin", "username": "admin", "display_name": "Admin"}
+        request.state.senai_actor = actor
+        return actor
+
+    user_tok = request.cookies.get(USER_COOKIE_NAME, "")
+    users = _load_users()
+    matched_user = _verify_user_token(user_tok, users, cfg)
+    if matched_user is not None:
+        actor = {
+            "id": matched_user["id"],
+            "role": "user",
+            "username": matched_user.get("username", ""),
+            "display_name": matched_user.get("display_name") or matched_user.get("username") or "Kullanıcı",
+        }
+        request.state.senai_actor = actor
+        return actor
+
+    allow_guest = bool(cfg.get("allow_guest_access", True))
+    if allow_guest:
+        raw_guest = request.cookies.get(GUEST_COOKIE_NAME, "").strip().lower()
+        if _SAFE_GUEST_COOKIE_RE.match(raw_guest):
+            guest_id = raw_guest
+        else:
+            guest_id = f"guest_{secrets.token_hex(8)}"
+            request.state.new_guest_cookie = guest_id
+        actor = {"id": guest_id, "role": "guest", "username": "misafir", "display_name": "Misafir"}
+        request.state.senai_actor = actor
+        return actor
+
+    actor = {"id": "", "role": "anonymous", "username": "", "display_name": "", "locked": True}
+    request.state.senai_actor = actor
+    return actor
+
+
+def _sanitize_config_for_client(cfg: Dict[str, Any], is_admin: bool) -> Dict[str, Any]:
+    out = dict(cfg or {})
+    out["default_model_id"] = _normalize_model_id(out.get("default_model_id"))
+    if is_admin:
+        return out
+    for secret_key in ("auth_secret", "access_pin_hash", "github_token", "cf_tunnel_token", "cf_named_token"):
+        out.pop(secret_key, None)
+    return out
 
 
 def _resolve_local_hf_snapshot(repo_id: str) -> Optional[Path]:
@@ -542,6 +704,8 @@ class EngineManager:
         self.active_context_length: int = 32768
         self.detected_vram_mb: int = 0
         self.stop_event = threading.Event()
+        self.active_generations: int = 0
+        self.active_streams: Dict[str, Dict[str, Any]] = {}
         self.channel_tokens: Dict[str, int] = {}
         self.download_lock = threading.RLock()
         self.download_cancel_event = threading.Event()
@@ -784,6 +948,7 @@ class EngineManager:
             raise
 
     def start_model_download(self, model_id: str) -> Dict[str, Any]:
+        model_id = _normalize_model_id(model_id)
         reg = load_json(REGISTRY_PATH, {"models": []})
         model_meta = next((m for m in reg.get("models", []) if m["id"] == model_id), None)
         if not model_meta:
@@ -831,6 +996,63 @@ class EngineManager:
 
     def touch(self) -> None:
         self.last_activity = time.time()
+
+    def register_stream(self, actor_id: str, session_id: str) -> Tuple[str, threading.Event]:
+        with self.lock:
+            if self.active_generations >= MAX_CONCURRENT_REQUESTS:
+                raise RuntimeError("MAX_BUSY")
+            stream_id = uuid.uuid4().hex[:12]
+            ev = threading.Event()
+            self.active_streams[stream_id] = {
+                "event": ev,
+                "actor_id": str(actor_id or "owner"),
+                "session_id": str(session_id or ""),
+            }
+            self.active_generations += 1
+            if self.state == "ready":
+                self.state = "generating"
+            self.touch()
+            return stream_id, ev
+
+    def unregister_stream(self, stream_id: str) -> None:
+        with self.lock:
+            self.active_streams.pop(stream_id, None)
+            self.active_generations = len(self.active_streams)
+            if self.active_generations == 0:
+                alive = (
+                    (self.engine_backend == "gguf_turbo" and self.llama_proc is not None and self.llama_proc.poll() is None)
+                    or (self.engine_backend == "pytorch_bnb" and self.model is not None)
+                )
+                self.state = "ready" if alive else "unloaded"
+                if alive:
+                    self.touch()
+            else:
+                self.state = "generating"
+
+    def stop_streams(self, actor_id: Optional[str] = None, session_id: Optional[str] = None) -> int:
+        stopped = 0
+        with self.lock:
+            sid = str(session_id or "").strip()
+            aid = str(actor_id or "").strip()
+            for info in self.active_streams.values():
+                if sid and info.get("session_id") == sid:
+                    if not aid or aid == "owner" or info.get("actor_id") == aid:
+                        info["event"].set()
+                        stopped += 1
+                elif not sid and aid and info.get("actor_id") == aid:
+                    info["event"].set()
+                    stopped += 1
+            if not aid and not sid:
+                for info in self.active_streams.values():
+                    info["event"].set()
+                    stopped += 1
+            if stopped == 0 and not sid and not aid:
+                self.stop_event.set()
+            elif self.active_generations <= 1 and stopped > 0:
+                # Preserve legacy PyTorch fallback StopEventCriteria when only one stream runs
+                if self.engine_backend == "pytorch_bnb":
+                    self.stop_event.set()
+        return stopped
 
     def get_vram_info(self, force: bool = False) -> Dict[str, Any]:
         now = time.time()
@@ -941,13 +1163,15 @@ class EngineManager:
             "idle_remaining_sec": round(remaining_sec, 1),
             "idle_timeout_minutes": timeout_min,
             "context_length": int(self.active_context_length or cfg.get("context_length", 32768)),
+            "active_generations": self.active_generations,
+            "max_concurrent_requests": MAX_CONCURRENT_REQUESTS,
             "vram": vram,
             "download": self.get_download_status(),
         }
 
     def unload_model(self) -> None:
         with self.lock:
-            if self.state == "generating":
+            if self.state == "generating" or self.active_generations > 0:
                 raise RuntimeError("Aktif yanıt üretimi devam ederken VRAM boşaltılamaz.")
             self._unload_locked()
 
@@ -1003,6 +1227,7 @@ class EngineManager:
         return True
 
     def load_model(self, model_id: str, lora_id: str = "", lora_scale: float = 1.0, gpu_profile: Optional[str] = None) -> None:
+        model_id = _normalize_model_id(model_id)
         with self.lock:
             registry = load_json(REGISTRY_PATH, {"models": []})
             model_meta = next((m for m in registry.get("models", []) if m["id"] == model_id), None)
@@ -1018,7 +1243,7 @@ class EngineManager:
                 or (target_backend == "pytorch_bnb" and self.model is not None)
             )
             if (
-                self.state == "ready"
+                self.state in ("ready", "generating")
                 and self.engine_backend == target_backend
                 and self.active_model_id == model_id
                 and self.active_lora_id == (lora_id or "")
@@ -1027,7 +1252,9 @@ class EngineManager:
             ):
                 self.touch()
                 return
-            if self.state in ("loading", "generating"):
+            if self.active_generations > 0:
+                raise RuntimeError("Aktif yanıt üretimi devam ederken model değiştirilemez.")
+            if self.state == "loading":
                 return
 
             if self.llama_proc is not None or self.model is not None:
@@ -1078,6 +1305,7 @@ class EngineManager:
                 self.active_context_length = cfg_ctx
                 ctx_val = str(cfg_ctx)
 
+                parallel_slots = "1" if profile == "low_vram" else str(MAX_CONCURRENT_REQUESTS)
                 cmd = [
                     str(LLAMA_SERVER_BIN),
                     "-m", str(gguf_path),
@@ -1092,11 +1320,13 @@ class EngineManager:
                     "-ub", "1024",
                     "--cache-reuse", "256",
                     "-c", ctx_val,
-                    "-np", "1",
+                    "-np", parallel_slots,
                     "--jinja",
                     "--reasoning-format", "deepseek",
                     "--no-webui",
                 ]
+                if parallel_slots != "1":
+                    cmd.append("-cb")
                 lora_note = ""
                 lora_kind, lora_path = _resolve_lora_type(lora_id)
                 if lora_kind == "gguf" and lora_path is not None:
@@ -1203,16 +1433,38 @@ class EngineManager:
                 except RuntimeError as exc:
                     if not use_mtp:
                         raise
-                    logger.warning(
-                        "MTP launch failed for %s (%s); retrying without MTP",
-                        model_meta["id"],
-                        exc,
-                    )
-                    with self.lock:
-                        self.load_message = "MTP başlatılamadı; MTP'siz yeniden deneniyor..."
-                    use_mtp = False
-                    mtp_note = ""
-                    proc = _spawn_and_wait(base_cmd)
+                    mtp_flags = list(cmd[len(base_cmd):])
+                    launched = False
+                    if parallel_slots != "1":
+                        logger.warning(
+                            "MTP with -np %s failed for %s (%s); trying MTP with -np 1",
+                            parallel_slots,
+                            model_meta["id"],
+                            exc,
+                        )
+                        with self.lock:
+                            self.load_message = "MTP tek slot modunda deneniyor..."
+                        np1_base = [
+                            (a if i == 0 or base_cmd[i - 1] != "-np" else "1")
+                            for i, a in enumerate(base_cmd)
+                            if a != "-cb"
+                        ]
+                        try:
+                            proc = _spawn_and_wait(np1_base + mtp_flags)
+                            launched = True
+                        except RuntimeError as exc2:
+                            logger.warning("MTP -np 1 retry failed (%s); falling back without MTP", exc2)
+                    if not launched:
+                        logger.warning(
+                            "MTP launch failed for %s (%s); retrying without MTP",
+                            model_meta["id"],
+                            exc,
+                        )
+                        with self.lock:
+                            self.load_message = "MTP başlatılamadı; MTP'siz yeniden deneniyor..."
+                        use_mtp = False
+                        mtp_note = ""
+                        proc = _spawn_and_wait(base_cmd)
 
                 post_smi = _query_nvidia_smi()
                 vram_delta = max(0, int(post_smi.get("system_used_mb", 0)) - self._baseline_vram_mb)
@@ -1696,6 +1948,35 @@ class ChatMessageInput(BaseModel):
     content: str
     thinking: Optional[str] = ""
     attachments: Optional[List[ChatAttachment]] = None
+    is_compact_summary: Optional[bool] = False
+
+
+class AuthLoginRequest(BaseModel):
+    username: Optional[str] = ""
+    pin: Optional[str] = ""
+    as_guest: Optional[bool] = False
+
+
+class AdminSettingsRequest(BaseModel):
+    allow_guest_access: bool
+
+
+class AdminUserUpsertRequest(BaseModel):
+    id: Optional[str] = None
+    username: str
+    display_name: Optional[str] = None
+    pin: Optional[str] = None
+    enabled: Optional[bool] = True
+
+
+class CompactSessionRequest(BaseModel):
+    session_id: Optional[str] = None
+    keep_last: int = 4
+    messages: Optional[List[Dict[str, Any]]] = None
+
+
+class StopChatRequest(BaseModel):
+    session_id: Optional[str] = None
 
 
 class ChatRequest(BaseModel):
@@ -2656,13 +2937,185 @@ class MemoryCreateRequest(BaseModel):
     text: str
 
 
-def _load_memories() -> List[Dict[str, Any]]:
-    items = load_json(MEMORIES_PATH, [])
+def _load_memories(actor: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+    target = _actor_memories_path(actor) if actor else MEMORIES_PATH
+    items = load_json(target, [])
     return items if isinstance(items, list) else []
 
 
-def _save_memories(items: List[Dict[str, Any]]) -> None:
-    save_json(MEMORIES_PATH, items[:60])
+def _save_memories(items: List[Dict[str, Any]], actor: Optional[Dict[str, Any]] = None) -> None:
+    target = _actor_memories_path(actor) if actor else MEMORIES_PATH
+    save_json(target, items[:60])
+
+
+def _estimate_messages_tokens(messages: List[Dict[str, Any]], sys_prompt: str = "") -> int:
+    total = int(len(sys_prompt or "") / 3.4) + 64 if sys_prompt else 64
+    for m in messages:
+        c = m.get("content", "")
+        if isinstance(c, str):
+            total += max(4, int(len(c) / 3.4) + 6)
+        elif isinstance(c, list):
+            for p in c:
+                if isinstance(p, dict) and p.get("type") == "text":
+                    total += int(len(str(p.get("text", ""))) / 3.4)
+                else:
+                    total += 320
+        th = m.get("thinking", "")
+        if isinstance(th, str) and th:
+            total += int(len(th) / 4.2)
+    return max(16, total)
+
+
+def _extract_code_and_table_markers(text: str) -> List[str]:
+    markers: List[str] = []
+    for lang in re.findall(r"```([a-zA-Z0-9_-]{1,20})", text or ""):
+        if lang.lower() not in ("sen_card", "yerel_card") and lang not in markers:
+            markers.append(lang)
+    if re.search(r"^\|.+\|\n\|[-:| ]+\|", text or "", re.M):
+        markers.append("tablo")
+    return markers[:5]
+
+
+def _summarize_old_turns_fast(turns: List[Dict[str, Any]], allow_llm: bool = True) -> str:
+    """Summarize older conversation turns compactly via live llama-server or fast deterministic extraction."""
+    if not turns:
+        return ""
+    lines_for_digest: List[str] = []
+    for idx, t in enumerate(turns):
+        role = "Kullanıcı" if t.get("role") == "user" else "SEN.AI"
+        raw_c = t.get("content", "")
+        if isinstance(raw_c, list):
+            txt = " ".join(str(p.get("text", "")) for p in raw_c if isinstance(p, dict) and p.get("type") == "text")
+        else:
+            txt = str(raw_c or "")
+        # Strip noisy card JSON & huge code dumps before digesting
+        clean = re.sub(r"```(?:sen_card|yerel_card|sen-card|yerel-card)[\s\S]*?```", "[Görsel Kart]", txt)
+        clean = re.sub(r"```[\s\S]*?```", "[Kod Bloğu]", clean)
+        clean = re.sub(r"\[ARKA PLAN[\s\S]*?\[/ARKA PLAN\]", "", clean)
+        clean = re.sub(r"\s+", " ", clean).strip()
+        if not clean:
+            continue
+        markers = _extract_code_and_table_markers(txt)
+        tag = f" ({', '.join(markers)})" if markers else ""
+        limit = 220 if t.get("role") == "user" else 280
+        lines_for_digest.append(f"- {role}{tag}: {clean[:limit]}{'…' if len(clean) > limit else ''}")
+
+    digest_input = "\n".join(lines_for_digest[-18:])
+    if (
+        allow_llm
+        and len(digest_input) >= 160
+        and engine.engine_backend == "gguf_turbo"
+        and engine.llama_proc is not None
+        and engine.llama_proc.poll() is None
+    ):
+        try:
+            llm_payload = {
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": (
+                            "Görevin önceki sohbet geçmişini sonraki yanıtlara bağlam kaybı olmadan en yoğun, net Türkçe özetine sıkıştırmaktır. "
+                            "Kararları, teknik seçimleri, dosya/değişken adlarını ve kullanıcı tercihlerini 4-7 kısa madde halinde yaz. Giriş/çıkış gevezeliği yapma."
+                        ),
+                    },
+                    {"role": "user", "content": f"Şu konuşma turlarını sıkıştır:\n{digest_input[:6000]}"},
+                ],
+                "temperature": 0.2,
+                "max_tokens": 420,
+                "stream": False,
+                "chat_template_kwargs": {"enable_thinking": False},
+                "reasoning_budget": 0,
+            }
+            with httpx.Client(timeout=12.0) as client:
+                r = client.post(f"{LLAMA_SERVER_URL}/v1/chat/completions", json=llm_payload)
+                if r.status_code == 200:
+                    data = r.json()
+                    content = (((data.get("choices") or [{}])[0]).get("message") or {}).get("content", "")
+                    content = re.sub(r"<\|thought\|>[\s\S]*?<\|/thought\|>", "", content).strip()
+                    if len(content) >= 24:
+                        return content
+        except Exception as exc:
+            logger.debug("Fast LLM compaction skipped (fallback to structured digest): %s", exc)
+
+    if not lines_for_digest:
+        return ""
+    return "**Önceki Konuşma Özeti:**\n" + "\n".join(lines_for_digest[-10:])
+
+
+def _compact_messages_list(
+    messages: List[Dict[str, Any]],
+    keep_last: int = 4,
+    ctx_limit: int = 32768,
+    allow_llm: bool = True,
+) -> Dict[str, Any]:
+    keep_n = max(2, min(12, int(keep_last or 4)))
+    raw_msgs = [dict(m) for m in (messages or [])]
+    before_tokens = _estimate_messages_tokens(raw_msgs)
+    before_pct = min(100, max(1, round((before_tokens / max(1024, ctx_limit)) * 100)))
+
+    # Exclude previous compact card if re-compacting so it merges cleanly
+    prev_summary_parts = [
+        str(m.get("content") or "")
+        for m in raw_msgs
+        if m.get("is_compact_summary")
+    ]
+    non_summary = [m for m in raw_msgs if not m.get("is_compact_summary")]
+
+    if len(non_summary) <= keep_n:
+        return {
+            "compacted": False,
+            "reason": "Sohbet henüz sıkıştırma gerektirecek kadar uzun değil.",
+            "summarized_count": 0,
+            "before_tokens": before_tokens,
+            "after_tokens": before_tokens,
+            "before_pct": before_pct,
+            "after_pct": before_pct,
+            "summary": "",
+            "messages": raw_msgs,
+        }
+
+    older = non_summary[:-keep_n]
+    kept_tail = []
+    for m in non_summary[-keep_n:]:
+        nm = dict(m)
+        if isinstance(nm.get("thinking"), str) and len(nm["thinking"]) > 400:
+            nm["thinking"] = ""
+        kept_tail.append(nm)
+
+    digest_turns = []
+    if prev_summary_parts:
+        digest_turns.append({"role": "assistant", "content": "\n".join(prev_summary_parts)})
+    digest_turns.extend(older)
+
+    summary = _summarize_old_turns_fast(digest_turns, allow_llm=allow_llm)
+    if not summary:
+        summary = "Önceki konuşma adımları özetlendi."
+
+    summary_msg = {
+        "role": "assistant",
+        "content": summary,
+        "thinking": "",
+        "is_compact_summary": True,
+        "compact_meta": {
+            "summarized_count": len(older),
+            "before_pct": before_pct,
+            "after_pct": 0,
+        },
+    }
+    compacted_msgs = [summary_msg] + kept_tail
+    after_tokens = _estimate_messages_tokens(compacted_msgs)
+    after_pct = min(100, max(1, round((after_tokens / max(1024, ctx_limit)) * 100)))
+    summary_msg["compact_meta"]["after_pct"] = after_pct
+    return {
+        "compacted": True,
+        "summarized_count": len(older),
+        "before_tokens": before_tokens,
+        "after_tokens": after_tokens,
+        "before_pct": before_pct,
+        "after_pct": after_pct,
+        "summary": summary,
+        "messages": compacted_msgs,
+    }
 
 
 def _extract_memory_command(text: str) -> Optional[str]:
@@ -2727,14 +3180,42 @@ async def pin_auth_middleware(request: Request, call_next):
     path = request.url.path
     if (path.startswith("/api/workspace") or path.startswith("/api/mcp")) and not _is_local_request(request):
         return JSONResponse(status_code=403, content={"detail": "Bu özellik yalnızca yerel masaüstü uygulamasında kullanılabilir."})
+
     if path.startswith("/api/") and not path.startswith("/api/auth/") and path != "/api/image-resolve":
         cfg = load_json(CONFIG_PATH, {})
-        if cfg.get("pin_enabled") and cfg.get("access_pin_hash"):
-            local_bypass = cfg.get("pin_local_bypass", True)
-            if not (local_bypass and _is_local_request(request)) and not _is_native_ios_client(request):
-                tok = request.cookies.get(AUTH_COOKIE_NAME, "")
-                if not _verify_auth_token(tok, cfg):
-                    return JSONResponse(status_code=401, content={"detail": "PIN kilidi aktif. Devam etmek için PIN girin.", "locked": True})
+        actor = _resolve_request_actor(request, cfg)
+        if actor.get("role") == "anonymous":
+            return JSONResponse(
+                status_code=401,
+                content={
+                    "detail": "Giriş gerekli. Devam etmek için kullanıcı girişi veya PIN girin.",
+                    "locked": True,
+                    "allow_guest": bool(cfg.get("allow_guest_access", True)),
+                },
+            )
+        is_admin = actor.get("role") == "admin"
+        method = request.method.upper()
+        admin_only = (
+            path.startswith("/api/admin")
+            or path.startswith("/api/tunnel")
+            or path.startswith("/api/model/")
+            or path == "/api/sessions/export-all"
+            or (path == "/api/config" and method in ("PUT", "POST", "DELETE"))
+            or (path.startswith("/api/extensions") and method != "GET")
+            or (path.startswith("/api/library") and method != "GET")
+            or (path.startswith("/api/dataset") and path != "/api/dataset/rate")
+            or path.startswith("/api/sandbox")
+        )
+        if admin_only and not is_admin:
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "Bu işlem yalnızca yönetici (Admin) hesabı ile yapılabilir."},
+            )
+        resp = await call_next(request)
+        new_guest = getattr(request.state, "new_guest_cookie", None)
+        if new_guest:
+            resp.set_cookie(GUEST_COOKIE_NAME, new_guest, httponly=True, samesite="lax", max_age=90 * 86400)
+        return resp
     return await call_next(request)
 
 
@@ -2840,21 +3321,109 @@ async def api_image_resolve(q: str = ""):
 
 @app.get("/api/auth/status")
 @app.get("/api/auth/state")
+@app.get("/api/auth/me")
 async def api_auth_state(request: Request):
     cfg = load_json(CONFIG_PATH, {})
     enabled = bool(cfg.get("pin_enabled") and cfg.get("access_pin_hash"))
     local_bypass = bool(cfg.get("pin_local_bypass", True))
     is_local = _is_local_request(request)
-    if not enabled or (local_bypass and is_local) or _is_native_ios_client(request):
-        unlocked = True
-    else:
-        unlocked = _verify_auth_token(request.cookies.get(AUTH_COOKIE_NAME, ""), cfg)
-    return {
+    actor = _resolve_request_actor(request, cfg)
+    unlocked = actor.get("role") != "anonymous"
+    users = _load_users()
+    data = {
         "pin_enabled": enabled,
         "local_bypass": local_bypass,
         "is_local": is_local,
         "unlocked": unlocked,
+        "allow_guest_access": bool(cfg.get("allow_guest_access", True)),
+        "has_users": len(users) > 0,
+        "actor": {
+            "id": actor.get("id", ""),
+            "role": actor.get("role", "anonymous"),
+            "username": actor.get("username", ""),
+            "display_name": actor.get("display_name", ""),
+        },
     }
+    resp = JSONResponse(data)
+    new_guest = getattr(request.state, "new_guest_cookie", None)
+    if new_guest:
+        resp.set_cookie(GUEST_COOKIE_NAME, new_guest, httponly=True, samesite="lax", max_age=90 * 86400)
+    return resp
+
+
+@app.post("/api/auth/login")
+async def api_auth_login(req: AuthLoginRequest, request: Request):
+    cfg = load_json(CONFIG_PATH, {})
+    if req.as_guest:
+        if not bool(cfg.get("allow_guest_access", True)):
+            raise HTTPException(status_code=403, detail="Misafir erişimi yönetici tarafından kapatıldı.")
+        raw_guest = request.cookies.get(GUEST_COOKIE_NAME, "").strip().lower()
+        guest_id = raw_guest if _SAFE_GUEST_COOKIE_RE.match(raw_guest) else f"guest_{secrets.token_hex(8)}"
+        resp = JSONResponse({
+            "ok": True,
+            "unlocked": True,
+            "actor": {"id": guest_id, "role": "guest", "username": "misafir", "display_name": "Misafir"},
+        })
+        resp.delete_cookie(AUTH_COOKIE_NAME)
+        resp.delete_cookie(USER_COOKIE_NAME)
+        resp.set_cookie(GUEST_COOKIE_NAME, guest_id, httponly=True, samesite="lax", max_age=90 * 86400)
+        return resp
+
+    uname = re.sub(r"\s+", "", (req.username or "").strip()).lower()
+    pin = (req.pin or "").strip()
+    if not pin:
+        raise HTTPException(status_code=400, detail="PIN veya şifre gereklidir.")
+
+    # Admin login
+    if uname in ("", "admin", "owner"):
+        if not (cfg.get("pin_enabled") and cfg.get("access_pin_hash")):
+            if _is_local_request(request):
+                return {"ok": True, "unlocked": True, "actor": {"id": "owner", "role": "admin", "username": "admin", "display_name": "Admin"}}
+            raise HTTPException(status_code=401, detail="Admin PIN kilidi henüz tanımlanmadı.")
+        if not _verify_pin(pin, cfg.get("access_pin_hash", "")):
+            raise HTTPException(status_code=401, detail="Hatalı Admin PIN.")
+        token = _make_auth_token(cfg)
+        resp = JSONResponse({
+            "ok": True,
+            "unlocked": True,
+            "actor": {"id": "owner", "role": "admin", "username": "admin", "display_name": "Admin"},
+        })
+        resp.delete_cookie(USER_COOKIE_NAME)
+        resp.set_cookie(AUTH_COOKIE_NAME, token, httponly=True, samesite="lax", max_age=30 * 86400)
+        return resp
+
+    # Registered user login
+    users = _load_users()
+    user = next((u for u in users if str(u.get("username") or "").lower() == uname), None)
+    if not user or not user.get("enabled", True):
+        raise HTTPException(status_code=401, detail="Kullanıcı bulunamadı veya pasif.")
+    if not _verify_pin(pin, str(user.get("pin_hash") or "")):
+        raise HTTPException(status_code=401, detail="Hatalı kullanıcı şifresi/PIN.")
+
+    user["last_seen"] = datetime.now().isoformat(timespec="seconds")
+    _save_users(users)
+    u_token = _make_user_token(user["id"], str(user.get("pin_hash") or ""), cfg)
+    resp = JSONResponse({
+        "ok": True,
+        "unlocked": True,
+        "actor": {
+            "id": user["id"],
+            "role": "user",
+            "username": user["username"],
+            "display_name": user.get("display_name") or user["username"],
+        },
+    })
+    resp.delete_cookie(AUTH_COOKIE_NAME)
+    resp.set_cookie(USER_COOKIE_NAME, u_token, httponly=True, samesite="lax", max_age=30 * 86400)
+    return resp
+
+
+@app.post("/api/auth/logout")
+async def api_auth_logout():
+    resp = JSONResponse({"ok": True})
+    resp.delete_cookie(AUTH_COOKIE_NAME)
+    resp.delete_cookie(USER_COOKIE_NAME)
+    return resp
 
 
 @app.post("/api/auth/verify")
@@ -2866,6 +3435,7 @@ async def api_auth_verify(req: PinVerifyRequest):
         raise HTTPException(status_code=401, detail="Hatalı PIN.")
     token = _make_auth_token(cfg)
     resp = JSONResponse({"ok": True, "unlocked": True})
+    resp.delete_cookie(USER_COOKIE_NAME)
     resp.set_cookie(AUTH_COOKIE_NAME, token, httponly=True, samesite="lax", max_age=30 * 86400)
     return resp
 
@@ -2877,7 +3447,7 @@ async def api_auth_set_pin(req: PinSetRequest, request: Request):
     if currently_enabled and not _is_local_request(request):
         tok = request.cookies.get(AUTH_COOKIE_NAME, "")
         if not _verify_auth_token(tok, cfg):
-            raise HTTPException(status_code=401, detail="PIN değiştirmek için önce kilidi açın.")
+            raise HTTPException(status_code=401, detail="PIN değiştirmek için önce Admin kilidini açın.")
 
     new_pin = (req.pin or "").strip()
     if req.local_bypass is not None:
@@ -2901,6 +3471,174 @@ async def api_auth_set_pin(req: PinSetRequest, request: Request):
     resp = JSONResponse({"ok": True, "pin_enabled": True, "local_bypass": cfg.get("pin_local_bypass", True)})
     resp.set_cookie(AUTH_COOKIE_NAME, token, httponly=True, samesite="lax", max_age=30 * 86400)
     return resp
+
+
+def _require_admin(request: Request) -> Dict[str, Any]:
+    actor = _resolve_request_actor(request)
+    if actor.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Bu alan yalnızca yönetici (Admin) içindir.")
+    return actor
+
+
+@app.get("/api/admin/overview")
+async def api_admin_overview(request: Request):
+    _require_admin(request)
+    cfg = load_json(CONFIG_PATH, {})
+    users = _load_users()
+    profiles: List[Dict[str, Any]] = []
+
+    owner_sessions = load_json(SESSIONS_PATH, [])
+    owner_memories = _load_memories({"id": "owner"})
+    profiles.append({
+        "id": "owner",
+        "role": "admin",
+        "username": "admin",
+        "display_name": "Admin (Sahip)",
+        "enabled": True,
+        "session_count": len(owner_sessions) if isinstance(owner_sessions, list) else 0,
+        "memory_count": len(owner_memories),
+        "last_seen": (owner_sessions[0].get("updated_at") if owner_sessions else ""),
+    })
+
+    seen_dirs = set()
+    for u in users:
+        uid = str(u.get("id") or "")
+        if not uid:
+            continue
+        seen_dirs.add(uid)
+        s_list = load_json(_actor_sessions_path({"id": uid}), [])
+        m_list = load_json(_actor_memories_path({"id": uid}), [])
+        profiles.append({
+            "id": uid,
+            "role": "user",
+            "username": u.get("username", uid),
+            "display_name": u.get("display_name") or u.get("username", uid),
+            "enabled": bool(u.get("enabled", True)),
+            "session_count": len(s_list) if isinstance(s_list, list) else 0,
+            "memory_count": len(m_list) if isinstance(m_list, list) else 0,
+            "created_at": u.get("created_at", ""),
+            "last_seen": u.get("last_seen") or (s_list[0].get("updated_at") if s_list else ""),
+        })
+
+    if USERS_DATA_DIR.exists():
+        for sub in sorted(USERS_DATA_DIR.iterdir()):
+            if not sub.is_dir() or sub.name in seen_dirs:
+                continue
+            if not _SAFE_ACTOR_ID_RE.match(sub.name):
+                continue
+            s_list = load_json(sub / "sessions.json", [])
+            m_list = load_json(sub / "memories.json", [])
+            profiles.append({
+                "id": sub.name,
+                "role": "guest",
+                "username": sub.name,
+                "display_name": f"Misafir ({sub.name[-6:]})",
+                "enabled": True,
+                "session_count": len(s_list) if isinstance(s_list, list) else 0,
+                "memory_count": len(m_list) if isinstance(m_list, list) else 0,
+                "last_seen": (s_list[0].get("updated_at") if s_list else ""),
+            })
+
+    return {
+        "allow_guest_access": bool(cfg.get("allow_guest_access", True)),
+        "profiles": profiles,
+    }
+
+
+@app.post("/api/admin/settings")
+async def api_admin_settings(req: AdminSettingsRequest, request: Request):
+    _require_admin(request)
+    cfg = load_json(CONFIG_PATH, {})
+    cfg["allow_guest_access"] = bool(req.allow_guest_access)
+    save_json(CONFIG_PATH, cfg)
+    return {"ok": True, "allow_guest_access": cfg["allow_guest_access"]}
+
+
+@app.post("/api/admin/users")
+async def api_admin_upsert_user(req: AdminUserUpsertRequest, request: Request):
+    _require_admin(request)
+    uname = re.sub(r"\s+", "", (req.username or "").strip()).lower()
+    if not re.match(r"^[a-z0-9_.-]{2,32}$", uname) or uname in ("admin", "owner", "misafir"):
+        raise HTTPException(status_code=400, detail="Geçersiz kullanıcı adı (2-32 karakter harf/rakam).")
+
+    users = _load_users()
+    existing = None
+    if req.id:
+        existing = next((u for u in users if u.get("id") == req.id), None)
+    if existing is None:
+        existing = next((u for u in users if str(u.get("username") or "").lower() == uname), None)
+
+    pin = (req.pin or "").strip()
+    if existing is None:
+        if len(pin) < 4 or len(pin) > 32:
+            raise HTTPException(status_code=400, detail="Yeni kullanıcı için şifre/PIN en az 4 karakter olmalıdır.")
+        new_u = {
+            "id": f"u_{uuid.uuid4().hex[:10]}",
+            "username": uname,
+            "display_name": (req.display_name or uname).strip()[:40],
+            "pin_hash": _hash_pin(pin),
+            "enabled": bool(req.enabled if req.enabled is not None else True),
+            "created_at": datetime.now().isoformat(timespec="seconds"),
+            "last_seen": "",
+        }
+        users.append(new_u)
+        _safe_actor_dir(new_u["id"])
+        _save_users(users)
+        return {"ok": True, "user": {k: v for k, v in new_u.items() if k != "pin_hash"}}
+
+    if pin:
+        if len(pin) < 4 or len(pin) > 32:
+            raise HTTPException(status_code=400, detail="Şifre/PIN en az 4 karakter olmalıdır.")
+        existing["pin_hash"] = _hash_pin(pin)
+    if req.display_name is not None:
+        existing["display_name"] = req.display_name.strip()[:40] or uname
+    if req.enabled is not None:
+        existing["enabled"] = bool(req.enabled)
+    existing["username"] = uname
+    _save_users(users)
+    return {"ok": True, "user": {k: v for k, v in existing.items() if k != "pin_hash"}}
+
+
+@app.delete("/api/admin/users/{target_id}")
+async def api_admin_delete_user(target_id: str, request: Request):
+    _require_admin(request)
+    clean_id = str(target_id or "").strip().lower()
+    if clean_id in ("", "owner", "admin"):
+        raise HTTPException(status_code=400, detail="Admin (Sahip) hesabı silinemez.")
+    users = [u for u in _load_users() if u.get("id") != clean_id]
+    _save_users(users)
+    if _SAFE_ACTOR_ID_RE.match(clean_id):
+        target_dir = (USERS_DATA_DIR / clean_id).resolve()
+        if USERS_DATA_DIR.resolve() in target_dir.parents and target_dir.exists():
+            shutil.rmtree(target_dir, ignore_errors=True)
+    return {"ok": True}
+
+
+@app.get("/api/admin/users/{target_id}/sessions")
+async def api_admin_list_user_sessions(target_id: str, request: Request):
+    _require_admin(request)
+    clean_id = str(target_id or "").strip().lower()
+    if clean_id == "owner":
+        sessions = load_json(SESSIONS_PATH, [])
+    else:
+        sessions = load_json(_actor_sessions_path({"id": clean_id}), [])
+    return {"target_id": clean_id, "sessions": sessions if isinstance(sessions, list) else []}
+
+
+@app.delete("/api/admin/users/{target_id}/sessions/{session_id}")
+async def api_admin_delete_user_session(target_id: str, session_id: str, request: Request):
+    _require_admin(request)
+    clean_id = str(target_id or "").strip().lower()
+    s_path = SESSIONS_PATH if clean_id == "owner" else _actor_sessions_path({"id": clean_id})
+    sessions = load_json(s_path, [])
+    if not isinstance(sessions, list):
+        sessions = []
+    if session_id == "__all__":
+        sessions = []
+    else:
+        sessions = [s for s in sessions if s.get("id") != session_id]
+    save_json(s_path, sessions)
+    return {"ok": True, "remaining": len(sessions)}
 
 
 @app.get("/api/status")
@@ -2934,8 +3672,10 @@ async def api_models():
 
 
 @app.get("/api/config")
-async def api_get_config():
-    return load_json(CONFIG_PATH, {})
+async def api_get_config(request: Request):
+    cfg = load_json(CONFIG_PATH, {})
+    actor = _resolve_request_actor(request, cfg)
+    return _sanitize_config_for_client(cfg, actor.get("role") == "admin")
 
 
 @app.put("/api/config")
@@ -2945,7 +3685,7 @@ async def api_put_config(req: ConfigUpdateRequest):
     if req.idle_timeout_minutes is not None:
         cfg["idle_timeout_minutes"] = _clamp(req.idle_timeout_minutes, 1.0, 180.0)
     if req.default_model_id is not None:
-        cfg["default_model_id"] = req.default_model_id
+        cfg["default_model_id"] = _normalize_model_id(req.default_model_id)
     if req.active_lora_id is not None:
         cfg["active_lora_id"] = req.active_lora_id
     if req.lora_scale is not None:
@@ -3009,9 +3749,11 @@ async def api_cancel_download():
 
 
 @app.post("/api/chat/stop")
-async def api_stop_chat():
-    engine.stop_event.set()
-    return {"ok": True}
+async def api_stop_chat(request: Request, req: Optional[StopChatRequest] = Body(default=None)):
+    actor = _resolve_request_actor(request)
+    sid = req.session_id if req else None
+    stopped = engine.stop_streams(actor_id=actor.get("id"), session_id=sid)
+    return {"ok": True, "stopped": stopped}
 
 
 @app.post("/api/files/upload")
@@ -3168,12 +3910,13 @@ async def api_chat(req: ChatRequest, request: Request):
     is_local_req = _is_local_request(request)
     if not req.messages:
         raise HTTPException(status_code=400, detail="Mesaj listesi boş olamaz.")
-    if engine.state == "generating":
-        raise HTTPException(status_code=409, detail="Aktif başka bir yanıt üretiliyor.")
+    if engine.active_generations >= MAX_CONCURRENT_REQUESTS:
+        raise HTTPException(status_code=429, detail="Şu an maksimum 3 eşzamanlı istek işleniyor. Lütfen birkaç saniye bekleyin.")
 
     cfg = load_json(CONFIG_PATH, {})
+    actor = _resolve_request_actor(request, cfg)
     gen_cfg = cfg.get("generation", {})
-    model_id = req.model_id or cfg.get("default_model_id", "gemma-4-e2b-qat-mtp")
+    model_id = _normalize_model_id(req.model_id or cfg.get("default_model_id", "gemma-4-e2b-qat-mtp"))
     lora_id = req.lora_id if req.lora_id is not None else cfg.get("active_lora_id", "")
     lora_scale = float(req.lora_scale if req.lora_scale is not None else cfg.get("lora_scale", 1.0))
 
@@ -3191,10 +3934,18 @@ async def api_chat(req: ChatRequest, request: Request):
     do_library_rag = bool(req.use_library)
 
     async def event_stream():
-        engine.stop_event.clear()
+        stream_id: Optional[str] = None
+        stop_ev: Optional[threading.Event] = None
         web_result: Optional[Dict[str, Any]] = None
         rag_hits: List[Dict[str, Any]] = []
         try:
+            try:
+                stream_id, stop_ev = engine.register_stream(str(actor.get("id") or "owner"), req.session_id or "")
+            except RuntimeError:
+                yield _format_sse({"type": "error", "detail": "Şu an maksimum 3 eşzamanlı istek işleniyor. Lütfen bekleyin."})
+                return
+
+            engine.stop_event.clear()
             reg = load_json(REGISTRY_PATH, {"models": []})
             m_meta = next((m for m in reg.get("models", []) if m["id"] == model_id), {})
 
@@ -3258,7 +4009,7 @@ async def api_chat(req: ChatRequest, request: Request):
             # Persistent Cross-Chat Memory: auto-capture explicit "bunu hatırla:" commands
             mem_capture = _extract_memory_command(last_user_msg)
             if mem_capture:
-                mems = _load_memories()
+                mems = _load_memories(actor)
                 if not any(it.get("text", "").lower() == mem_capture.lower() for it in mems):
                     new_mem = {
                         "id": uuid.uuid4().hex[:10],
@@ -3267,7 +4018,7 @@ async def api_chat(req: ChatRequest, request: Request):
                         "source": "chat",
                     }
                     mems.insert(0, new_mem)
-                    _save_memories(mems)
+                    _save_memories(mems, actor)
                     yield _format_sse({"type": "memory_saved", "item": new_mem})
 
             # Notes & Todo Plugin auto-capture ("not al: ..." / "yapılacak ekle: ...")
@@ -3411,24 +4162,28 @@ async def api_chat(req: ChatRequest, request: Request):
             if engine.active_profile == "low_vram" and desired_ctx > 16384:
                 desired_ctx = 8192
 
-            with engine.lock:
-                desired_backend = "gguf_turbo" if engine._should_use_gguf(m_meta, lora_id or "") else "pytorch_bnb"
-                backend_alive = (
-                    (engine.llama_proc is not None and engine.llama_proc.poll() is None)
-                    if desired_backend == "gguf_turbo"
-                    else (engine.model is not None)
-                )
-                need_load = (
-                    not backend_alive
-                    or engine.engine_backend != desired_backend
-                    or engine.active_model_id != model_id
-                    or engine.active_lora_id != (lora_id or "")
-                    or abs(engine.applied_lora_scale - lora_scale) > 1e-3
-                    or (desired_backend == "gguf_turbo" and engine.active_context_length != desired_ctx)
-                )
-            if need_load:
-                yield _format_sse({"type": "status", "stage": "loading", "message": f"{model_id} GPU'ya yükleniyor..."})
-                await asyncio.to_thread(engine.load_model, model_id, lora_id or "", lora_scale)
+            async with _MODEL_LOAD_ASYNC_LOCK:
+                wait_dl = time.time() + 95.0
+                while engine.state == "loading" and time.time() < wait_dl:
+                    await asyncio.sleep(0.25)
+                with engine.lock:
+                    desired_backend = "gguf_turbo" if engine._should_use_gguf(m_meta, lora_id or "") else "pytorch_bnb"
+                    backend_alive = (
+                        (engine.llama_proc is not None and engine.llama_proc.poll() is None)
+                        if desired_backend == "gguf_turbo"
+                        else (engine.model is not None)
+                    )
+                    need_load = (
+                        not backend_alive
+                        or engine.engine_backend != desired_backend
+                        or engine.active_model_id != model_id
+                        or engine.active_lora_id != (lora_id or "")
+                        or abs(engine.applied_lora_scale - lora_scale) > 1e-3
+                        or (desired_backend == "gguf_turbo" and engine.active_context_length != desired_ctx)
+                    )
+                if need_load:
+                    yield _format_sse({"type": "status", "stage": "loading", "message": f"{model_id} GPU'ya yükleniyor..."})
+                    await asyncio.to_thread(engine.load_model, model_id, lora_id or "", lora_scale)
 
             with engine.lock:
                 engine.state = "generating"
@@ -3614,7 +4369,7 @@ async def api_chat(req: ChatRequest, request: Request):
                         "(NOT: MCP dosya araçları YALNIZCA yerel diskteki dosyalar içindir; internet araştırması için ASLA MCP search_files kullanma.)"
                     ).strip()
 
-            saved_mems = [] if req.ignore_memory else _load_memories()
+            saved_mems = [] if req.ignore_memory else _load_memories(actor)
             if saved_mems:
                 mem_lines = "\n".join(f"- {it.get('text', '').strip()}" for it in saved_mems[:16] if it.get("text"))
                 if mem_lines:
@@ -3624,6 +4379,19 @@ async def api_chat(req: ChatRequest, request: Request):
                         f"{mem_lines}\n"
                         "[/KALICI HAFIZA]"
                     ).strip()
+            compact_summary_blocks = [
+                m.content.strip()
+                for m in req.messages
+                if getattr(m, "is_compact_summary", False) and (m.content or "").strip()
+            ]
+            if compact_summary_blocks:
+                joined_summary = "\n\n".join(compact_summary_blocks[-2:])
+                eff_system_prompt = (
+                    f"{eff_system_prompt}\n\n"
+                    "[SIKIŞTIRILMIŞ ÖNCEKİ SOHBET BAĞLAMI]\n"
+                    f"{joined_summary}\n"
+                    "[/SIKIŞTIRILMIŞ ÖNCEKİ SOHBET BAĞLAMI]"
+                ).strip()
             if not req.ignore_memory:
                 fb_hint = _get_recent_rating_feedback_hint()
                 if fb_hint:
@@ -3673,6 +4441,8 @@ async def api_chat(req: ChatRequest, request: Request):
 
             prepared_turns: List[Dict[str, Any]] = []
             for idx_m, m in enumerate(req.messages):
+                if getattr(m, "is_compact_summary", False):
+                    continue
                 role = "assistant" if m.role == "assistant" else "user"
                 atts = m.attachments or []
                 web_prefix = ""
@@ -3793,7 +4563,7 @@ async def api_chat(req: ChatRequest, request: Request):
                     elif isinstance(last_c, list) and last_c and last_c[-1].get("type") == "text":
                         last_c[-1]["text"] = str(last_c[-1].get("text", "")) + tr_think_cue
 
-                # Dynamic Context Window Guard (8K / 16K / 32K, preserves system prompt + newest turns)
+                # Dynamic Context Window Guard & Auto-Compaction (8K / 16K / 32K, preserves newest turns + summarizes old ones)
                 ctx_limit = int(engine.active_context_length or desired_ctx or 32768)
                 max_prompt_tokens = int(ctx_limit * 0.78)
 
@@ -3811,6 +4581,38 @@ async def api_chat(req: ChatRequest, request: Request):
 
                 est_ctx_tokens = sum(_est_msg_tokens(m_o) for m_o in openai_msgs)
                 sys_offset = 1 if (openai_msgs and openai_msgs[0].get("role") == "system") else 0
+                if est_ctx_tokens > max_prompt_tokens and len(openai_msgs) > sys_offset + 4:
+                    before_est = est_ctx_tokens
+                    before_pct = min(100, max(1, round((before_est / max(1024, ctx_limit)) * 100)))
+                    keep_tail_n = 4
+                    older_turns = openai_msgs[sys_offset:-keep_tail_n]
+                    kept_tail = openai_msgs[-keep_tail_n:]
+                    while kept_tail and kept_tail[0].get("role") == "assistant" and len(kept_tail) > 1:
+                        older_turns.append(kept_tail.pop(0))
+                    auto_digest = await asyncio.to_thread(_summarize_old_turns_fast, older_turns, True)
+                    if auto_digest:
+                        if sys_offset == 1:
+                            openai_msgs[0]["content"] = (
+                                f"{openai_msgs[0]['content']}\n\n"
+                                f"[OTOMATİK SIKIŞTIRILMIŞ ÖNCEKİ SOHBET ÖZETİ]\n{auto_digest}\n[/OTOMATİK SIKIŞTIRILMIŞ ÖNCEKİ SOHBET ÖZETİ]"
+                            ).strip()
+                            openai_msgs = [openai_msgs[0]] + kept_tail
+                        else:
+                            openai_msgs = [{"role": "system", "content": f"[OTOMATİK SIKIŞTIRILMIŞ ÖNCEKİ SOHBET ÖZETİ]\n{auto_digest}"}] + kept_tail
+                            sys_offset = 1
+                        est_ctx_tokens = sum(_est_msg_tokens(m_o) for m_o in openai_msgs)
+                        after_pct = min(100, max(1, round((est_ctx_tokens / max(1024, ctx_limit)) * 100)))
+                        yield _format_sse({
+                            "type": "context_compacted",
+                            "auto": True,
+                            "summarized_count": len(older_turns),
+                            "before_tokens": before_est,
+                            "after_tokens": est_ctx_tokens,
+                            "before_pct": before_pct,
+                            "after_pct": after_pct,
+                            "context_limit": ctx_limit,
+                        })
+
                 while est_ctx_tokens > max_prompt_tokens and len(openai_msgs) > sys_offset + 2:
                     removed = openai_msgs.pop(sys_offset)
                     est_ctx_tokens -= _est_msg_tokens(removed)
@@ -3847,7 +4649,7 @@ async def api_chat(req: ChatRequest, request: Request):
                             err_body = (await lresp.aread()).decode("utf-8", errors="replace")[:400]
                             raise RuntimeError(f"llama-server HTTP {lresp.status_code}: {err_body}")
                         async for raw_line in lresp.aiter_lines():
-                            if engine.stop_event.is_set():
+                            if (stop_ev is not None and stop_ev.is_set()) or engine.stop_event.is_set():
                                 break
                             if not raw_line or not raw_line.startswith("data: "):
                                 continue
@@ -3924,7 +4726,7 @@ async def api_chat(req: ChatRequest, request: Request):
                     "type": "completed",
                     "thinking": "".join(full_thinking).strip(),
                     "answer": final_answer_str,
-                    "stopped": engine.stop_event.is_set(),
+                    "stopped": bool((stop_ev is not None and stop_ev.is_set()) or engine.stop_event.is_set()),
                     "stats": {
                         "elapsed_sec": round(elapsed, 2),
                         "tokens": pred_n,
@@ -4022,7 +4824,7 @@ async def api_chat(req: ChatRequest, request: Request):
 
             class StopEventCriteria(StoppingCriteria):
                 def __call__(self, input_ids, scores, **kwargs) -> bool:
-                    return engine.stop_event.is_set()
+                    return bool((stop_ev is not None and stop_ev.is_set()) or engine.stop_event.is_set())
 
             streamer = TextIteratorStreamer(
                 processor.tokenizer,
@@ -4132,16 +4934,19 @@ async def api_chat(req: ChatRequest, request: Request):
             logger.exception("SSE chat error")
             yield _format_sse({"type": "error", "detail": str(exc)})
         finally:
-            with engine.lock:
-                alive = (
-                    (engine.engine_backend == "gguf_turbo" and engine.llama_proc is not None and engine.llama_proc.poll() is None)
-                    or (engine.engine_backend == "pytorch_bnb" and engine.model is not None)
-                )
-                if alive:
-                    engine.state = "ready"
-                    engine.touch()
-                else:
-                    engine.state = "unloaded"
+            if stream_id:
+                engine.unregister_stream(stream_id)
+            else:
+                with engine.lock:
+                    alive = (
+                        (engine.engine_backend == "gguf_turbo" and engine.llama_proc is not None and engine.llama_proc.poll() is None)
+                        or (engine.engine_backend == "pytorch_bnb" and engine.model is not None)
+                    )
+                    if alive:
+                        engine.state = "ready"
+                        engine.touch()
+                    else:
+                        engine.state = "unloaded"
 
     return StreamingResponse(
         event_stream(),
@@ -4155,17 +4960,19 @@ async def api_chat(req: ChatRequest, request: Request):
 
 
 @app.get("/api/sessions")
-async def api_list_sessions():
-    sessions = load_json(SESSIONS_PATH, [])
-    return {"sessions": sessions}
+async def api_list_sessions(request: Request):
+    actor = _resolve_request_actor(request)
+    sessions = load_json(_actor_sessions_path(actor), [])
+    return {"sessions": sessions if isinstance(sessions, list) else []}
 
 
 @app.get("/api/sessions/search")
-async def api_search_sessions(q: str = ""):
+async def api_search_sessions(request: Request, q: str = ""):
     needle = (q or "").strip().lower()
     if len(needle) < 2:
         return {"matches": []}
-    sessions = load_json(SESSIONS_PATH, [])
+    actor = _resolve_request_actor(request)
+    sessions = load_json(_actor_sessions_path(actor), [])
     matches: List[Dict[str, Any]] = []
     for s in sessions:
         title = str(s.get("title") or "Sohbet")
@@ -4191,13 +4998,35 @@ async def api_search_sessions(q: str = ""):
     return {"matches": matches}
 
 
+@app.post("/api/sessions/compact")
+async def api_compact_session(req: CompactSessionRequest, request: Request):
+    actor = _resolve_request_actor(request)
+    cfg = load_json(CONFIG_PATH, {})
+    ctx_limit = int(engine.active_context_length or cfg.get("context_length") or 32768)
+    s_path = _actor_sessions_path(actor)
+    sessions = load_json(s_path, [])
+    if not isinstance(sessions, list):
+        sessions = []
+
+    target_session = next((s for s in sessions if req.session_id and s.get("id") == req.session_id), None)
+    src_messages = req.messages if req.messages is not None else (target_session.get("messages", []) if target_session else [])
+    res = await asyncio.to_thread(_compact_messages_list, src_messages, req.keep_last, ctx_limit, True)
+
+    if res.get("compacted") and target_session is not None:
+        target_session["messages"] = res["messages"]
+        target_session["updated_at"] = datetime.now().isoformat(timespec="seconds")
+        save_json(s_path, sessions)
+    return {"ok": True, **res}
+
+
 @app.get("/api/sessions/export-all")
-async def api_export_all_data():
+async def api_export_all_data(request: Request):
+    _require_admin(request)
     bundle = {
         "app": "YerelAI Studio",
         "exported_at": datetime.now().isoformat(timespec="seconds"),
         "sessions": load_json(SESSIONS_PATH, []),
-        "memories": _load_memories(),
+        "memories": _load_memories({"id": "owner"}),
         "notes": ext_mgr.list_notes(),
         "projects": ext_mgr.list_projects(),
     }
@@ -4211,8 +5040,9 @@ async def api_export_all_data():
 
 
 @app.get("/api/sessions/{session_id}")
-async def api_get_session(session_id: str):
-    sessions = load_json(SESSIONS_PATH, [])
+async def api_get_session(session_id: str, request: Request):
+    actor = _resolve_request_actor(request)
+    sessions = load_json(_actor_sessions_path(actor), [])
     found = next((s for s in sessions if s.get("id") == session_id), None)
     if found is None:
         raise HTTPException(status_code=404, detail="Sohbet bulunamadı.")
@@ -4220,8 +5050,12 @@ async def api_get_session(session_id: str):
 
 
 @app.post("/api/sessions")
-async def api_save_session(req: SaveSessionRequest):
-    sessions = load_json(SESSIONS_PATH, [])
+async def api_save_session(req: SaveSessionRequest, request: Request):
+    actor = _resolve_request_actor(request)
+    s_path = _actor_sessions_path(actor)
+    sessions = load_json(s_path, [])
+    if not isinstance(sessions, list):
+        sessions = []
     now_iso = req.updated_at or datetime.now().isoformat(timespec="seconds")
     existing = next((s for s in sessions if s.get("id") == req.id), {})
     updated = {
@@ -4235,29 +5069,33 @@ async def api_save_session(req: SaveSessionRequest):
     sessions = [s for s in sessions if s.get("id") != req.id]
     sessions.insert(0, updated)
     sessions = sessions[:50]
-    save_json(SESSIONS_PATH, sessions)
+    save_json(s_path, sessions)
     return {"ok": True, "session": updated}
 
 
 @app.delete("/api/sessions/{session_id}")
-async def api_delete_session(session_id: str):
-    sessions = load_json(SESSIONS_PATH, [])
+async def api_delete_session(session_id: str, request: Request):
+    actor = _resolve_request_actor(request)
+    s_path = _actor_sessions_path(actor)
+    sessions = load_json(s_path, [])
     sessions = [s for s in sessions if s.get("id") != session_id]
-    save_json(SESSIONS_PATH, sessions)
+    save_json(s_path, sessions)
     return {"ok": True}
 
 
 @app.get("/api/memories")
-async def api_list_memories():
-    return {"memories": _load_memories()}
+async def api_list_memories(request: Request):
+    actor = _resolve_request_actor(request)
+    return {"memories": _load_memories(actor)}
 
 
 @app.post("/api/memories")
-async def api_add_memory(req: MemoryCreateRequest):
+async def api_add_memory(req: MemoryCreateRequest, request: Request):
+    actor = _resolve_request_actor(request)
     txt = re.sub(r"\s+", " ", (req.text or "")).strip()[:280]
     if len(txt) < 2:
         raise HTTPException(status_code=400, detail="Hafıza metni boş olamaz.")
-    items = _load_memories()
+    items = _load_memories(actor)
     if any(it.get("text", "").lower() == txt.lower() for it in items):
         return {"ok": True, "memories": items, "duplicate": True}
     item = {
@@ -4267,14 +5105,15 @@ async def api_add_memory(req: MemoryCreateRequest):
         "source": "manual",
     }
     items.insert(0, item)
-    _save_memories(items)
+    _save_memories(items, actor)
     return {"ok": True, "item": item, "memories": items}
 
 
 @app.delete("/api/memories/{mem_id}")
-async def api_delete_memory(mem_id: str):
-    items = [it for it in _load_memories() if it.get("id") != mem_id]
-    _save_memories(items)
+async def api_delete_memory(mem_id: str, request: Request):
+    actor = _resolve_request_actor(request)
+    items = [it for it in _load_memories(actor) if it.get("id") != mem_id]
+    _save_memories(items, actor)
     return {"ok": True, "memories": items}
 
 

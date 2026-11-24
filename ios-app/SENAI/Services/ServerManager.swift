@@ -11,7 +11,7 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
     @AppStorage("senai_tts_voice") var ttsVoice: String = "tr-TR-AhmetNeural"
     @AppStorage("senai_web_search") var webSearchEnabled: Bool = false
     @AppStorage("senai_use_library") var useLibraryEnabled: Bool = false
-    @AppStorage("senai_model_id") var selectedModelId: String = "gemma-4-e4b-4bit"
+    @AppStorage("senai_model_id") var selectedModelId: String = "gemma-4-e4b-qat-mtp"
     @AppStorage("senai_thinking") var thinkingEffortRaw: String = ThinkingEffort.off.rawValue
 
     // Live Connection & Auth State
@@ -36,9 +36,18 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
     @Published var speakingMessageId: String? = nil
 
     let availableModels: [ModelOption] = [
-        ModelOption(id: "gemma-4-e2b-4bit", name: "Gemma 4 E2B", subtitle: "Hızlı yanıt"),
-        ModelOption(id: "gemma-4-e4b-4bit", name: "Gemma 4 E4B", subtitle: "Derin analiz"),
+        ModelOption(id: "gemma-4-e2b-qat-mtp", name: "Gemma 4 E2B", subtitle: "QAT · MTP Hızlı yanıt"),
+        ModelOption(id: "gemma-4-e4b-qat-mtp", name: "Gemma 4 E4B", subtitle: "QAT · MTP Derin analiz"),
     ]
+
+    override init() {
+        super.init()
+        if selectedModelId == "gemma-4-e2b-4bit" {
+            selectedModelId = "gemma-4-e2b-qat-mtp"
+        } else if selectedModelId == "gemma-4-e4b-4bit" {
+            selectedModelId = "gemma-4-e4b-qat-mtp"
+        }
+    }
 
     var thinkingEffort: ThinkingEffort {
         get { ThinkingEffort(rawValue: thinkingEffortRaw) ?? .off }
@@ -365,6 +374,7 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
         streamTask?.cancel()
         streamTask = nil
         if isGenerating {
+            let sid = activeSessionId
             isGenerating = false
             isSearchingWeb = false
             searchingSitesCount = 0
@@ -377,6 +387,8 @@ final class ServerManager: NSObject, ObservableObject, AVAudioPlayerDelegate {
                 guard let url = URL(string: "\(activeBaseURL)/api/chat/stop") else { return }
                 var req = URLRequest(url: url)
                 req.httpMethod = "POST"
+                req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                req.httpBody = try? JSONSerialization.data(withJSONObject: ["session_id": sid])
                 _ = try? await urlSession.data(for: req)
             }
         }

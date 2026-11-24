@@ -17,9 +17,9 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="vendor/katex.min.css" />
-  <link rel="stylesheet" href="styles.css?v=19.0" />
-  <link rel="stylesheet" href="desktop.css?v=19.0" />
-  <link rel="stylesheet" href="mobile.css?v=19.0" />
+  <link rel="stylesheet" href="styles.css?v=20.0" />
+  <link rel="stylesheet" href="desktop.css?v=20.0" />
+  <link rel="stylesheet" href="mobile.css?v=20.0" />
   <script defer src="vendor/chart.umd.min.js"></script>
   <script defer src="vendor/katex.min.js"></script>
   <script defer src="vendor/mermaid.min.js"></script>
@@ -114,24 +114,12 @@
         <div id="ws-files-list" class="ws-files-list desktop-only-feature" hidden></div>
 
         <div class="nav-section-label">Sohbet Geçmişi</div>
+        <div class="sidebar-search-mini">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input id="session-search" type="search" placeholder="Sohbetlerde ara..." aria-label="Sohbetlerde ara" />
+          <button type="button" id="btn-open-cmd" class="search-kbd mono" title="Komut Paletini Aç (Ctrl K)">Ctrl K</button>
+        </div>
         <div id="session-list" class="session-list"></div>
-
-        <div id="session-files-label" class="nav-section-label is-files-empty">Aktif Dosyalar ve Tablolar</div>
-        <div id="session-files-list" class="session-files-list is-files-empty">
-          <div class="muted-empty">Henüz dosya eklenmedi</div>
-        </div>
-
-        <div class="lib-head-row mobile-hide">
-          <span class="nav-section-label">Bilgi Kütüphanesi (RAG)</span>
-          <input type="file" id="library-file-input" accept=".pdf,.docx,.txt,.md,.csv" hidden />
-          <button type="button" id="btn-library-upload" class="lib-upload-btn" title="PDF / Word / TXT Kütüphaneye Ekle">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            <span>Ekle</span>
-          </button>
-        </div>
-        <div id="library-docs-list" class="session-files-list mobile-hide">
-          <div class="muted-empty">Henüz belge indekslenmedi</div>
-        </div>
       </div>
 
       <!-- Sidebar Footer: Live Dual-Telemetry GPU Card (Desktop/Web) -->
@@ -222,24 +210,7 @@
           <button type="button" id="btn-collapse-sidebar" class="icon-btn desktop-only" title="Kenar Çubuğunu Daralt / Aç" aria-label="Kenar Çubuğunu Daralt">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
           </button>
-          <span id="page-breadcrumb" class="page-breadcrumb">Yeni Sohbet</span>
-          <div id="chat-export-actions" class="chat-export-actions" hidden>
-            <button type="button" id="btn-export-md" class="icon-btn xs" title="Sohbeti Markdown (.md) İndir" aria-label="Markdown İndir">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            </button>
-          </div>
-        </div>
-
-        <div class="top-center">
-          <div class="search-pill" id="top-search-pill">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input id="session-search" type="search" placeholder="Sohbetlerde ara veya komut..." aria-label="Sohbetlerde ara" />
-            <button type="button" id="btn-open-cmd" class="search-kbd mono" title="Komut Paletini Aç (Ctrl K)">Ctrl K</button>
-          </div>
-        </div>
-
-        <div class="top-right">
-          <div class="active-engine-badge" id="active-engine-badge" title="Aktif Model ve Donanım Profili">
+          <div class="active-engine-badge top-brand-model" id="active-engine-badge" title="Aktif Model ve Donanım Profili">
             <span id="top-dl-ring-wrap" class="top-dl-ring-wrap" hidden title="Aktif Model İndirme İlerlemesi">
               <svg class="top-dl-svg" width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
                 <circle class="ring-bg" cx="9" cy="9" r="7" />
@@ -247,10 +218,49 @@
               </svg>
               <span id="top-dl-pct" class="mono">%0</span>
             </span>
-            <span id="top-profile-chip" class="lang-chip">Turbo</span>
             <span id="top-model-pill">Gemma 4 E2B</span>
-            <svg class="mobile-model-chev mobile-only" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            <span id="top-profile-chip" class="lang-chip">Turbo</span>
+            <svg class="mobile-model-chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
           </div>
+          <span id="page-breadcrumb" class="page-breadcrumb">Yeni Sohbet</span>
+        </div>
+
+        <div class="top-right">
+          <!-- Temporary Chat Toggle (Visible when chat is empty) -->
+          <button type="button" id="btn-temp-chat" class="icon-btn top-temp-btn" title="Geçici Sohbet (Geçmişe Kaydedilmez)" aria-label="Geçici Sohbet" aria-pressed="false">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="3.2 3.2"><circle cx="12" cy="12" r="9"/></svg>
+          </button>
+
+          <!-- ChatGPT-Style Active Chat Actions: ••• | Share ↑ | Outputs/Summary ⊶ -->
+          <div id="chat-export-actions" class="chat-top-actions" hidden>
+            <button type="button" id="btn-chat-more" class="icon-btn" title="Sohbet Seçenekleri" aria-label="Sohbet Seçenekleri">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>
+            </button>
+            <button type="button" id="btn-export-md" class="icon-btn" title="Sohbeti Dışa Aktar (.md)" aria-label="Dışa Aktar">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+            </button>
+            <div class="outputs-menu-wrap" id="chat-outputs-wrap">
+              <button type="button" id="btn-chat-outputs" class="icon-btn outputs-toggle-btn" title="Özet & Çıktılar" aria-label="Özet ve Çıktılar" aria-expanded="false">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="8" r="2.2"/><line x1="12" y1="8" x2="20" y2="8"/><circle cx="6" cy="16" r="2.2"/><line x1="12" y1="16" x2="20" y2="16"/></svg>
+                <span id="chat-outputs-count" class="outputs-count-dot mono" hidden>0</span>
+              </button>
+              <div id="chat-outputs-popover" class="chat-outputs-popover" hidden role="dialog" aria-label="Sohbet Çıktıları ve Dosyalar">
+                <div class="cop-head">
+                  <strong>Çıktılar &amp; Dosyalar</strong>
+                  <span id="cop-count-label" class="mono">0 öğe</span>
+                </div>
+                <div id="chat-outputs-list" class="cop-list">
+                  <div class="muted-empty">Bu sohbette henüz dosya veya çıktı yok</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Account / Actor Chip (Visible for remote users or to switch account) -->
+          <button type="button" id="btn-actor-chip" class="actor-chip-btn" hidden title="Hesap Durumu / Giriş Yap">
+            <span id="actor-chip-dot" class="actor-chip-dot"></span>
+            <span id="actor-chip-name">Misafir</span>
+          </button>
 
           <div class="notif-wrapper">
             <button type="button" id="btn-notif-bell" class="icon-btn notif-bell-btn" aria-label="Bildirim ve Colab Merkezi" title="Bildirim ve Colab Merkezi">
@@ -304,9 +314,8 @@
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           </button>
 
-          <button type="button" id="btn-toggle-inspector" class="top-drawer-pill" title="Motor ve Ayar Çekmecesi" aria-label="Ayarlar" aria-expanded="false">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
-            <span>Ayarlar</span>
+          <button type="button" id="btn-toggle-inspector" class="icon-btn" title="Ayarlar (Ctrl ,)" aria-label="Ayarlar" aria-expanded="false">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
           </button>
         </div>
       </header>
@@ -324,12 +333,10 @@
           </div>
 
           <div class="chat-scroll" id="chat-scroll">
-            <!-- Welcome Hero (Aether Prism Identity) -->
+            <!-- Unified ChatGPT/Claude Calm Empty-State Hero -->
             <section id="welcome-hero" class="home-hero">
               <div class="hero-orb-stage" aria-hidden="true">
-                <span class="hero-halo"></span>
-                <span class="hero-orbit-ring"></span>
-                <svg class="hero-crystal-svg" width="76" height="76" viewBox="0 0 80 80" fill="none">
+                <svg class="hero-crystal-svg" width="44" height="44" viewBox="0 0 80 80" fill="none">
                   <defs>
                     <linearGradient id="hcTopL" x1="16" y1="8" x2="42" y2="50" gradientUnits="userSpaceOnUse">
                       <stop offset="0%" stop-color="#67e8f9"/>
@@ -350,71 +357,20 @@
                   <polygon points="66,48 40,74 40,56" fill="#4338ca" opacity="0.9"/>
                   <polygon points="40,6 40,56 26,44" fill="#ffffff" opacity="0.22"/>
                   <polygon points="40,6 66,48 40,74 14,48" stroke="rgba(255,255,255,0.45)" stroke-width="1.3" stroke-linejoin="round"/>
-                  <line x1="40" y1="6" x2="40" y2="74" stroke="rgba(255,255,255,0.38)" stroke-width="1.1"/>
-                  <line x1="14" y1="48" x2="40" y2="56" stroke="rgba(255,255,255,0.34)" stroke-width="1.1"/>
-                  <line x1="66" y1="48" x2="40" y2="56" stroke="rgba(255,255,255,0.28)" stroke-width="1.1"/>
                 </svg>
               </div>
-              <h1><span id="hero-greeting-lead">Bugün</span> <span class="hero-accent">birlikte ne çözelim?</span></h1>
-              <div class="hero-hw-chip mono" id="hero-hw-chip">
-                <span class="hw-dot" aria-hidden="true"></span>
-                <span id="hero-hw-text">RTX 4060 · 8.0 GB VRAM · GGUF Turbo</span>
-              </div>
-              <p>RTX GPU'nuzda GGUF Turbo hızında çalışan Gemma 4 ile sesli konuşun, Excel tablolarını analiz edin, kod yazın veya canlı web verilerine erişin.</p>
+              <h1 class="hero-main-title"><span id="hero-greeting-lead">Günaydın</span>, nasıl yardımcı olabilirim?</h1>
+              <span id="hero-hw-text" hidden>RTX 4060 · 8.0 GB VRAM · GGUF Turbo</span>
+            </section>
 
-              <div class="starter-grid">
-                <button type="button" class="starter-card" style="--i:0" data-action="excel">
-                  <span class="starter-ico emerald" aria-hidden="true">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/></svg>
-                  </span>
-                  <div class="starter-text">
-                    <div class="starter-head-row">
-                      <strong>Excel &amp; Tablo</strong>
-                      <span class="starter-tag mono">CSV / XLSX</span>
-                    </div>
-                    <span>Tabloları özetle, sayısal rapor ve indirilebilir Excel çıkar</span>
-                  </div>
-                </button>
-
-                <button type="button" class="starter-card" style="--i:1" data-action="voice">
-                  <span class="starter-ico accent" aria-hidden="true">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>
-                  </span>
-                  <div class="starter-text">
-                    <div class="starter-head-row">
-                      <strong>Sesli Sohbet</strong>
-                      <span class="starter-tag mono">16 kHz TR</span>
-                    </div>
-                    <span>Mikrofondan doğrudan konuş, Türkçe sesli yanıt al</span>
-                  </div>
-                </button>
-
-                <button type="button" class="starter-card" style="--i:2" data-action="code">
-                  <span class="starter-ico indigo" aria-hidden="true">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
-                  </span>
-                  <div class="starter-text">
-                    <div class="starter-head-row">
-                      <strong>Kod &amp; Hata Ayıkla</strong>
-                      <span class="starter-tag mono">Yüksek Akıl</span>
-                    </div>
-                    <span>Yüksek akıl yürütme ile Python, JS ve SQL geliştir</span>
-                  </div>
-                </button>
-
-                <button type="button" class="starter-card" style="--i:3" data-action="web">
-                  <span class="starter-ico sky" aria-hidden="true">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-                  </span>
-                  <div class="starter-text">
-                    <div class="starter-head-row">
-                      <strong>Canlı Web</strong>
-                      <span class="starter-tag mono">Canlı Veri</span>
-                    </div>
-                    <span>Gerçek zamanlı internet araması ve tahmin kartları</span>
-                  </div>
-                </button>
-              </div>
+            <!-- Temporary Chat Hero (Hidden unless Temporary Chat is active on empty chat) -->
+            <section id="temp-chat-hero" class="temp-chat-hero" hidden>
+              <h2>Geçici sohbet</h2>
+              <p>Bu sohbet geçmişe kaydedilmez ve eğitim verisi olarak kullanılmaz.</p>
+              <button type="button" id="btn-temp-personalize" class="temp-pers-trigger">
+                <span id="lbl-temp-personalize">Kişiselleştirilmiş</span>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
             </section>
 
             <!-- Messages Stream -->
@@ -428,6 +384,21 @@
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>
               <span>En Alta İn</span>
             </button>
+
+            <!-- Context Near-Full Optimization Banner (Appears smoothly at >= 80% context) -->
+            <div id="ctx-warn-banner" class="ctx-warn-banner" hidden role="status">
+              <div class="ctx-warn-left">
+                <svg class="ctx-ring-svg sm" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
+                  <circle class="ctx-ring-bg" cx="12" cy="12" r="9" />
+                  <circle class="ctx-ring-fg" id="ctx-warn-ring-fg" cx="12" cy="12" r="9" />
+                </svg>
+                <span id="ctx-warn-text">Bağlam dolmaya yaklaştı (%80) — hızı ve hafızayı korumak için sıkıştırın.</span>
+              </div>
+              <button type="button" id="btn-ctx-compact-now" class="ctx-compact-btn">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 4.8L18.5 9.5l-4.7 1.7L12 16l-1.8-4.8-4.7-1.7 4.7-1.7L12 3z"/></svg>
+                <span>Şimdi Sıkıştır</span>
+              </button>
+            </div>
 
             <div class="composer-card" id="composer-card">
               <!-- Compact Slash (/) Quick Command & Skills Popover -->
@@ -444,68 +415,86 @@
 
               <div id="pending-attachments" class="pending-attachments" hidden></div>
 
+              <!-- Active Tool Pills Shelf INSIDE Top of Composer Card (Clean Borderless Soft Surface) -->
+              <div id="composer-pills-shelf" class="composer-pills-shelf" hidden>
+                <button type="button" id="chip-web-active" class="active-tool-chip sky" hidden title="Web Araştırmasını Kapat">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                  <span>Araştır</span>
+                  <span class="atc-x">×</span>
+                </button>
+                <button type="button" id="chip-rag-active" class="active-tool-chip indigo" hidden title="Kütüphaneyi Kapat">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                  <span>Kütüphane</span>
+                  <span class="atc-x">×</span>
+                </button>
+                <div id="active-mode-strip" class="active-mode-strip" hidden>
+                  <span class="active-mode-pill" id="active-mode-pill">
+                    <span class="active-mode-dot" aria-hidden="true"></span>
+                    <span id="active-mode-label">Mod</span>
+                    <button type="button" id="btn-clear-mode" class="active-mode-clear" title="Varsayılan Genel Asistana Dön" aria-label="Modu Kapat">×</button>
+                  </span>
+                </div>
+              </div>
+
               <textarea
                 id="prompt-input"
                 rows="1"
-                placeholder="Bir soru sorun, dosya bırakın veya sesle konuşun..."
+                placeholder="SEN.AI'ye bir şey sor, dosya bırak veya / yaz..."
                 aria-label="Mesajınız"
               ></textarea>
 
               <div class="composer-footer">
                 <div class="composer-left">
                   <input type="file" id="file-input" multiple hidden accept=".xlsx,.xls,.csv,.pdf,.docx,.txt,.md,.py,.js,.ts,.jsx,.tsx,.html,.css,.json,.sql,.ps1,.bat,.png,.jpg,.jpeg,.webp,.bmp,.wav,.mp3,.ogg,.m4a" />
+                  <input type="file" id="library-file-input" accept=".pdf,.docx,.txt,.md,.csv" hidden />
 
-                  <!-- Unified Claude/ChatGPT Style "+" Add & Tools Popover -->
+                  <!-- Unified Claude/ChatGPT Style "+" Add & Tools Popover (With Embedded RAG Library Manager!) -->
                   <div class="tools-menu-wrap" id="composer-tools-wrap">
                     <button type="button" id="btn-composer-tools" class="composer-circle-btn" title="Dosya Ekle ve Araçlar" aria-label="Ekle ve Araçlar" aria-haspopup="menu" aria-expanded="false">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                     </button>
                     <div class="composer-tools-menu" id="composer-tools-menu" hidden role="menu">
                       <button type="button" id="btn-attach" class="ctm-item" role="menuitem">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
                         <span>Dosya, Excel veya Görsel Ekle</span>
                       </button>
                       <button type="button" id="btn-desktop-shot" class="ctm-item btn-desktop-shot" role="menuitem">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
                         <span>Uygulama veya Ekran Yakala</span>
                       </button>
                       <div class="ctm-sep" aria-hidden="true"></div>
                       <button type="button" id="btn-web-toggle" class="ctm-item ctm-toggle" role="menuitemcheckbox" aria-pressed="false">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
                         <span>Canlı Web Araştırması</span>
                         <span class="ctm-state mono" id="ctm-web-state">Kapalı</span>
                       </button>
                       <button type="button" id="btn-rag-toggle" class="ctm-item ctm-toggle" role="menuitemcheckbox" aria-pressed="false">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
                         <span>Bilgi Kütüphanesi (RAG)</span>
                         <span class="ctm-state mono" id="ctm-rag-state">Kapalı</span>
                       </button>
+                      <div class="ctm-rag-section">
+                        <div class="ctm-rag-head">
+                          <span class="ctm-rag-label">İndeksli Belgeler</span>
+                          <button type="button" id="btn-library-upload" class="ctm-rag-add-btn" title="PDF / Word / TXT Kütüphaneye Ekle">+ Belge Ekle</button>
+                        </div>
+                        <div id="library-docs-list" class="ctm-rag-docs-list">
+                          <div class="muted-empty">Henüz belge indekslenmedi</div>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-
-                  <!-- Active-only slim removable chips (hidden when off!) -->
-                  <button type="button" id="chip-web-active" class="active-tool-chip sky" hidden title="Web Araştırmasını Kapat">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/></svg>
-                    <span>Araştır</span>
-                    <span class="atc-x">×</span>
-                  </button>
-                  <button type="button" id="chip-rag-active" class="active-tool-chip indigo" hidden title="Kütüphaneyi Kapat">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-                    <span>Kütüphane</span>
-                    <span class="atc-x">×</span>
-                  </button>
-
-                  <div id="active-mode-strip" class="active-mode-strip" hidden>
-                    <span class="active-mode-pill" id="active-mode-pill">
-                      <span class="active-mode-dot" aria-hidden="true"></span>
-                      <span id="active-mode-label">Mod</span>
-                      <button type="button" id="btn-clear-mode" class="active-mode-clear" title="Varsayılan Genel Asistana Dön" aria-label="Modu Kapat">×</button>
-                    </span>
                   </div>
                 </div>
 
                 <div class="composer-right">
-                  <span id="ctx-meter-pill" class="ctx-meter-pill mono" hidden title="Aktif sohbet bağlam penceresi kullanımı">Bağlam: %0</span>
+                  <!-- Circular Micro SVG Context Meter Ring (Clickable to run /compact!) -->
+                  <button type="button" id="ctx-meter-pill" class="ctx-meter-pill mono" hidden title="Bağlam kullanımı — sıkıştırmak için tıklayın (/compact)">
+                    <svg class="ctx-ring-svg xs" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+                      <circle class="ctx-ring-bg" cx="12" cy="12" r="9" />
+                      <circle class="ctx-ring-fg" id="ctx-pill-ring-fg" cx="12" cy="12" r="9" />
+                    </svg>
+                    <span id="ctx-meter-pct">%0</span>
+                  </button>
 
                   <div class="model-picker-wrap" id="composer-picker-wrap">
                     <button type="button" class="speaker-pill borderless-picker" id="btn-composer-picker" aria-haspopup="dialog" aria-expanded="false">
@@ -518,37 +507,35 @@
                     </button>
 
                     <div class="voice-popover composer-popover" id="composer-popover" hidden role="dialog" aria-label="Model ve Düşünme Ayarı">
-                      <div class="vp-section-row">
-                        <span class="vp-section-title">
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 4.44-1.04"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-4.44-1.04"/></svg>
-                          <span>Düşünme Seviyesi</span>
-                        </span>
-                        <span id="effort-token-badge" class="vp-budget-pill mono">768 tok</span>
-                      </div>
+                      <!-- iOS-Style Draggable & Cosmic Particle Thinking Effort Slider -->
+                      <div class="thinking-slider-card" id="thinking-slider-card" data-effort="medium">
+                        <div class="ts-head-row">
+                          <div class="ts-title-group">
+                            <span id="ts-level-label" class="ts-level-label">Orta</span>
+                            <span id="effort-desc-line" class="ts-subtitle">Dengeli derin analiz</span>
+                          </div>
+                          <span id="effort-token-badge" class="vp-budget-pill mono">768 tok</span>
+                        </div>
 
-                      <div class="sliding-seg" id="effort-seg-bar" data-active-effort="medium" role="radiogroup" aria-label="Düşünme Seviyesi">
-                        <div class="sliding-seg-indicator" id="effort-pill-indicator" aria-hidden="true"></div>
-                        <button type="button" class="seg-opt" data-effort="off">
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-                          <span>Kapalı</span>
-                        </button>
-                        <button type="button" class="seg-opt" data-effort="low">
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polygon points="15.5 8.5 13.4 13.4 8.5 15.5 10.6 10.6 15.5 8.5"/></svg>
-                          <span>Düşük</span>
-                        </button>
-                        <button type="button" class="seg-opt active" data-effort="medium">
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2.5 21 9 17.5 20.5 6.5 20.5 3 9"/><line x1="12" y1="2.5" x2="12" y2="20.5"/></svg>
-                          <span>Orta</span>
-                        </button>
-                        <button type="button" class="seg-opt" data-effort="high">
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z"/><path d="M19 3v3M20.5 4.5h-3M5 18v2.5M6.25 19.25h-2.5"/></svg>
-                          <span>Yüksek</span>
-                        </button>
-                      </div>
+                        <div class="ts-track" id="ts-track" role="slider" tabindex="0" aria-label="Düşünme Seviyesi" aria-valuemin="0" aria-valuemax="3" aria-valuenow="2">
+                          <div class="ts-fill" id="ts-fill">
+                            <canvas id="ts-particles-canvas" class="ts-particles-canvas" aria-hidden="true"></canvas>
+                          </div>
+                          <div class="ts-detents" aria-hidden="true">
+                            <span class="ts-dot" data-idx="0"></span>
+                            <span class="ts-dot" data-idx="1"></span>
+                            <span class="ts-dot" data-idx="2"></span>
+                            <span class="ts-dot" data-idx="3"></span>
+                          </div>
+                          <div class="ts-thumb" id="ts-thumb"></div>
+                        </div>
 
-                      <div class="vp-hint-box" id="effort-hint-box" data-effort="medium">
-                        <span class="vp-hint-dot" aria-hidden="true"></span>
-                        <span id="effort-desc-line">Dengeli akıl yürütme (768 token bütçesi).</span>
+                        <div class="ts-scale-labels">
+                          <button type="button" class="ts-lbl-btn" data-effort="off">Kapalı</button>
+                          <button type="button" class="ts-lbl-btn" data-effort="low">Düşük</button>
+                          <button type="button" class="ts-lbl-btn" data-effort="medium">Orta</button>
+                          <button type="button" class="ts-lbl-btn" data-effort="high">Yüksek</button>
+                        </div>
                       </div>
 
                       <div class="vp-divider" aria-hidden="true"></div>
@@ -558,7 +545,7 @@
                           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="3"/><rect x="9" y="9" width="6" height="6" rx="1"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3"/></svg>
                           <span>Aktif Yerel Model</span>
                         </span>
-                        <span class="vp-sub-chip mono">GGUF CUDA</span>
+                        <span class="vp-sub-chip mono">QAT · MTP</span>
                       </div>
                       <div id="composer-model-list" class="vp-model-list"></div>
                     </div>
@@ -580,6 +567,27 @@
                 </div>
               </div>
             </div>
+
+            <!-- 4 Clean Outline-Icon Quick Starter Pills (Visible only on empty chat, right below centered composer!) -->
+            <div class="starter-grid" id="starter-pills-row">
+              <button type="button" class="starter-card" data-action="excel">
+                <svg class="st-svg emerald" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/></svg>
+                <span>Excel &amp; Tablo</span>
+              </button>
+              <button type="button" class="starter-card" data-action="code">
+                <svg class="st-svg indigo" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+                <span>Kod &amp; Hata Ayıkla</span>
+              </button>
+              <button type="button" class="starter-card" data-action="web">
+                <svg class="st-svg sky" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                <span>Canlı Web</span>
+              </button>
+              <button type="button" class="starter-card" data-action="voice">
+                <svg class="st-svg accent" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>
+                <span>Sesli &amp; Görsel</span>
+              </button>
+            </div>
+
             <div class="composer-footnote">SEN.AI yerel GPU'nuzda çalışır; önemli kod ve sayısal analizleri doğrulamayı unutmayın.</div>
           </div>
         </main>
@@ -707,6 +715,10 @@
               <button type="button" class="sp-nav-item mobile-hide" data-sp-tab="colab" role="tab" aria-selected="false">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
                 <span>Colab &amp; LoRA</span>
+              </button>
+              <button type="button" id="nav-tab-admin" class="sp-nav-item mobile-hide" data-sp-tab="admin" role="tab" aria-selected="false" hidden>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                <span>Kullanıcılar &amp; Admin</span>
               </button>
             </aside>
 
@@ -1251,6 +1263,61 @@
                   </div>
                 </div>
 
+                <!-- 8. KULLANICILAR & YÖNETİM (ADMIN) -->
+                <div class="sp-panel" data-sp-panel="admin" hidden>
+                  <div class="sp-section-head">
+                    <h3>Kullanıcılar &amp; Yönetim (Admin)</h3>
+                    <p>Cloudflare ve dış ağ kullanıcılarını yönetin, misafir erişimini kontrol edin ve izole sohbetleri inceleyin.</p>
+                  </div>
+
+                  <div class="sp-row-group">
+                    <label class="sp-row sp-row-click" for="sw-admin-allow-guest">
+                      <div class="sp-row-copy">
+                        <strong>Misafir Girişine İzin Ver</strong>
+                        <span>Açıkken şifresiz giren cihazlar kendi izole misafir alanında sohbet eder; sizin sohbetlerinizi asla göremez.</span>
+                      </div>
+                      <span class="ios-switch sm">
+                        <input type="checkbox" id="sw-admin-allow-guest" checked role="switch" />
+                        <span class="ios-track"><span class="ios-thumb"></span></span>
+                      </span>
+                    </label>
+
+                    <div class="sp-row sp-row-stack">
+                      <div class="insp-label-row">
+                        <strong>Yeni Kullanıcı Ekle / Şifre Güncelle</strong>
+                        <span class="insp-hint">İzole sohbet &amp; hafıza</span>
+                      </div>
+                      <div class="adm-user-form">
+                        <input id="adm-user-name" type="text" class="field-input" placeholder="Kullanıcı adı (örn: ahmet)" autocomplete="off" />
+                        <input id="adm-user-display" type="text" class="field-input" placeholder="Görünen ad (örn: Ahmet)" autocomplete="off" />
+                        <input id="adm-user-pin" type="password" class="field-input" placeholder="Şifre / PIN (en az 4)" autocomplete="new-password" />
+                        <button type="button" id="btn-adm-add-user" class="btn-solid btn-sm">+ Kullanıcı Kaydet</button>
+                      </div>
+                    </div>
+
+                    <div class="sp-row sp-row-stack">
+                      <div class="insp-label-row">
+                        <strong>Kayıtlı Kullanıcılar &amp; Aktif Misafirler</strong>
+                        <button type="button" id="btn-adm-refresh" class="btn-ghost btn-sm">Yenile</button>
+                      </div>
+                      <div id="adm-profiles-list" class="adm-profiles-list">
+                        <div class="muted-empty">Yükleniyor...</div>
+                      </div>
+                    </div>
+
+                    <div id="adm-sessions-box" class="sp-row sp-row-stack" hidden>
+                      <div class="insp-label-row">
+                        <strong id="adm-sessions-title">Kullanıcı Sohbetleri</strong>
+                        <div class="colab-action-row">
+                          <button type="button" id="btn-adm-clear-all-sess" class="btn-ghost btn-sm danger">Tümünü Temizle</button>
+                          <button type="button" id="btn-adm-close-sess" class="btn-ghost btn-sm">Kapat</button>
+                        </div>
+                      </div>
+                      <div id="adm-sessions-list" class="adm-sessions-list"></div>
+                    </div>
+                  </div>
+                </div>
+
                 <button type="button" id="btn-save-config" hidden>Kaydet</button>
               </div>
             </div>
@@ -1374,19 +1441,24 @@
     </div>
   </div>
 
-  <!-- Frosted-Glass Remote Access PIN Lock Overlay -->
-  <div id="pin-lock-overlay" class="pin-lock-overlay" hidden role="dialog" aria-modal="true" aria-label="YerelAI PIN Kilidi">
+  <!-- Frosted-Glass Account Login / Remote Access Overlay -->
+  <div id="pin-lock-overlay" class="pin-lock-overlay" hidden role="dialog" aria-modal="true" aria-label="SEN.AI Giriş">
     <div class="pin-lock-card">
       <div class="pin-lock-ico" aria-hidden="true">
-        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
       </div>
-      <h2>SEN.AI Kilitli</h2>
-      <p>Uzaktan erişime devam etmek için belirlediğiniz PIN kodunu girin.</p>
-      <div class="pin-input-row">
-        <input id="inp-pin-unlock" type="password" class="field-input" placeholder="PIN kodunuz..." autocomplete="current-password" />
-        <button type="button" id="btn-pin-unlock" class="btn-solid">Kilidi Aç</button>
+      <h2 id="login-modal-title">SEN.AI Giriş</h2>
+      <p id="login-modal-desc">Kendi sohbet alanınız için kullanıcı adı ve PIN girin (Admin için kullanıcı adını boş bırakabilirsiniz).</p>
+      <div class="login-stack">
+        <input id="inp-login-username" type="text" class="field-input" placeholder="Kullanıcı adı (Admin için boş bırakın)" autocomplete="username" />
+        <div class="pin-input-row">
+          <input id="inp-pin-unlock" type="password" class="field-input" placeholder="PIN veya şifre..." autocomplete="current-password" />
+          <button type="button" id="btn-pin-unlock" class="btn-solid">Giriş Yap</button>
+        </div>
+        <button type="button" id="btn-guest-continue" class="btn-ghost btn-sm" hidden>Misafir Olarak Devam Et (İzole Alan)</button>
+        <button type="button" id="btn-login-close" class="btn-text-xs" hidden>Kapat</button>
       </div>
-      <div id="pin-lock-err" class="pin-lock-err" hidden>Hatalı PIN, tekrar deneyin.</div>
+      <div id="pin-lock-err" class="pin-lock-err" hidden>Hatalı kullanıcı adı veya PIN, tekrar deneyin.</div>
     </div>
   </div>
 
@@ -1489,7 +1561,46 @@
     </div>
   </div>
 
-  <script src="js/settings.js?v=19.0"></script>
-  <script src="app.js?v=19.0"></script>
+  <!-- ChatGPT-Style Floating Message More (•••) Popover -->
+  <div id="msg-more-menu" class="msg-more-menu" hidden role="menu" aria-label="Yanıt İşlemleri">
+    <div id="msg-more-meta" class="msg-more-meta mono">bugün</div>
+    <button type="button" class="ctx-menu-item" data-msg-act="regen" role="menuitem">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+      <span>Yeniden dene</span>
+    </button>
+    <button type="button" class="ctx-menu-item" data-msg-act="fork" role="menuitem">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M6 9v6"/><path d="M18 15a9 9 0 0 0-9-9"/></svg>
+      <span>Yeni sohbette dal oluştur</span>
+    </button>
+    <button type="button" id="msg-more-sources-btn" class="ctx-menu-item" data-msg-act="sources" role="menuitem" hidden>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+      <span>Kaynakları görüntüle</span>
+    </button>
+    <button type="button" class="ctx-menu-item" data-msg-act="docx" role="menuitem">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 18 15 15"/></svg>
+      <span>Word (.docx) indir</span>
+    </button>
+  </div>
+
+  <!-- Web Sources Rich Modal (Favicons + Title + Domain + Snippet) -->
+  <div id="sources-modal" class="modal-backdrop" hidden role="dialog" aria-modal="true" aria-label="Web Kaynakları">
+    <div class="modal-card sources-modal-card">
+      <div class="modal-head">
+        <div>
+          <h3 id="sources-modal-title">Web Kaynakları</h3>
+          <p>Yanıt oluşturulurken incelenen güncel kaynaklar.</p>
+        </div>
+        <button type="button" id="btn-sources-close" class="icon-btn" aria-label="Kapat">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div id="sources-modal-list" class="sources-modal-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/settings.js?v=20.0"></script>
+  <script src="app.js?v=20.0"></script>
 </body>
 </html>

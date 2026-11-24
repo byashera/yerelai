@@ -6,7 +6,7 @@ enum MessageSegment: Identifiable {
     case markdown(String)
     case codeBlock(lang: String, code: String)
     case table(headers: [String], rows: [[String]])
-    case cardLoading
+    case cardLoading(kind: String?)
     case visualCard(SenVisualCard)
 
     var id: String {
@@ -14,13 +14,22 @@ enum MessageSegment: Identifiable {
         case .markdown(let s): return "md_\(s.hashValue)"
         case .codeBlock(let l, let c): return "code_\(l)_\(c.hashValue)"
         case .table(let h, let r): return "tbl_\(h.joined().hashValue)_\(r.count)"
-        case .cardLoading: return "card_loading"
+        case .cardLoading(let k): return "card_loading_\(k ?? "generic")"
         case .visualCard(let c): return "card_\(c.id)"
         }
     }
 }
 
 enum MarkdownCardParser {
+    private static func extractCardKind(_ raw: String) -> String? {
+        guard let regex = try? NSRegularExpression(pattern: "\"kind\"\\s*:\\s*\"([a-z_]+)\"", options: [.caseInsensitive]),
+              let match = regex.firstMatch(in: raw, range: NSRange(raw.startIndex..., in: raw)),
+              let range = Range(match.range(at: 1), in: raw) else {
+            return nil
+        }
+        return String(raw[range]).lowercased()
+    }
+
     static func parse(_ raw: String, isStreaming: Bool) -> [MessageSegment] {
         let src = raw.replacingOccurrences(of: "\r\n", with: "\n")
         var segments: [MessageSegment] = []
@@ -42,14 +51,12 @@ enum MarkdownCardParser {
             let bodyStart = lineEnd < src.endIndex ? src.index(after: lineEnd) : src.endIndex
 
             let isCardLang = (lang == "sen_card" || lang == "sen-card" || lang == "yerel_card" || lang == "yerel-card")
-            let isCardPrefix = isStreaming && (
-                (!lang.isEmpty && ("sen_card".hasPrefix(lang) || "yerel_card".hasPrefix(lang))) ||
-                (lang.isEmpty && String(src[bodyStart...]).trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("{"))
-            )
 
             if let fenceEnd = src.range(of: "```", range: bodyStart..<src.endIndex) {
                 let body = String(src[bodyStart..<fenceEnd.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
-                if isCardLang, let data = body.data(using: .utf8),
+                let looksLikeJsonCard = (lang == "json" && body.hasPrefix("{") && body.contains("\"kind\""))
+                if (isCardLang || looksLikeJsonCard),
+                   let data = body.data(using: .utf8),
                    let card = try? JSONDecoder().decode(SenVisualCard.self, from: data) {
                     segments.append(.visualCard(card))
                 } else {
@@ -57,11 +64,23 @@ enum MarkdownCardParser {
                 }
                 cursor = fenceEnd.upperBound
             } else {
-                // Unclosed fence while streaming
-                if isCardLang || isCardPrefix {
-                    segments.append(.cardLoading)
+                // Unclosed fence while streaming: NEVER flash raw JSON code for sen_card or ambiguous early fences!
+                let partialRaw = String(src[bodyStart...])
+                let partialTrimmed = partialRaw.trimmingCharacters(in: .whitespacesAndNewlines)
+                let partialKind = extractCardKind(partialRaw)
+                let isCardPrefix = isStreaming && (
+                    isCardLang ||
+                    (lang.isEmpty && (lineEnd == src.endIndex || partialTrimmed.isEmpty || partialTrimmed.hasPrefix("{"))) ||
+                    "sen_card".hasPrefix(lang) ||
+                    "sen-card".hasPrefix(lang) ||
+                    "yerel_card".hasPrefix(lang) ||
+                    "yerel-card".hasPrefix(lang) ||
+                    (lang == "json" && (partialTrimmed.isEmpty || (partialTrimmed.hasPrefix("{") && (partialTrimmed.count < 56 || partialKind != nil || partialTrimmed.contains("\"kind\"")))))
+                )
+                if isCardPrefix {
+                    segments.append(.cardLoading(kind: partialKind))
                 } else {
-                    let partialCode = String(src[bodyStart...]).trimmingCharacters(in: .newlines)
+                    let partialCode = partialRaw.trimmingCharacters(in: .newlines)
                     segments.append(.codeBlock(lang: lang.isEmpty ? "kod" : lang, code: partialCode))
                 }
                 break
@@ -323,21 +342,104 @@ struct SenVisualCardView: View {
     }
 }
 
-struct CardLoadingPlaceholder: View {
+struct SenShimmerBox: View {
+    var width: CGFloat? = nil
+    var height: CGFloat? = nil
+    var cornerRadius: CGFloat = 10
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var sweep: Bool = false
+
     var body: some View {
-        HStack(spacing: 9) {
-            ProgressView()
-                .controlSize(.small)
-            Text("Görsel kart hazırlanıyor...")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            .fill(Color.primary.opacity(0.08))
+            .overlay {
+                if !reduceMotion {
+                    GeometryReader { geo in
+                        LinearGradient(
+                            colors: [
+                                Color.clear,
+                                Color.white.opacity(0.28),
+                                Color.clear,
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                        .frame(width: max(geo.size.width * 0.65, 60))
+                        .offset(x: sweep ? geo.size.width * 1.15 : -geo.size.width * 0.75)
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                }
+            }
+            .frame(width: width, height: height)
+            .frame(maxWidth: width == nil ? .infinity : nil, maxHeight: height == nil ? .infinity : nil)
+            .onAppear {
+                guard !reduceMotion else { return }
+                withAnimation(.easeInOut(duration: 1.15).repeatForever(autoreverses: false)) {
+                    sweep = true
+                }
+            }
+    }
+}
+
+struct SenCardSkeletonView: View {
+    let kind: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if kind == "image_compare" || kind == "compare" {
+                SenShimmerBox(width: 150, height: 18, cornerRadius: 8)
+                HStack(alignment: .top, spacing: 10) {
+                    ForEach(0..<2, id: \.self) { _ in
+                        VStack(alignment: .leading, spacing: 7) {
+                            SenShimmerBox(height: 116, cornerRadius: 14)
+                            SenShimmerBox(width: 90, height: 14, cornerRadius: 6)
+                            SenShimmerBox(height: 11, cornerRadius: 5)
+                            SenShimmerBox(width: 105, height: 11, cornerRadius: 5)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+            } else if kind == "image_spotlight" {
+                SenShimmerBox(width: 240, height: 175, cornerRadius: 16)
+                SenShimmerBox(width: 190, height: 14, cornerRadius: 7)
+            } else if kind == "scorecard" || kind == "compatibility" || kind == "choice_card" || kind == "checklist" {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        SenShimmerBox(width: 150, height: 16, cornerRadius: 7)
+                        Spacer()
+                        SenShimmerBox(width: 66, height: 16, cornerRadius: 8)
+                    }
+                    SenShimmerBox(height: 14, cornerRadius: 7)
+                    SenShimmerBox(width: 210, height: 14, cornerRadius: 7)
+                    SenShimmerBox(height: 36, cornerRadius: 12)
+                }
+                .padding(14)
+                .background {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(Color.primary.opacity(0.035))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.8)
+                        }
+                }
+            } else {
+                // Default / media_list skeleton (movie posters / product cards pre-drawn while streaming!)
+                SenShimmerBox(width: 160, height: 18, cornerRadius: 8)
+                ForEach(0..<3, id: \.self) { _ in
+                    HStack(alignment: .top, spacing: 12) {
+                        SenShimmerBox(width: 68, height: 94, cornerRadius: 11)
+                        VStack(alignment: .leading, spacing: 8) {
+                            SenShimmerBox(width: 155, height: 15, cornerRadius: 6)
+                            SenShimmerBox(height: 12, cornerRadius: 5)
+                            SenShimmerBox(width: 180, height: 12, cornerRadius: 5)
+                            SenShimmerBox(width: 74, height: 16, cornerRadius: 8)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+            }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background {
-            Capsule()
-                .fill(.secondary.opacity(0.10))
-        }
+        .padding(.vertical, 4)
     }
 }
 
@@ -694,19 +796,17 @@ struct ResolvedRemoteImageView: View {
         if let url, url.host == "preview.sen.ai" {
             simulatorArtwork(for: url.query ?? "")
         } else if let url {
-            AsyncImage(url: url) { phase in
+            AsyncImage(url: url, transaction: Transaction(animation: .easeInOut(duration: 0.25))) { phase in
                 switch phase {
                 case .success(let img):
                     img
                         .resizable()
                         .scaledToFill()
+                        .transition(.opacity)
                 case .failure:
                     placeholder
                 case .empty:
-                    ZStack {
-                        Color.primary.opacity(0.06)
-                        ProgressView().controlSize(.mini)
-                    }
+                    SenShimmerBox(cornerRadius: 0)
                 @unknown default:
                     placeholder
                 }

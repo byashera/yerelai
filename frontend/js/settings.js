@@ -9,13 +9,16 @@
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 
-  const VALID_TABS = new Set(["general", "desktop", "memory", "models", "extensions", "security", "colab"]);
+  const VALID_TABS = new Set(["general", "desktop", "memory", "models", "extensions", "security", "admin", "colab"]);
+  const ADMIN_ONLY_TABS = new Set(["models", "extensions", "security", "admin", "colab"]);
 
   let ctx = null;
   let activeTab = "general";
   let saveTimer = null;
   let tunnelRunning = false;
   let currentLanUrl = "";
+  let isAdminUser = true;
+  let selectedAdminActorId = null;
 
   function setSavePill(state) {
     const pill = $("#settings-save-pill");
@@ -74,7 +77,8 @@
   }
 
   function switchTab(tab, updateHash = true) {
-    const next = VALID_TABS.has(tab) ? tab : "general";
+    let next = VALID_TABS.has(tab) ? tab : "general";
+    if (!isAdminUser && ADMIN_ONLY_TABS.has(next)) next = "general";
     activeTab = next;
     $$(".sp-nav-item").forEach((btn) => {
       const isAct = btn.dataset.spTab === next;
@@ -86,11 +90,102 @@
     });
     if (next === "security") refreshTunnelStatus();
     if (next === "desktop") syncDesktopPrefsUI();
+    if (next === "admin") loadAdminOverview();
     if (updateHash && $("#inspector") && !$("#inspector").hidden) {
       const desired = `#settings/${next}`;
       if (window.location.hash !== desired) {
         history.replaceState(null, "", desired);
       }
+    }
+  }
+
+  function setAdminVisible(isAdmin) {
+    isAdminUser = Boolean(isAdmin);
+    $$(".sp-nav-item").forEach((btn) => {
+      const tab = btn.dataset.spTab;
+      if (ADMIN_ONLY_TABS.has(tab)) {
+        btn.hidden = !isAdminUser;
+      }
+    });
+    const navAdmin = $("#nav-tab-admin");
+    if (navAdmin) navAdmin.hidden = !isAdminUser;
+    if (!isAdminUser && ADMIN_ONLY_TABS.has(activeTab)) {
+      switchTab("general", false);
+    }
+  }
+
+  function escHtml(str) {
+    return String(str || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  async function loadAdminOverview() {
+    if (!isAdminUser) return;
+    const listEl = $("#adm-profiles-list");
+    const swGuest = $("#sw-admin-allow-guest");
+    if (!listEl) return;
+    try {
+      const res = await fetch("/api/admin/overview");
+      if (!res.ok) throw new Error("Admin verisi alınamadı");
+      const data = await res.json();
+      if (swGuest) swGuest.checked = data.allow_guest !== false;
+      const profiles = Array.isArray(data.profiles) ? data.profiles : [];
+      if (!profiles.length) {
+        listEl.innerHTML = `<div class="muted-note">Henüz profil yok.</div>`;
+        return;
+      }
+      listEl.innerHTML = profiles.map((p) => {
+        const badge = p.role === "admin" ? "Admin" : (p.role === "guest" ? "Misafir" : "Üye");
+        const canDel = p.actor_id !== "owner";
+        return `
+          <div class="adm-profile-row" data-actor="${escHtml(p.actor_id)}">
+            <div class="adm-profile-info">
+              <span class="adm-profile-name">${escHtml(p.display_name || p.username || p.actor_id)} <span class="badge-pill">${badge}</span></span>
+              <span class="adm-profile-sub">ID: ${escHtml(p.actor_id)} · ${p.session_count || 0} sohbet · ${p.memory_count || 0} anı</span>
+            </div>
+            <div class="adm-profile-acts">
+              <button class="btn-outline compact adm-btn-sessions" type="button" data-actor="${escHtml(p.actor_id)}" data-name="${escHtml(p.display_name || p.actor_id)}">Sohbetler</button>
+              ${canDel ? `<button class="btn-outline compact danger adm-btn-del" type="button" data-actor="${escHtml(p.actor_id)}">Sil</button>` : ""}
+            </div>
+          </div>`;
+      }).join("");
+    } catch (err) {
+      listEl.innerHTML = `<div class="muted-note">${escHtml(err.message)}</div>`;
+    }
+  }
+
+  async function loadAdminActorSessions(actorId, displayName) {
+    selectedAdminActorId = actorId;
+    const box = $("#adm-sessions-box");
+    const titleEl = $("#adm-sessions-title");
+    const listEl = $("#adm-sessions-list");
+    if (!box || !listEl) return;
+    box.hidden = false;
+    if (titleEl) titleEl.textContent = `${displayName || actorId} — Sohbetleri`;
+    listEl.innerHTML = `<div class="muted-note">Yükleniyor...</div>`;
+    try {
+      const res = await fetch(`/api/admin/users/${encodeURIComponent(actorId)}/sessions`);
+      if (!res.ok) throw new Error("Sohbetler alınamadı");
+      const data = await res.json();
+      const sessions = Array.isArray(data.sessions) ? data.sessions : [];
+      if (!sessions.length) {
+        listEl.innerHTML = `<div class="muted-note">Bu profile ait kayıtlı sohbet yok.</div>`;
+        return;
+      }
+      listEl.innerHTML = sessions.map((s) => `
+        <div class="adm-sess-row">
+          <div>
+            <strong>${escHtml(s.title || "Adsız Sohbet")}</strong>
+            <div class="adm-profile-sub">${s.message_count || 0} mesaj · ${escHtml(s.updated_at || "")}</div>
+          </div>
+          <button class="btn-outline compact danger adm-btn-del-sess" type="button" data-sid="${escHtml(s.id)}">Sil</button>
+        </div>
+      `).join("");
+    } catch (err) {
+      listEl.innerHTML = `<div class="muted-note">${escHtml(err.message)}</div>`;
     }
   }
 
@@ -379,6 +474,107 @@
       }
     });
 
+    // Admin & Multi-User Controls
+    $("#sw-admin-allow-guest")?.addEventListener("change", async (e) => {
+      try {
+        const res = await fetch("/api/admin/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ allow_guest: e.target.checked }),
+        });
+        if (!res.ok) throw new Error("Güncellenemedi");
+        setSavePill("saved");
+        ctx?.showToast?.(e.target.checked ? "Misafir erişimi açıldı" : "Misafir erişimi kapatıldı", "ok", 2200);
+      } catch (err) {
+        ctx?.showToast?.(err.message, "err");
+      }
+    });
+
+    $("#btn-adm-add-user")?.addEventListener("click", async () => {
+      const username = ($("#adm-user-name")?.value || "").trim();
+      const displayName = ($("#adm-user-display")?.value || "").trim();
+      const pin = ($("#adm-user-pin")?.value || "").trim();
+      if (!username || pin.length < 4) {
+        return ctx?.showToast?.("Kullanıcı adı ve en az 4 karakter şifre girin", "warn", 2600);
+      }
+      try {
+        const res = await fetch("/api/admin/users", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username, display_name: displayName || username, pin }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || "Kullanıcı eklenemedi");
+        if ($("#adm-user-name")) $("#adm-user-name").value = "";
+        if ($("#adm-user-display")) $("#adm-user-display").value = "";
+        if ($("#adm-user-pin")) $("#adm-user-pin").value = "";
+        ctx?.showToast?.(`"${username}" kullanıcısı oluşturuldu`, "ok", 2400);
+        loadAdminOverview();
+      } catch (err) {
+        ctx?.showToast?.(err.message, "err");
+      }
+    });
+
+    $("#btn-adm-refresh")?.addEventListener("click", loadAdminOverview);
+    $("#btn-adm-close-sess")?.addEventListener("click", () => {
+      const box = $("#adm-sessions-box");
+      if (box) box.hidden = true;
+      selectedAdminActorId = null;
+    });
+    $("#btn-adm-clear-all-sess")?.addEventListener("click", async () => {
+      if (!selectedAdminActorId) return;
+      if (!confirm("Bu profilin tüm sohbet geçmişi silinsin mi?")) return;
+      try {
+        const res = await fetch(`/api/admin/users/${encodeURIComponent(selectedAdminActorId)}/sessions`, { method: "DELETE" });
+        if (!res.ok) throw new Error("Silinemedi");
+        ctx?.showToast?.("Profilin tüm sohbetleri temizlendi", "ok", 2200);
+        loadAdminActorSessions(selectedAdminActorId);
+        loadAdminOverview();
+      } catch (err) {
+        ctx?.showToast?.(err.message, "err");
+      }
+    });
+
+    $("#adm-profiles-list")?.addEventListener("click", async (e) => {
+      const btnSess = e.target.closest(".adm-btn-sessions");
+      if (btnSess) {
+        loadAdminActorSessions(btnSess.dataset.actor, btnSess.dataset.name);
+        return;
+      }
+      const btnDel = e.target.closest(".adm-btn-del");
+      if (btnDel) {
+        const actor = btnDel.dataset.actor;
+        if (!confirm(`"${actor}" profili ve tüm verileri silinsin mi?`)) return;
+        try {
+          const res = await fetch(`/api/admin/users/${encodeURIComponent(actor)}`, { method: "DELETE" });
+          if (!res.ok) throw new Error("Profil silinemedi");
+          ctx?.showToast?.("Profil silindi", "ok", 2000);
+          if (selectedAdminActorId === actor && $("#adm-sessions-box")) {
+            $("#adm-sessions-box").hidden = true;
+            selectedAdminActorId = null;
+          }
+          loadAdminOverview();
+        } catch (err) {
+          ctx?.showToast?.(err.message, "err");
+        }
+      }
+    });
+
+    $("#adm-sessions-list")?.addEventListener("click", async (e) => {
+      const btn = e.target.closest(".adm-btn-del-sess");
+      if (!btn || !selectedAdminActorId) return;
+      const sid = btn.dataset.sid;
+      try {
+        const res = await fetch(`/api/admin/users/${encodeURIComponent(selectedAdminActorId)}/sessions/${encodeURIComponent(sid)}`, { method: "DELETE" });
+        if (!res.ok) throw new Error("Sohbet silinemedi");
+        ctx?.showToast?.("Sohbet silindi", "ok", 1800);
+        loadAdminActorSessions(selectedAdminActorId);
+        loadAdminOverview();
+      } catch (err) {
+        ctx?.showToast?.(err.message, "err");
+      }
+    });
+
     // Auto-save triggers on all settings controls
     ["sw-auto-tts", "sw-web-search", "rng-temp", "rng-top-p", "rng-max-tokens", "rng-idle-min", "rng-lora-scale"].forEach((id) => {
       const el = document.getElementById(id);
@@ -398,5 +594,7 @@
     syncThemeCards,
     syncDesktopPrefsUI,
     refreshTunnelStatus,
+    setAdminVisible,
+    loadAdminOverview,
   };
 })();

@@ -25,26 +25,26 @@ struct ChatView: View {
     @State private var scrollToBottomTrigger: Int = 0
     @State private var showPlusMenu: Bool = false
     @State private var showTemporarySheet: Bool = false
+    @State private var containerWidth: CGFloat = 393
     @FocusState private var inputFocused: Bool
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        GeometryReader { geo in
-            let drawerWidth = min(geo.size.width * 0.82, 324)
+        let drawerWidth = min(containerWidth * 0.82, 324)
 
-            ZStack(alignment: .leading) {
-                // Left Slide-Over Sidebar (revealed as main chat window slides right, matching IMG_5022.jpg)
-                if showSidebar {
-                    SidebarView(
-                        isPresented: $showSidebar,
-                        showSettings: $showSettings,
-                        showModelSheet: $showModelSheet
-                    )
-                    .frame(width: drawerWidth)
-                    .transition(.move(edge: .leading))
-                }
+        ZStack(alignment: .leading) {
+            // Left Slide-Over Sidebar (revealed as main chat window slides right, matching IMG_5022.jpg)
+            if showSidebar {
+                SidebarView(
+                    isPresented: $showSidebar,
+                    showSettings: $showSettings,
+                    showModelSheet: $showModelSheet
+                )
+                .frame(width: drawerWidth)
+                .transition(.move(edge: .leading))
+            }
 
-                NavigationStack {
+            NavigationStack {
                     ZStack {
                         SenAmbientBackground()
                             .ignoresSafeArea(.keyboard)
@@ -276,7 +276,10 @@ struct ChatView: View {
                             .presentationDragIndicator(.visible)
                     }
                 }
-                .clipShape(.rect(cornerRadius: showSidebar ? 36 : 0))
+                .mask {
+                    RoundedRectangle(cornerRadius: showSidebar ? 36 : 0, style: .continuous)
+                        .ignoresSafeArea()
+                }
                 .shadow(color: Color.black.opacity(showSidebar ? 0.14 : 0), radius: 24, x: -6, y: 0)
                 .overlay {
                     if showSidebar {
@@ -291,9 +294,16 @@ struct ChatView: View {
                 }
                 .offset(x: showSidebar ? drawerWidth : 0)
             }
-            .background(Color(.systemBackground).ignoresSafeArea())
+            .background {
+                SenAmbientBackground()
+                GeometryReader { geo in
+                    Color.clear
+                        .onAppear { containerWidth = geo.size.width }
+                        .onChange(of: geo.size.width) { _, w in containerWidth = w }
+                }
+                .ignoresSafeArea()
+            }
             .animation(.spring(response: 0.34, dampingFraction: 0.86), value: showSidebar)
-        }
     }
 
     // MARK: - Native iOS 26 Toolbar Model & Thinking Sheet Trigger
@@ -586,8 +596,7 @@ struct ChatView: View {
     private var floatingComposer: some View {
         let isEmpty = draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && pendingPhotos.isEmpty
         let hasActivePills = server.webSearchEnabled || server.useLibraryEnabled
-        let isExpanded = hasActivePills || !pendingPhotos.isEmpty || draft.contains("\n") || draft.count > 26
-        let cornerRadius: CGFloat = isExpanded ? 24 : 26
+        let cornerRadius: CGFloat = 24
 
         return VStack(spacing: 8) {
             // Soft White / Liquid Glass Scroll-to-Bottom (↓) button
@@ -691,48 +700,27 @@ struct ChatView: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
                 }
 
-                if isExpanded {
-                    // Multi-row layout: TextField on top, controls (+ | mic | send) below
+                // Single Persistent TextField (never swaps view identity on character threshold so keyboard stays locked!)
+                HStack(alignment: .bottom, spacing: 6) {
+                    plusButton
+
                     TextField(
                         server.isTemporaryChat ? "Geçici sohbet" : "SEN.AI'ye sor...",
                         text: $draft,
                         axis: .vertical
                     )
-                    .lineLimit(1...5)
+                    .lineLimit(1...6)
                     .font(.body)
                     .focused($inputFocused)
-                    .padding(.horizontal, 14)
-                    .padding(.top, hasActivePills || !pendingPhotos.isEmpty ? 2 : 12)
+                    .padding(.vertical, 9)
 
-                    HStack(spacing: 8) {
-                        plusButton
-                        Spacer()
+                    if draft.isEmpty {
                         micButton
-                        trailingActionButton(isEmpty: isEmpty)
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.bottom, 8)
-                } else {
-                    // Compact single-row Liquid Glass Pill
-                    HStack(alignment: .center, spacing: 6) {
-                        plusButton
-
-                        TextField(
-                            server.isTemporaryChat ? "Geçici sohbet" : "SEN.AI'ye sor...",
-                            text: $draft,
-                            axis: .vertical
-                        )
-                        .lineLimit(1...5)
-                        .font(.body)
-                        .focused($inputFocused)
-                        .padding(.vertical, 9)
-
-                        micButton
-                        trailingActionButton(isEmpty: isEmpty)
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 6)
+                    trailingActionButton(isEmpty: isEmpty)
                 }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
             }
             .background {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
@@ -746,7 +734,6 @@ struct ChatView: View {
             )
             .padding(.horizontal, 12)
             .padding(.bottom, 8)
-            .animation(.spring(response: 0.30, dampingFraction: 0.84), value: isExpanded)
         }
     }
 
@@ -1066,8 +1053,8 @@ struct MessageRowView: View {
                         CodeBlockCardView(lang: lang, code: code)
                     case .table(let headers, let rows):
                         MarkdownTableCardView(headers: headers, rows: rows)
-                    case .cardLoading:
-                        CardLoadingPlaceholder()
+                    case .cardLoading(let kind):
+                        SenCardSkeletonView(kind: kind)
                     case .visualCard(let card):
                         SenVisualCardView(card: card)
                     }

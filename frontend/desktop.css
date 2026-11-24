@@ -163,132 +163,15 @@ html.is-electron-desktop #session-files-list.is-files-empty {
   display: none !important;
 }
 
-/* 5. Claude / ChatGPT Desktop Centered Empty-State Canvas (Studio Vignette + 1-Row 4 Pills) */
+/* 5. Desktop Empty-State Subtle Vignette (Core Centered Layout Unified in styles.css) */
 html.is-electron-desktop .chat-column.is-empty-chat {
-  justify-content: center !important;
-  background: radial-gradient(640px 360px at 50% 45%, color-mix(in srgb, var(--accent) 6%, transparent), transparent 72%);
+  background: radial-gradient(640px 340px at 50% 45%, color-mix(in srgb, var(--accent) 5%, transparent), transparent 72%);
 }
 
-html.is-electron-desktop .chat-column.is-empty-chat .chat-scroll {
-  flex: 0 0 auto !important;
-  overflow: visible !important;
-  padding-bottom: 0 !important;
-}
-
-html.is-electron-desktop .chat-column.is-empty-chat .home-hero {
-  max-width: 740px;
-  padding: 0 24px 20px !important;
-  margin: 0 auto !important;
-  gap: 12px !important;
-}
-
-/* Compact subtle crystal mark with soft breathing halo */
-html.is-electron-desktop .home-hero .hero-orb-stage {
-  width: 44px !important;
-  height: 44px !important;
-  margin-bottom: 2px !important;
-}
-html.is-electron-desktop .home-hero .hero-halo {
-  display: block !important;
-  opacity: 0.32 !important;
-  filter: blur(14px) !important;
-}
-html.is-electron-desktop .home-hero .hero-orbit-ring {
-  display: none !important;
-}
-html.is-electron-desktop .home-hero .hero-crystal-svg {
-  width: 38px !important;
-  height: 38px !important;
-  filter: drop-shadow(0 6px 14px rgba(59, 130, 246, 0.22));
-}
-
-html.is-electron-desktop .home-hero h1 {
-  font-size: clamp(26px, 2.8vw, 32px) !important;
-  font-weight: 700 !important;
-  letter-spacing: -0.028em !important;
-  margin: 0 !important;
-  color: var(--text-primary) !important;
-}
-html.is-electron-desktop .home-hero .hero-accent {
-  background: none !important;
-  -webkit-text-fill-color: unset !important;
-  color: var(--text-secondary) !important;
-  font-weight: 500 !important;
-}
-
-/* Hide marketing subtitle & hardware badge from empty chat */
-html.is-electron-desktop .home-hero .hero-hw-chip,
-html.is-electron-desktop .home-hero > p {
-  display: none !important;
-}
-
-/* 4 Short Symmetrical Pills on ONE Single Horizontal Row (Zero 3+1 Orphan Wrapping!) */
-html.is-electron-desktop .home-hero .starter-grid {
-  display: flex !important;
-  flex-wrap: nowrap !important;
-  justify-content: center !important;
-  gap: 8px !important;
-  margin-top: 8px !important;
-  max-width: 740px !important;
-}
-html.is-electron-desktop .home-hero .starter-card {
-  flex: 0 0 auto !important;
-  width: auto !important;
-  padding: 7px 13px !important;
-  border-radius: 999px !important;
-  background: var(--bg-surface) !important;
-  border: 1px solid var(--border-subtle) !important;
-  box-shadow: none !important;
-  gap: 7px !important;
-  align-items: center !important;
-  white-space: nowrap !important;
-}
-html.is-electron-desktop .home-hero .starter-card:hover {
-  background: var(--bg-hover) !important;
-  border-color: var(--border-strong) !important;
-  transform: translateY(-1px) !important;
-}
-html.is-electron-desktop .home-hero .starter-ico {
-  width: 24px !important;
-  height: 24px !important;
-  border-radius: 999px !important;
-}
-html.is-electron-desktop .home-hero .starter-ico svg {
-  width: 13px !important;
-  height: 13px !important;
-}
-html.is-electron-desktop .home-hero .starter-text > span,
-html.is-electron-desktop .home-hero .starter-tag {
-  display: none !important;
-}
-html.is-electron-desktop .home-hero .starter-head-row {
-  margin: 0 !important;
-}
-html.is-electron-desktop .home-hero .starter-head-row strong {
-  font-size: 12.5px !important;
-  font-weight: 600 !important;
-}
-
-/* Center the Composer smoothly right below the greeting when empty */
-html.is-electron-desktop .chat-column.is-empty-chat .composer-dock {
-  background: transparent !important;
-  border-top: none !important;
-  padding: 8px 24px 28px !important;
-}
-html.is-electron-desktop .chat-column.is-empty-chat .composer-card {
-  max-width: 720px;
-  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.14), 0 0 0 1px var(--border-subtle) !important;
-}
-
-/* 6. Clean Editorial Message Stream in Desktop Mode (Claude / ChatGPT Readability) */
+/* 6. Clean Editorial Message Stream in Desktop Mode */
 html.is-electron-desktop .composer-dock {
   background: linear-gradient(180deg, transparent 0%, var(--bg-app) 28%) !important;
   backdrop-filter: none !important;
-}
-html.is-electron-desktop .composer-card {
-  background: var(--bg-surface) !important;
-  border: 1px solid var(--border-strong) !important;
-  border-radius: 18px !important;
 }
 html.is-electron-desktop .assistant-surface {
   background: transparent !important;
@@ -303,7 +186,7 @@ html.is-electron-desktop .user-bubble {
   box-shadow: none !important;
 }
 html.is-electron-desktop .msg-row .msg-action-bar {
-  opacity: 0.25;
+  opacity: 0.35;
   transition: opacity 0.16s ease;
 }
 html.is-electron-desktop .msg-row:hover .msg-action-bar,
@@ -311,39 +194,9 @@ html.is-electron-desktop .msg-row:focus-within .msg-action-bar {
   opacity: 1;
 }
 
-/* 7. Compact Collapsible GPU Capsule in Desktop Sidebar Footer */
+/* 7. Desktop Sidebar Footer Spacing */
 html.is-electron-desktop .sidebar-footer {
   padding: 8px 10px 10px;
-}
-html.is-electron-desktop .gpu-card {
-  padding: 9px 11px;
-  border-radius: 12px;
-  cursor: pointer;
-  background: var(--bg-surface) !important;
-  border: 1px solid var(--border-subtle) !important;
-  box-shadow: none !important;
-  transition: border-color 0.18s ease, background-color 0.18s ease;
-}
-html.is-electron-desktop .gpu-card:hover {
-  border-color: var(--border-strong) !important;
-}
-html.is-electron-desktop .gpu-card:not(.is-expanded) .gpu-detail-text,
-html.is-electron-desktop .gpu-card:not(.is-expanded) .vram-bar-wrap,
-html.is-electron-desktop .gpu-card:not(.is-expanded) .gpu-card-actions {
-  display: none;
-}
-html.is-electron-desktop .gpu-card .gpu-card-top {
-  margin-bottom: 0;
-}
-html.is-electron-desktop .gpu-card.is-expanded .gpu-card-top {
-  margin-bottom: 6px;
-}
-html.is-electron-desktop .gpu-card:not(.is-expanded)::after {
-  content: "Detay için tıklayın ▾";
-  display: block;
-  margin-top: 3px;
-  font-size: 10.5px;
-  color: var(--text-muted);
 }
 
 /* 8. Desktop-Only Appshot (Screen Capture) Composer Button */

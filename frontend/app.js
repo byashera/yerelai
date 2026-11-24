@@ -43,6 +43,7 @@
     { cmd: "/tablo", desc: "Excel (.xlsx) & Markdown tablosu hazırla", tag: "Excel", tone: "ok", icon: "table", run: () => { setTemporaryMode("Veri & Excel Analisti", PERSONAS.find((p) => p.id === "analyst")?.prompt || ""); return "Düzenli Markdown tablosu ve Excel çıktısı olarak hazırla: "; } },
     { cmd: "/hatırla", desc: "Sohbetler arası kalıcı hafızaya kaydet", tag: "Memory", tone: "warn", icon: "star", run: () => "Bunu hatırla: " },
     { cmd: "/not", desc: "Yerel Notlar & Yapılacaklar listesine ekle", tag: "Eklenti", tone: "warn", icon: "file", run: () => "Not al: " },
+    { cmd: "/compact", desc: "Uzun sohbet bağlamını akıllıca sıkıştır ve rahatlat", tag: "Bağlam", tone: "ok", icon: "spark", run: () => { runManualCompact(); return null; } },
     { cmd: "/temiz", desc: "Yeni temiz sohbet başlat", tag: "Sohbet", tone: "", icon: "plus", run: () => { startNewChat(); return null; } },
   ];
 
@@ -139,10 +140,11 @@
   };
 
   const SVG_ICONS = {
-    speak: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>`,
-    copy: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`,
-    thumbUp: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>`,
-    thumbDown: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/></svg>`,
+    speak: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>`,
+    copy: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`,
+    thumbUp: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>`,
+    thumbDown: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/></svg>`,
+    share: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>`,
     star: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
     trash: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`,
     file: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`,
@@ -229,6 +231,11 @@
     recStartTime: 0,
     recTimerId: null,
     recRafId: null,
+    isTemporaryChat: false,
+    temporaryPersonalized: false,
+    actor: { actor_id: "owner", role: "admin", display_name: "Admin", is_admin: true, is_local: true },
+    cachedGeoLocation: null,
+    activeMoreMenuMsgIdx: null,
   };
 
   const dom = {
@@ -354,10 +361,42 @@
     chatExportActions: $("#chat-export-actions"),
     btnExportMd: $("#btn-export-md"),
     btnExportPdf: $("#btn-export-pdf"),
+    btnTempChat: $("#btn-temp-chat"),
+    tempChatHero: $("#temp-chat-hero"),
+    btnTempPersonalize: $("#btn-temp-personalize"),
+    btnChatOutputs: $("#btn-chat-outputs"),
+    chatOutputsPopover: $("#chat-outputs-popover"),
+    chatOutputsList: $("#chat-outputs-list"),
+    chatOutputsCount: $("#chat-outputs-count"),
+    btnChatOutputsClose: $("#btn-chat-outputs-close"),
+    btnActorChip: $("#btn-actor-chip"),
+    actorChipLabel: $("#actor-chip-label"),
     ctxMeterPill: $("#ctx-meter-pill"),
+    ctxPillRingFg: $("#ctx-pill-ring-fg"),
+    ctxMeterPct: $("#ctx-meter-pct"),
+    ctxWarnBanner: $("#ctx-warn-banner"),
+    ctxWarnRingFg: $("#ctx-warn-ring-fg"),
+    ctxWarnText: $("#ctx-warn-text"),
+    btnCtxCompactNow: $("#btn-ctx-compact-now"),
+    thinkingSliderCard: $("#thinking-slider-card"),
+    tsLevelLabel: $("#ts-level-label"),
+    tsTrack: $("#ts-track"),
+    tsFill: $("#ts-fill"),
+    tsParticlesCanvas: $("#ts-particles-canvas"),
+    tsThumb: $("#ts-thumb"),
+    starterPillsRow: $("#starter-pills-row"),
+    msgMoreMenu: $("#msg-more-menu"),
+    msgMoreMeta: $("#msg-more-meta"),
+    sourcesModal: $("#sources-modal"),
+    sourcesModalCount: $("#sources-modal-count"),
+    sourcesModalBody: $("#sources-modal-body"),
+    btnSourcesModalClose: $("#btn-sources-modal-close"),
     pinLockOverlay: $("#pin-lock-overlay"),
+    inpLoginUsername: $("#inp-login-username"),
     inpPinUnlock: $("#inp-pin-unlock"),
     btnPinUnlock: $("#btn-pin-unlock"),
+    btnGuestContinue: $("#btn-guest-continue"),
+    btnLoginClose: $("#btn-login-close"),
     pinLockErr: $("#pin-lock-err"),
     pinStatusBadge: $("#pin-status-badge"),
     inpPinNew: $("#inp-pin-new"),
@@ -716,39 +755,188 @@
     if (labelEl && matchedText) labelEl.textContent = matchedText;
   }
 
+  const EFFORT_LEVELS = ["off", "low", "medium", "high"];
+  let tsParticlesRaf = null;
+  let tsParticles = [];
+
+  function stopCosmicParticles() {
+    if (tsParticlesRaf) {
+      cancelAnimationFrame(tsParticlesRaf);
+      tsParticlesRaf = null;
+    }
+    const cvs = dom.tsParticlesCanvas;
+    if (cvs) {
+      const ctx2d = cvs.getContext("2d");
+      if (ctx2d) ctx2d.clearRect(0, 0, cvs.width, cvs.height);
+    }
+  }
+
+  function startCosmicParticles() {
+    const cvs = dom.tsParticlesCanvas;
+    if (!cvs) return;
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) return;
+    if (state.thinkingEffort !== "high" || dom.composerPopover?.hidden) {
+      stopCosmicParticles();
+      return;
+    }
+    if (tsParticlesRaf) return;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const rect = cvs.getBoundingClientRect();
+    const w = Math.max(120, Math.round(rect.width || 240));
+    const h = Math.max(20, Math.round(rect.height || 26));
+    cvs.width = w * dpr;
+    cvs.height = h * dpr;
+    const g = cvs.getContext("2d");
+    g.scale(dpr, dpr);
+
+    if (!tsParticles.length) {
+      for (let i = 0; i < 18; i++) {
+        tsParticles.push({
+          x: Math.random() * w,
+          y: 4 + Math.random() * (h - 8),
+          r: 0.9 + Math.random() * 1.4,
+          vx: -(0.65 + Math.random() * 1.45),
+          alpha: 0.35 + Math.random() * 0.6,
+          tint: i % 3 === 0 ? "#ffe4e6" : (i % 3 === 1 ? "#fda4af" : "#fb7185"),
+        });
+      }
+    }
+    const tick = () => {
+      if (state.thinkingEffort !== "high" || dom.composerPopover?.hidden) {
+        stopCosmicParticles();
+        return;
+      }
+      g.clearRect(0, 0, w, h);
+      for (const p of tsParticles) {
+        p.x += p.vx;
+        if (p.x < -6) {
+          p.x = w - 6 + Math.random() * 6;
+          p.y = 4 + Math.random() * (h - 8);
+        }
+        g.globalAlpha = p.alpha;
+        g.fillStyle = p.tint;
+        g.beginPath();
+        g.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        g.fill();
+      }
+      g.globalAlpha = 1;
+      tsParticlesRaf = requestAnimationFrame(tick);
+    };
+    tsParticlesRaf = requestAnimationFrame(tick);
+  }
+
+  function setSliderVisualPosition(frac) {
+    const f = Math.max(0, Math.min(1, frac));
+    if (dom.tsFill) dom.tsFill.style.width = f <= 0.02 ? "0%" : `${Math.round(f * 100)}%`;
+    if (dom.tsThumb) dom.tsThumb.style.left = `calc(13px + (100% - 26px) * ${f.toFixed(4)})`;
+  }
+
   function updateEffortPill(effort, animate = true) {
     const eff = EFFORT_META[effort] ? effort : "medium";
     const meta = EFFORT_META[eff];
+    const idx = Math.max(0, EFFORT_LEVELS.indexOf(eff));
+    const frac = idx / 3;
     state.thinkingEffort = eff;
-    const btns = $$(".seg-opt", dom.effortSegBar);
-    let activeBtn = btns[0];
-    btns.forEach((b) => {
-      const isAct = b.dataset.effort === eff;
-      b.classList.toggle("active", isAct);
-      if (isAct) activeBtn = b;
-    });
-    if (dom.effortSegBar) dom.effortSegBar.dataset.activeEffort = eff;
+
+    if (dom.thinkingSliderCard) {
+      dom.thinkingSliderCard.dataset.level = eff;
+      $$(".ts-lbl-btn", dom.thinkingSliderCard).forEach((b) => {
+        b.classList.toggle("active", b.dataset.effort === eff);
+      });
+    }
+    if (dom.tsLevelLabel) dom.tsLevelLabel.textContent = meta.label;
+    if (dom.tsTrack) {
+      dom.tsTrack.setAttribute("aria-valuenow", String(idx));
+      dom.tsTrack.setAttribute("aria-valuetext", meta.label);
+    }
+    if (!animate && dom.thinkingSliderCard) {
+      dom.thinkingSliderCard.classList.add("is-dragging");
+      setSliderVisualPosition(frac);
+      requestAnimationFrame(() => dom.thinkingSliderCard?.classList.remove("is-dragging"));
+    } else {
+      setSliderVisualPosition(frac);
+    }
+
     if (dom.effortHintBox) dom.effortHintBox.dataset.effort = eff;
     if (dom.effortTokenBadge) dom.effortTokenBadge.textContent = meta.budget;
     if (dom.composerEffortDot) dom.composerEffortDot.dataset.effort = eff;
-    dom.effortDescLine.textContent = meta.desc;
+    if (dom.effortDescLine) dom.effortDescLine.textContent = meta.desc;
     updateComposerPillLabel();
 
-    if (activeBtn && dom.effortPillIndicator) {
-      requestAnimationFrame(() => {
-        const w = activeBtn.offsetWidth;
-        const x = activeBtn.offsetLeft;
-        if (w > 0) {
-          if (!animate) dom.effortPillIndicator.style.transition = "none";
-          dom.effortPillIndicator.style.width = `${w}px`;
-          dom.effortPillIndicator.style.transform = `translate3d(${x}px, 0, 0)`;
-          if (!animate) {
-            void dom.effortPillIndicator.offsetWidth;
-            dom.effortPillIndicator.style.transition = "";
-          }
-        }
-      });
+    if (eff === "high" && dom.composerPopover && !dom.composerPopover.hidden) {
+      startCosmicParticles();
+    } else {
+      stopCosmicParticles();
     }
+  }
+
+  function initThinkingSlider() {
+    const track = dom.tsTrack;
+    const card = dom.thinkingSliderCard;
+    if (!track || !card) return;
+
+    const fracFromClientX = (clientX) => {
+      const r = track.getBoundingClientRect();
+      if (r.width <= 0) return 0;
+      return Math.max(0, Math.min(1, (clientX - r.left - 13) / Math.max(1, r.width - 26)));
+    };
+    const levelFromFrac = (f) => EFFORT_LEVELS[Math.min(3, Math.max(0, Math.round(f * 3)))];
+
+    let dragging = false;
+    track.addEventListener("pointerdown", (e) => {
+      dragging = true;
+      card.classList.add("is-dragging");
+      track.setPointerCapture?.(e.pointerId);
+      const f = fracFromClientX(e.clientX);
+      setSliderVisualPosition(f);
+      const lv = levelFromFrac(f);
+      card.dataset.level = lv;
+      if (dom.tsLevelLabel) dom.tsLevelLabel.textContent = EFFORT_META[lv].label;
+      if (lv === "high") startCosmicParticles();
+      else stopCosmicParticles();
+    });
+    track.addEventListener("pointermove", (e) => {
+      if (!dragging) return;
+      const f = fracFromClientX(e.clientX);
+      setSliderVisualPosition(f);
+      const lv = levelFromFrac(f);
+      if (card.dataset.level !== lv) {
+        card.dataset.level = lv;
+        if (dom.tsLevelLabel) dom.tsLevelLabel.textContent = EFFORT_META[lv].label;
+        if (lv === "high") startCosmicParticles();
+        else stopCosmicParticles();
+      }
+    });
+    const finishDrag = (e) => {
+      if (!dragging) return;
+      dragging = false;
+      card.classList.remove("is-dragging");
+      const f = fracFromClientX(e.clientX);
+      updateEffortPill(levelFromFrac(f), true);
+      window.YerelSettings?.scheduleAutoSave?.();
+    };
+    track.addEventListener("pointerup", finishDrag);
+    track.addEventListener("pointercancel", finishDrag);
+
+    track.addEventListener("keydown", (e) => {
+      const curIdx = Math.max(0, EFFORT_LEVELS.indexOf(state.thinkingEffort));
+      if (e.key === "ArrowRight" || e.key === "ArrowUp") {
+        e.preventDefault();
+        updateEffortPill(EFFORT_LEVELS[Math.min(3, curIdx + 1)], true);
+        window.YerelSettings?.scheduleAutoSave?.();
+      } else if (e.key === "ArrowLeft" || e.key === "ArrowDown") {
+        e.preventDefault();
+        updateEffortPill(EFFORT_LEVELS[Math.max(0, curIdx - 1)], true);
+        window.YerelSettings?.scheduleAutoSave?.();
+      }
+    });
+
+    card.addEventListener("click", (e) => {
+      const btn = e.target.closest(".ts-lbl-btn");
+      if (!btn) return;
+      updateEffortPill(btn.dataset.effort, true);
+      window.YerelSettings?.scheduleAutoSave?.();
+    });
   }
 
   function getActiveModelObj() {
@@ -1455,6 +1643,7 @@
     if (!dom.ctxMeterPill) return;
     if (!state.messages.length) {
       dom.ctxMeterPill.hidden = true;
+      if (dom.ctxWarnBanner) dom.ctxWarnBanner.hidden = true;
       return;
     }
     const effLimit = Number(limit || state.contextLength || 32768);
@@ -1464,10 +1653,81 @@
       est = Math.round(totalChars / 3.4) + 180;
     }
     const pct = Math.min(100, Math.max(1, Math.round((est / Math.max(1024, effLimit)) * 100)));
-    dom.ctxMeterPill.hidden = pct < 65;
-    dom.ctxMeterPill.textContent = `Bağlam: %${pct}`;
-    dom.ctxMeterPill.classList.toggle("is-warn", pct >= 75);
-    dom.ctxMeterPill.title = `Tahmini bağlam: ~${est} / ${effLimit} token`;
+    const dashTotal = 44;
+    const dashOffset = (dashTotal * (1 - pct / 100)).toFixed(1);
+
+    dom.ctxMeterPill.hidden = pct < 25;
+    if (dom.ctxMeterPct) dom.ctxMeterPct.textContent = `%${pct}`;
+    if (dom.ctxPillRingFg) dom.ctxPillRingFg.style.strokeDashoffset = dashOffset;
+    dom.ctxMeterPill.classList.toggle("is-warn", pct >= 70 && pct < 88);
+    dom.ctxMeterPill.classList.toggle("is-danger", pct >= 88);
+    dom.ctxMeterPill.title = `Bağlam doluluğu: ~${est} / ${effLimit} token (Sıkıştırmak için tıklayın)`;
+
+    if (dom.ctxWarnBanner) {
+      const showWarn = pct >= 80 && state.messages.length >= 6;
+      dom.ctxWarnBanner.hidden = !showWarn;
+      dom.ctxWarnBanner.classList.toggle("is-danger", pct >= 90);
+      if (dom.ctxWarnRingFg) dom.ctxWarnRingFg.style.strokeDashoffset = dashOffset;
+      if (dom.ctxWarnText) {
+        dom.ctxWarnText.textContent = pct >= 90
+          ? `Bağlam %${pct} dolu — performans ve doğruluk için konuşmayı şimdi sıkıştırın.`
+          : `Bağlam %${pct} doluluğa ulaştı — konuşmayı sıkıştırarak bellek açabilirsiniz.`;
+      }
+    }
+  }
+
+  async function runManualCompact() {
+    if (state.isGenerating) {
+      showToast("Yanıt üretimi bittikten sonra bağlamı sıkıştırabilirsiniz", "warn", 2400);
+      return;
+    }
+    if (state.messages.length < 4) {
+      showToast("Sıkıştırılacak kadar uzun sohbet geçmişi yok", "warn", 2200);
+      return;
+    }
+    if (dom.btnCtxCompactNow) {
+      dom.btnCtxCompactNow.disabled = true;
+      dom.btnCtxCompactNow.textContent = "Sıkıştırılıyor...";
+    }
+    showToast("Sohbet bağlamı akıllıca özetleniyor...", "ok", 2200);
+    try {
+      const res = await apiJson("/api/sessions/compact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session_id: state.activeSessionId || "",
+          messages: state.messages.map((m) => ({
+            role: m.role,
+            content: m.content || "",
+            thinking: m.thinking || "",
+            attachments: m.attachments || [],
+          })),
+          keep_recent: 4,
+          context_limit: Number(state.contextLength || 32768),
+        }),
+      });
+      if (!res.compacted) {
+        showToast("Bağlam zaten yeterince kısa", "ok", 2200);
+        return;
+      }
+      const nextMsgs = Array.isArray(res.messages) ? res.messages : state.messages;
+      state.messages = nextMsgs;
+      renderAllMessages();
+      const divider = document.createElement("div");
+      divider.className = "compact-divider-card";
+      divider.innerHTML = `<span>✦</span><span><strong>Bağlam sıkıştırıldı:</strong> ${res.compacted_count || 0} eski mesaj özetlendi (~%${res.before_pct || 0} → ~%${res.after_pct || 0}).</span>`;
+      dom.messagesList.insertAdjacentElement("afterbegin", divider);
+      updateContextMeter(res.after_tokens, state.contextLength || 32768);
+      await saveCurrentSession();
+      showToast(`Bağlam %${res.before_pct} → %${res.after_pct} seviyesine indirildi`, "ok", 3000);
+    } catch (err) {
+      showToast(`Sıkıştırma hatası: ${err.message}`, "err", 3600);
+    } finally {
+      if (dom.btnCtxCompactNow) {
+        dom.btnCtxCompactNow.disabled = false;
+        dom.btnCtxCompactNow.textContent = "Şimdi Sıkıştır";
+      }
+    }
   }
 
   /* =========================================================
@@ -1688,6 +1948,7 @@
   }
 
   async function saveCurrentSession() {
+    if (state.isTemporaryChat) return;
     if (!state.messages.length) return;
     if (!state.activeSessionId) state.activeSessionId = newId("chat");
     const firstUser = state.messages.find((m) => m.role === "user");
@@ -1709,40 +1970,62 @@
   }
 
   function renderSessionFiles() {
-    const files = [];
+    const items = [];
     const seen = new Set();
-    const collect = (arr) => {
+    const pushItem = (key, item) => {
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      items.push(item);
+    };
+    const collectAtts = (arr) => {
       (arr || []).forEach((a) => {
         const fname = a?.name || a?.filename;
-        if (!a || seen.has(a.id || fname)) return;
-        seen.add(a.id || fname);
-        files.push(a);
+        if (!a || !fname) return;
+        pushItem(`att:${a.id || fname}`, {
+          name: fname,
+          sub: a.summary || a.kind || "Yüklenen dosya",
+          url: a.url || a.preview_url || "",
+          ico: "📎",
+        });
       });
     };
-    state.messages.forEach((m) => collect(m.attachments));
-    collect(state.pendingAttachments);
+    state.messages.forEach((m) => {
+      collectAtts(m.attachments);
+      const allCards = [...(m.file_cards || []), ...(m.rich_cards || [])];
+      allCards.forEach((c) => {
+        if (c && c.kind === "file_download" && c.filename) {
+          pushItem(`file:${c.url || c.filename}`, {
+            name: c.filename,
+            sub: c.meta || (c.file_kind || "Çıktı").toUpperCase(),
+            url: c.url || "",
+            ico: "📄",
+          });
+        }
+      });
+    });
+    collectAtts(state.pendingAttachments);
 
-    const isEmpty = !files.length;
-    dom.sessionFilesLabel?.classList.toggle("is-files-empty", isEmpty);
-    dom.sessionFilesList?.classList.toggle("is-files-empty", isEmpty);
-
-    if (isEmpty) {
-      dom.sessionFilesList.innerHTML = `<div class="muted-empty">Henüz dosya eklenmedi</div>`;
-      return;
+    if (dom.chatOutputsCount) {
+      dom.chatOutputsCount.textContent = String(items.length);
+      dom.chatOutputsCount.hidden = items.length === 0;
     }
-    dom.sessionFilesList.innerHTML = files
-      .map((f) => {
-        const fname = f.name || f.filename || "Dosya";
-        return `
-        <div class="file-mini-item">
-          <span class="file-mini-ico">${SVG_ICONS.file}</span>
-          <div class="file-mini-copy">
-            <strong title="${escHtml(fname)}">${escHtml(fname)}</strong>
-            <span>${escHtml(f.summary || f.kind || "Dosya")}</span>
-          </div>
-        </div>`;
-      })
-      .join("");
+    if (dom.chatOutputsList) {
+      if (!items.length) {
+        dom.chatOutputsList.innerHTML = `<div class="muted-empty">Bu sohbette henüz dosya veya çıktı yok</div>`;
+      } else {
+        dom.chatOutputsList.innerHTML = items.map((it) => {
+          const tag = it.url ? "a" : "div";
+          const hrefAttr = it.url ? `href="${escHtml(it.url)}" target="_blank" rel="noopener"` : "";
+          return `<${tag} class="chat-output-row" ${hrefAttr}>
+            <span class="chat-output-ico">${it.ico}</span>
+            <span class="chat-output-meta">
+              <span class="chat-output-name" title="${escHtml(it.name)}">${escHtml(it.name)}</span>
+              <span class="chat-output-sub">${escHtml(it.sub)}</span>
+            </span>
+          </${tag}>`;
+        }).join("");
+      }
+    }
   }
 
   async function uploadFiles(fileList) {
@@ -2278,27 +2561,43 @@
       const rawLang = (lang || "kod").trim().toLowerCase();
       const safeLang = escHtml(rawLang);
 
-      // Zero-Flash Streaming Detection for sen_card / yerel_card (NEVER flashes raw code block!)
+      // Zero-Flash Streaming Detection for sen_card / yerel_card / JSON card (NEVER flashes raw code block!)
       const isCardFence =
         rawLang === "sen_card" || rawLang === "sen-card" ||
-        rawLang === "yerel_card" || rawLang === "yerel-card";
+        rawLang === "yerel_card" || rawLang === "yerel-card" ||
+        ((rawLang === "json" || rawLang === "") && /"kind"\s*:\s*"(?:media_list|image_compare|image_spotlight|compare|compatibility|scorecard|rating|checklist|choice_card)"/.test(code));
       const isStreamingCardPrefix =
         isActivelyStreamingThisBlock &&
         (
           (rawLang.length > 0 && ("sen_card".startsWith(rawLang) || "yerel_card".startsWith(rawLang))) ||
-          (rawLang === "" && /^\s*(?:\{|$)/.test(code))
+          ((rawLang === "" || rawLang === "json") && /^\s*(?:\{|$)/.test(code))
         );
 
       if (isCardFence || isStreamingCardPrefix) {
         if (isActivelyStreamingThisBlock) {
+          const kindM = code.match(/"kind"\s*:\s*"([a-z_]+)"/);
+          const detectedKind = kindM ? kindM[1] : "";
+          let skelBody = `<div class="yc-skel-line yc-shimmer" style="width:62%"></div><div class="yc-skel-line yc-shimmer" style="width:88%"></div><div class="yc-skel-line yc-shimmer" style="width:45%"></div>`;
+          if (detectedKind === "media_list") {
+            skelBody = [0, 1, 2].map(() => `<div class="yc-skel-media-row"><div class="yc-skel-thumb yc-shimmer"></div><div style="flex:1;display:flex;flex-direction:column;gap:8px;"><div class="yc-skel-line yc-shimmer" style="width:55%"></div><div class="yc-skel-line yc-shimmer" style="width:85%"></div><div class="yc-skel-line yc-shimmer" style="width:36%"></div></div></div>`).join("");
+          } else if (detectedKind === "image_compare" || detectedKind === "compare") {
+            skelBody = `<div class="yc-skel-grid-2"><div><div class="yc-skel-img-box yc-shimmer"></div><div class="yc-skel-line yc-shimmer" style="width:70%;margin-top:8px;"></div></div><div><div class="yc-skel-img-box yc-shimmer"></div><div class="yc-skel-line yc-shimmer" style="width:70%;margin-top:8px;"></div></div></div>`;
+          } else if (detectedKind === "image_spotlight") {
+            skelBody = `<div class="yc-skel-img-box yc-shimmer" style="aspect-ratio:16/9;"></div><div class="yc-skel-line yc-shimmer" style="width:48%"></div><div class="yc-skel-line yc-shimmer" style="width:80%"></div>`;
+          }
           codeBlocks.push(
-            `<div class="yc-card yc-loading"><span class="yc-pulse-dot"></span><span>Görsel kart hazırlanıyor...</span></div>`
+            `<div class="yc-skel-card" aria-busy="true">
+              <div class="yc-skel-head"><span class="ws-live-dot"></span><span>Görsel kart hazırlanıyor...</span></div>
+              ${skelBody}
+            </div>`
           );
           return `\u0000CODEBLOCK_${idx}\u0000`;
         }
         try {
           const cardObj = JSON.parse(code.trim());
           const imgUrl = (q) => `/api/image-resolve?q=${encodeURIComponent(String(q || "").trim())}`;
+          const imgTag = (src, alt) =>
+            `<img src="${src}" alt="${escHtml(alt || "")}" loading="lazy" onload="this.parentElement.classList.remove('is-loading');this.parentElement.classList.add('is-loaded')" onerror="this.parentElement.classList.remove('is-loading');this.style.display='none'" />`;
           const fmtTen = (v) => {
             if (typeof v === "string" && v.trim()) return escHtml(v.trim());
             const num = Number(v);
@@ -2307,6 +2606,45 @@
             return `${String(ten.toFixed(1)).replace(/\.0$/, "").replace(".", ",")}/10`;
           };
 
+          if (cardObj && cardObj.kind === "image_spotlight") {
+            const q = cardObj.image_query || cardObj.title || "";
+            const facts = Array.isArray(cardObj.facts) ? cardObj.facts.slice(0, 6) : [];
+            const factsHtml = facts.length
+              ? `<div class="yc-spotlight-facts">${facts.map((f) => `<span class="yc-spotlight-fact">${escHtml(f.label || "")}<strong>${escHtml(f.value || "")}</strong></span>`).join("")}</div>`
+              : "";
+            codeBlocks.push(
+              `<div class="yc-spotlight-card">
+                <div class="yc-spotlight-hero yc-img-wrap is-loading">
+                  ${cardObj.badge ? `<span class="yc-spotlight-badge">${escHtml(cardObj.badge)}</span>` : ""}
+                  ${imgTag(cardObj.image_url || imgUrl(q), cardObj.title)}
+                </div>
+                <div class="yc-spotlight-body">
+                  <div class="yc-spotlight-title">${escHtml(cardObj.title || "")}</div>
+                  ${cardObj.subtitle ? `<div class="yc-spotlight-sub">${escHtml(cardObj.subtitle)}</div>` : ""}
+                  ${factsHtml}
+                </div>
+              </div>`
+            );
+            return `\u0000CODEBLOCK_${idx}\u0000`;
+          }
+
+          if (cardObj && cardObj.kind === "choice_card" && Array.isArray(cardObj.options)) {
+            const multi = Boolean(cardObj.multi_select);
+            const optsHtml = cardObj.options.slice(0, 12).map((opt) => {
+              const lbl = typeof opt === "string" ? opt : (opt.label || opt.title || "");
+              return `<button type="button" class="yc-choice-opt" data-choice-val="${escHtml(lbl)}">${escHtml(lbl)}</button>`;
+            }).join("");
+            codeBlocks.push(
+              `<div class="yc-choice-card" data-multi="${multi ? "1" : "0"}">
+                <div class="yc-choice-title">${escHtml(cardObj.title || "Seçiminizi yapın")}</div>
+                ${cardObj.subtitle ? `<div class="yc-choice-sub">${escHtml(cardObj.subtitle)}</div>` : ""}
+                <div class="yc-choice-options">${optsHtml}</div>
+                <button type="button" class="yc-choice-submit" disabled>${escHtml(cardObj.submit_label || "Devam Et")}</button>
+              </div>`
+            );
+            return `\u0000CODEBLOCK_${idx}\u0000`;
+          }
+
           if (cardObj && cardObj.kind === "media_list" && Array.isArray(cardObj.items)) {
             const rowsHtml = cardObj.items.slice(0, 10).map((it, ii) => {
               const q = it.image_query || it.title || "";
@@ -2314,7 +2652,7 @@
               const badge = it.badge ? `<span class="yc-green-pill">${escHtml(it.badge)}</span>` : "";
               const sc = it.score ? `<span class="yc-media-score">★ ${escHtml(String(it.score))}</span>` : "";
               return `<div class="yc-media-row">
-                <div class="yc-media-thumb"><img src="${imgUrl(q)}" alt="${escHtml(it.title || "")}" loading="lazy" onerror="this.style.display='none'" /></div>
+                <div class="yc-media-thumb yc-img-wrap is-loading">${imgTag(it.image_url || imgUrl(q), it.title)}</div>
                 <div class="yc-media-body">
                   <div class="yc-media-title">${ii + 1}. ${escHtml(it.title || "")}${yr}</div>
                   ${it.subtitle ? `<div class="yc-media-sub">${escHtml(it.subtitle)}</div>` : ""}
@@ -2337,7 +2675,7 @@
               const pts = Array.isArray(side.points) ? side.points.slice(0, 6) : [];
               const q = side.image_query || side.name || "";
               return `<div class="yc-imgcmp-col">
-                <div class="yc-imgcmp-photo"><img src="${imgUrl(q)}" alt="${escHtml(side.name || "")}" loading="lazy" onerror="this.style.display='none'" /></div>
+                <div class="yc-imgcmp-photo yc-img-wrap is-loading">${imgTag(side.image_url || imgUrl(q), side.name)}</div>
                 <div class="yc-imgcmp-name">${escHtml(side.name || "")} ${side.emoji ? escHtml(side.emoji) : ""}</div>
                 ${side.subtitle ? `<div class="yc-imgcmp-sub">${escHtml(side.subtitle)}</div>` : ""}
                 ${pts.length ? `<ul class="yc-side-pts">${pts.map((p) => `<li>${escHtml(p)}</li>`).join("")}</ul>` : ""}
@@ -2433,20 +2771,23 @@
             );
             return `\u0000CODEBLOCK_${idx}\u0000`;
           }
-          if (cardObj && cardObj.kind === "checklist" && Array.isArray(cardObj.steps)) {
-            const steps = cardObj.steps.slice(0, 8);
-            const stepsHtml = steps.map((st, si) => {
-              const lbl = typeof st === "string" ? st : (st.label || "");
-              const meta = typeof st === "object" && st.meta ? `<span class="yc-step-meta mono">${escHtml(st.meta)}</span>` : "";
-              return `<label class="yc-check-row"><input type="checkbox" /><span class="yc-check-num mono">${si + 1}</span><span class="yc-check-lbl">${escHtml(lbl)}</span>${meta}</label>`;
+          if (cardObj && cardObj.kind === "checklist" && Array.isArray(cardObj.steps || cardObj.items)) {
+            const steps = (cardObj.steps || cardObj.items).slice(0, 10);
+            const stepsHtml = steps.map((st) => {
+              const lbl = typeof st === "string" ? st : (st.label || st.text || "");
+              const done = typeof st === "object" && Boolean(st.done);
+              return `<label class="yc-cl-item ${done ? "is-done" : ""}"><input type="checkbox" ${done ? "checked" : ""} /><span>${escHtml(lbl)}</span></label>`;
             }).join("");
+            const doneCount = steps.filter((s) => typeof s === "object" && s.done).length;
+            const pct = steps.length ? Math.round((doneCount / steps.length) * 100) : 0;
             codeBlocks.push(
-              `<div class="yc-card yc-checklist">
-                <div class="yc-compat-head" style="margin-bottom:10px;">
-                  <div class="yc-title">${escHtml(cardObj.title || "Hızlı Plan")}</div>
-                  ${cardObj.badge ? `<span class="yc-badge">${escHtml(cardObj.badge)}</span>` : ""}
+              `<div class="yc-checklist-card">
+                <div class="yc-cl-head">
+                  <div class="yc-cl-title">${escHtml(cardObj.title || "Kontrol Listesi")}</div>
+                  <span class="yc-cl-pct mono">%${pct}</span>
                 </div>
-                <div class="yc-check-list">${stepsHtml}</div>
+                <div class="yc-cl-bar"><div class="yc-cl-fill" style="width:${pct}%"></div></div>
+                <div class="yc-cl-items">${stepsHtml}</div>
               </div>`
             );
             return `\u0000CODEBLOCK_${idx}\u0000`;
@@ -2562,7 +2903,14 @@
       const headers = parseCells(rows[0]);
       const bodyRows = rows.slice(2).map(parseCells);
       const th = headers.map((h) => `<th>${h}</th>`).join("");
-      const trs = bodyRows.map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join("")}</tr>`).join("");
+      const formatTableCell = (cell) => {
+        const plain = cell.replace(/<[^>]+>/g, "").trim();
+        if (/^(Çok iyi|En iyi|Mükemmel|Harika|Önerilen|Güçlü)$/i.test(plain)) {
+          return `<span class="tbl-badge-good">${cell}</span>`;
+        }
+        return cell;
+      };
+      const trs = bodyRows.map((r) => `<tr>${r.map((c) => `<td>${formatTableCell(c)}</td>`).join("")}</tr>`).join("");
       const idx = tableBlocks.length;
       tableBlocks.push(
         `<div class="md-table-card">
@@ -2672,29 +3020,53 @@
     return html;
   }
 
+  function getDomainFromUrl(u) {
+    try {
+      return new URL(u).hostname.replace(/^www\./, "");
+    } catch (_) {
+      return "";
+    }
+  }
+
+  function faviconUrlFor(urlOrDomain) {
+    const domName = urlOrDomain.includes("://") ? getDomainFromUrl(urlOrDomain) : String(urlOrDomain || "").replace(/^www\./, "");
+    if (!domName) return "";
+    return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domName)}&sz=32`;
+  }
+
+  function openSourcesModal(sources) {
+    if (!dom.sourcesModal || !dom.sourcesModalBody) return;
+    const list = Array.isArray(sources) ? sources : [];
+    if (dom.sourcesModalCount) dom.sourcesModalCount.textContent = `${list.length} site`;
+    dom.sourcesModalBody.innerHTML = list.map((s) => {
+      const host = s.domain || getDomainFromUrl(s.url || "");
+      const fav = faviconUrlFor(s.url || host);
+      return `<a class="source-card-item" href="${escHtml(s.url || "#")}" target="_blank" rel="noopener noreferrer">
+        ${fav ? `<img class="source-card-fav" src="${fav}" alt="" loading="lazy" onerror="this.style.display='none'" />` : ""}
+        <div class="source-card-info">
+          <div class="source-card-title">${escHtml(s.title || host || "Kaynak")}</div>
+          <div class="source-card-host mono">${escHtml(host)}</div>
+          ${s.snippet ? `<div class="source-card-snip">${escHtml(s.snippet)}</div>` : ""}
+        </div>
+      </a>`;
+    }).join("") || `<div class="muted-empty">Kaynak bulunamadı</div>`;
+    dom.sourcesModal.hidden = false;
+  }
+
   function buildWebSearchHtml(ws) {
     if (!ws || ws.skipped) return "";
     if (ws.online === false) {
       return `<span class="web-sources-pill is-offline" title="${escHtml(ws.warning || "Çevrimdışı")}">${SVG_ICONS.warn}<span>Çevrimdışı</span></span>`;
     }
     if (ws.sources && ws.sources.length) {
-      const items = ws.sources
-        .map(
-          (s) => `
-        <a class="web-source-link" href="${escHtml(s.url)}" target="_blank" rel="noopener noreferrer">
-          <span class="web-source-title">${escHtml(s.title)}</span>
-          <span class="web-source-domain mono">${escHtml(s.domain || "")}</span>
-        </a>`
-        )
-        .join("");
-      return `
-        <details class="web-sources-pill-wrap">
-          <summary class="web-sources-pill">${SVG_ICONS.globe}<span>${ws.sources.length} kaynak</span></summary>
-          <div class="web-sources-pop">
-            <div class="web-sources-pop-head">Web Kaynakları (${ws.sources.length})</div>
-            <div class="web-sources-list">${items}</div>
-          </div>
-        </details>`;
+      const favs = ws.sources.slice(0, 3).map((s) => {
+        const f = faviconUrlFor(s.url || s.domain || "");
+        return f ? `<img src="${f}" alt="" loading="lazy" onerror="this.style.display='none'" />` : "";
+      }).join("");
+      return `<button type="button" class="web-sources-btn btn-open-sources" title="Web kaynaklarını görüntüle">
+        <span class="ws-fav-stack" aria-hidden="true">${favs}</span>
+        <span>Kaynaklar (${ws.sources.length})</span>
+      </button>`;
     }
     return "";
   }
@@ -2767,6 +3139,13 @@
         ? "Üretiliyor..."
         : "";
 
+    const thinkSec = msg.thinking_sec ? `${msg.thinking_sec} sn` : "";
+    const thinkDoneLabel = thinkSec ? `${thinkSec} düşündü` : "Düşünme sürecini gör";
+    const wsLiveDoneHtml =
+      !isLive && msg.web_search?.sources?.length
+        ? `<div class="web-search-live-pill"><span class="ws-live-dot"></span><span>${msg.web_search.sources.length} web sitesi araştırıldı</span></div>`
+        : "";
+
     row.innerHTML = `
       <div class="assistant-shell">
         <div class="assistant-avatar-col">
@@ -2776,23 +3155,19 @@
           <div class="assistant-head">
             <div class="assistant-name-row">
               <span class="assistant-name">SEN.AI</span>
-              ${msg.thinking_effort && msg.thinking_effort !== "off" ? `<span class="assistant-meta-pill">Düşünme: ${escHtml(EFFORT_META[msg.thinking_effort]?.label || msg.thinking_effort)}</span>` : ""}
               ${msg.auto_persona ? `<span class="assistant-meta-pill persona-auto-badge">Uzman: ${escHtml(msg.auto_persona)}</span>` : ""}
             </div>
           </div>
 
           <div class="assistant-surface ${isLive ? "is-streaming" : ""}">
+            <div class="web-search-live-slot">${wsLiveDoneHtml}</div>
             <div class="rich-cards-slot">${buildRichCardsHtml(msg.rich_cards)}</div>
-            <details class="thinking-board ${isLive ? "is-live" : ""}" ${msg.thinking ? "" : "hidden"} ${isLive && msg.thinking ? "open" : ""}>
+            <details class="thinking-board ${isLive ? "is-live" : ""}" ${msg.thinking ? "" : "hidden"}>
               <summary>
-                <span class="thinking-sum-left">
-                  <span class="live-wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
-                  <span class="thinking-title">${isLive ? "Akıl yürütülüyor..." : "Düşünme Süreci"}</span>
-                </span>
-                <span class="thinking-sum-right">
-                  <span class="thinking-timer mono"></span>
-                  <svg class="thinking-chevron" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-                </span>
+                <span aria-hidden="true">✦</span>
+                <span class="thinking-title">${isLive ? "Düşünüyor..." : thinkDoneLabel}</span>
+                <span class="thinking-timer mono"></span>
+                <span class="think-chev" aria-hidden="true">▸</span>
               </summary>
               <div class="thinking-content">${renderThinkingMd(msg.thinking || "")}</div>
             </details>
@@ -2812,16 +3187,15 @@
                     </div>`
                   : ""
               }
-              <button type="button" class="hact accent btn-msg-speak" data-tip="Türkçe Seslendir" aria-label="Türkçe Seslendir">${SVG_ICONS.speak}</button>
-              <button type="button" class="hact btn-msg-copy" data-tip="Yanıtı Kopyala" aria-label="Kopyala">${SVG_ICONS.copy}</button>
-              <button type="button" class="hact btn-msg-regen" data-tip="Yeniden Üret" aria-label="Yeniden Üret">${SVG_ICONS.refresh}</button>
-              <button type="button" class="hact btn-msg-fork" data-tip="Buradan Yeni Sohbet Başlat (Dallandır)" aria-label="Sohbeti Dallandır">${SVG_ICONS.fork}</button>
-              <button type="button" class="hact btn-msg-doc" data-tip="Word (.docx) İndir (Shift: PDF)" aria-label="Belge İndir">${SVG_ICONS.docExport}</button>
-              <button type="button" class="hact btn-msg-like ${msg.rating === "like" ? "active" : ""}" data-tip="Beğen (SFT Eğitim Setine Ekle)" aria-label="Beğen">${SVG_ICONS.thumbUp}</button>
-              <button type="button" class="hact btn-msg-dislike ${msg.rating === "dislike" ? "active" : ""}" data-tip="Beğenme (DPO Geri Bildirim)" aria-label="Beğenme">${SVG_ICONS.thumbDown}</button>
+              <button type="button" class="msg-act-btn btn-msg-copy" data-tip="Kopyala" aria-label="Kopyala">${SVG_ICONS.copy}</button>
+              <button type="button" class="msg-act-btn btn-msg-like ${msg.rating === "like" ? "active" : ""}" data-tip="Beğen" aria-label="Beğen">${SVG_ICONS.thumbUp}</button>
+              <button type="button" class="msg-act-btn btn-msg-dislike ${msg.rating === "dislike" ? "active-down" : ""}" data-tip="Beğenme" aria-label="Beğenme">${SVG_ICONS.thumbDown}</button>
+              <button type="button" class="msg-act-btn btn-msg-speak" data-tip="Seslendir" aria-label="Seslendir">${SVG_ICONS.speak}</button>
+              <button type="button" class="msg-act-btn btn-msg-share" data-tip="Paylaş" aria-label="Paylaş">${SVG_ICONS.share}</button>
+              <button type="button" class="msg-act-btn btn-msg-more" data-tip="Diğer seçenekler" aria-label="Diğer seçenekler">${SVG_ICONS.dots}</button>
+              <div class="web-sources-slot">${buildWebSearchHtml(msg.web_search)}</div>
             </div>
             <div class="msg-actions-right">
-              <div class="web-sources-slot">${buildWebSearchHtml(msg.web_search)}</div>
               <span class="msg-stats-subtle mono">${escHtml(statsText)}</span>
             </div>
           </div>
@@ -2879,13 +3253,16 @@
 
   function renderAllMessages() {
     const hasMsgs = state.messages.length > 0;
-    dom.welcomeHero.hidden = hasMsgs;
+    dom.welcomeHero.hidden = hasMsgs || state.isTemporaryChat;
+    if (dom.tempChatHero) dom.tempChatHero.hidden = hasMsgs || !state.isTemporaryChat;
+    if (dom.starterPillsRow) dom.starterPillsRow.hidden = hasMsgs || state.isTemporaryChat;
     dom.dropZone?.classList.toggle("is-empty-chat", !hasMsgs);
     if (dom.chatExportActions) dom.chatExportActions.hidden = !hasMsgs;
     dom.messagesList.innerHTML = "";
     state.messages.forEach((m, idx) => dom.messagesList.appendChild(createMessageNode(m, idx, false)));
     hydrateRichContent(dom.messagesList);
     updateContextMeter();
+    renderSessionFiles();
     scrollToBottom(false);
   }
 
@@ -3014,6 +3391,8 @@
     renderSessionFiles();
 
     dom.welcomeHero.hidden = true;
+    if (dom.tempChatHero) dom.tempChatHero.hidden = true;
+    if (dom.starterPillsRow) dom.starterPillsRow.hidden = true;
     dom.dropZone?.classList.remove("is-empty-chat");
     if (dom.chatExportActions) dom.chatExportActions.hidden = false;
     dom.messagesList.appendChild(createMessageNode(userMsg, state.messages.length - 1, false));
@@ -3023,6 +3402,8 @@
       role: "assistant",
       content: "",
       thinking: "",
+      thinking_sec: null,
+      created_at: new Date().toISOString(),
       rich_cards: [],
       web_search: null,
       stats: null,
@@ -3038,6 +3419,7 @@
 
     const orbEl = $(".prism-mark", msgNode);
     const surfaceEl = $(".assistant-surface", msgNode);
+    const wsLiveSlotEl = $(".web-search-live-slot", msgNode);
     const richSlotEl = $(".rich-cards-slot", msgNode);
     const webSlotEl = $(".web-sources-slot", msgNode);
     const thinkBoard = $(".thinking-board", msgNode);
@@ -3048,6 +3430,7 @@
     const mcpSlotEl = $(".mcp-calls-slot", msgNode);
     const statsEl = $(".msg-stats-subtle", msgNode);
     const assistantMsgIdx = state.messages.length - 1;
+    let wsLiveCount = 0;
 
     state.isGenerating = true;
     state.abortController = new AbortController();
@@ -3092,7 +3475,10 @@
         dirtyText = false;
         if (!thinkBoard.hidden && thinkBoard.classList.contains("is-live")) {
           thinkBoard.classList.remove("is-live");
-          thinkTitle.textContent = "Düşünme Süreci";
+          const sec = Math.max(1, Math.round((performance.now() - genStart) / 1000));
+          assistantMsg.thinking_sec = sec;
+          thinkTitle.textContent = `${sec} sn düşündü`;
+          if (thinkTimerEl) thinkTimerEl.textContent = "";
           thinkBoard.open = false;
         }
         // In-place live code block streaming update so user wheel/scrollbar scrolling inside <pre> is NEVER interrupted!
@@ -3168,6 +3554,25 @@
     let engineStopRequested = false;
 
     try {
+      // Optional automatic geolocation for weather/local queries (cached once, silent fallback)
+      let userLocation = state.cachedGeoLocation || null;
+      const needsGeo = /\b(hava\s*durumu|bugün\s*hava|yarın\s*hava|burada|yakınımda|yakınımdaki|konumum|eczan|restoran|kafe)\b/i.test(userMsg.content || "");
+      if (needsGeo && !userLocation && navigator.geolocation) {
+        userLocation = await new Promise((resolve) => {
+          const t = setTimeout(() => resolve(null), 1600);
+          navigator.geolocation.getCurrentPosition(
+            (pos) => {
+              clearTimeout(t);
+              const loc = { lat: Number(pos.coords.latitude.toFixed(4)), lon: Number(pos.coords.longitude.toFixed(4)) };
+              state.cachedGeoLocation = loc;
+              resolve(loc);
+            },
+            () => { clearTimeout(t); resolve(null); },
+            { timeout: 1500, maximumAge: 600000 }
+          );
+        });
+      }
+
       const payload = {
         session_id: state.activeSessionId,
         project_id: state.activeProjectId || null,
@@ -3178,6 +3583,8 @@
         thinking_effort: state.thinkingEffort,
         web_search: state.webSearch,
         use_library: state.useLibrary,
+        ignore_memory: Boolean(state.isTemporaryChat && !state.temporaryPersonalized),
+        user_location: userLocation,
         temperature: Number(dom.rngTemp.value),
         top_p: Number(dom.rngTopP.value),
         max_new_tokens: Number(dom.rngMaxTokens.value),
@@ -3233,9 +3640,18 @@
           } else if (ev.type === "note_saved" && ev.item) {
             showToast(`Notlara eklendi: "${ev.item.text.slice(0, 48)}"`, "ok", 3200);
             loadExtensions();
+          } else if (ev.type === "context_compacted") {
+            showToast(`Bağlam otomatik optimize edildi (${ev.compacted_count || 0} eski mesaj özetlendi: %${ev.before_pct || 0} → %${ev.after_pct || 0})`, "ok", 3600);
+            if (ev.after_tokens) updateContextMeter(ev.after_tokens, state.contextLength || 32768);
           } else if (ev.type === "web_search") {
             assistantMsg.web_search = ev;
             webSlotEl.innerHTML = buildWebSearchHtml(ev);
+            if (wsLiveSlotEl) {
+              const cnt = Array.isArray(ev.sources) ? ev.sources.length : wsLiveCount;
+              wsLiveSlotEl.innerHTML = cnt > 0
+                ? `<div class="web-search-live-pill"><span class="ws-live-dot"></span><span>${cnt} web sitesi araştırıldı</span></div>`
+                : "";
+            }
             if (ev.online === false) {
               showToast("İnternet bağlantısı yok: Web araştırması yapılamadı", "warn", 4600);
               pushNotification("Çevrimdışı Uyarı", ev.warning || "Cihaz internete çıkamadı.", "warn");
@@ -3246,6 +3662,11 @@
             hydrateChartsInNode(richSlotEl);
             scrollToBottom(true);
           } else if (ev.type === "status") {
+            if (ev.stage === "web_search" && wsLiveSlotEl) {
+              wsLiveCount = Math.max(wsLiveCount + 1, Number(ev.count || 1));
+              const domTxt = ev.domain ? `<span class="ws-live-domain mono">(${escHtml(ev.domain)})</span>` : "";
+              wsLiveSlotEl.innerHTML = `<div class="web-search-live-pill is-live"><span class="ws-live-dot"></span><span>${wsLiveCount} web sitesi inceleniyor...</span>${domTxt}</div>`;
+            }
             if (ev.message && !assistantMsg.content) statsEl.textContent = ev.message;
           } else if (ev.type === "thinking_delta" || ev.type === "thinking") {
             assistantMsg.thinking += ev.delta || "";
@@ -3296,7 +3717,12 @@
       surfaceEl.classList.remove("is-streaming");
       mdEl.classList.remove("is-streaming");
       thinkBoard.classList.remove("is-live");
-      if (!thinkBoard.hidden) thinkTitle.textContent = "Düşünme Süreci";
+      if (!thinkBoard.hidden) {
+        const sec = assistantMsg.thinking_sec || Math.max(1, Math.round((performance.now() - genStart) / 1000));
+        assistantMsg.thinking_sec = sec;
+        thinkTitle.textContent = `${sec} sn düşündü`;
+        if (thinkTimerEl) thinkTimerEl.textContent = "";
+      }
       statsEl.textContent = assistantMsg.stats
         ? `${assistantMsg.stats.tps} tok/sn · ${assistantMsg.stats.elapsed_sec}s · ${assistantMsg.stats.tokens} token`
         : "";
@@ -3363,7 +3789,11 @@
   function stopGeneration() {
     if (state.abortController) {
       state.abortController.abort();
-      fetch("/api/chat/stop", { method: "POST" }).catch(() => {});
+      fetch("/api/chat/stop", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: state.activeSessionId || "" }),
+      }).catch(() => {});
     }
   }
 
@@ -4748,14 +5178,25 @@
         if (dom.windowPickerModal) dom.windowPickerModal.hidden = true;
         if (dom.gitStatusModal) dom.gitStatusModal.hidden = true;
         if (dom.dislikeModal) dom.dislikeModal.hidden = true;
+        if (dom.sourcesModal) dom.sourcesModal.hidden = true;
+        if (dom.msgMoreMenu) dom.msgMoreMenu.hidden = true;
+        if (dom.chatOutputsPopover) dom.chatOutputsPopover.hidden = true;
         closeRenameModal();
         closeDeleteConfirm();
         closeSessionCtxMenu();
+        stopCosmicParticles();
       }
     });
     document.addEventListener("click", (e) => {
       closeAllPopovers();
       closeSessionCtxMenu();
+      stopCosmicParticles();
+      if (dom.msgMoreMenu && !dom.msgMoreMenu.hidden && !dom.msgMoreMenu.contains(e.target) && !e.target.closest(".btn-msg-more")) {
+        dom.msgMoreMenu.hidden = true;
+      }
+      if (dom.chatOutputsPopover && !dom.chatOutputsPopover.hidden && !dom.chatOutputsPopover.contains(e.target) && !e.target.closest("#btn-chat-outputs")) {
+        dom.chatOutputsPopover.hidden = true;
+      }
       $$(".web-sources-pill-wrap[open]").forEach((det) => {
         if (!det.contains(e.target)) det.removeAttribute("open");
       });
@@ -4827,36 +5268,78 @@
       else if (act === "delete") requestDeleteSession(sid, rowEl);
     });
 
-    $$(".starter-card").forEach((card) => {
-      card.addEventListener("mousemove", (e) => {
-        const r = card.getBoundingClientRect();
-        const px = (e.clientX - r.left) / r.width;
-        const py = (e.clientY - r.top) / r.height;
-        card.style.setProperty("--mouse-x", `${e.clientX - r.left}px`);
-        card.style.setProperty("--mouse-y", `${e.clientY - r.top}px`);
-        card.style.setProperty("--rx", `${((0.5 - py) * 6).toFixed(2)}deg`);
-        card.style.setProperty("--ry", `${((px - 0.5) * 6).toFixed(2)}deg`);
-      });
-      card.addEventListener("mouseleave", () => {
-        card.style.setProperty("--rx", "0deg");
-        card.style.setProperty("--ry", "0deg");
-      });
-      card.addEventListener("click", () => {
-        const act = card.dataset.action;
-        if (act === "excel") dom.fileInput.click();
-        else if (act === "voice") startRecording();
-        else if (act === "code") {
-          updateEffortPill("high", true);
-          dom.promptInput.value = "Python ile hızlı bir veri analiz scripti yaz: ";
-          autoResizeTextarea();
-          dom.promptInput.focus();
-        } else if (act === "web") {
-          syncWebSearchUI(true);
-          dom.promptInput.value = "Manisa ve İstanbul bugün hava durumu nasıl? Karşılaştırmalı tablo ile özetle.";
-          autoResizeTextarea();
-          dom.promptInput.focus();
-        }
-      });
+    dom.starterPillsRow?.addEventListener("click", (e) => {
+      const pill = e.target.closest(".starter-pill");
+      if (!pill) return;
+      const act = pill.dataset.action;
+      if (act === "excel") dom.fileInput?.click();
+      else if (act === "voice") startRecording();
+      else if (act === "code") {
+        updateEffortPill("high", true);
+        dom.promptInput.value = "Python ile hızlı bir veri analiz scripti yaz: ";
+        autoResizeTextarea();
+        dom.promptInput.focus();
+      } else if (act === "web") {
+        syncWebSearchUI(true);
+        dom.promptInput.value = "Bugün teknoloji ve yapay zeka gündemindeki en önemli gelişmeleri özetle.";
+        autoResizeTextarea();
+        dom.promptInput.focus();
+      }
+    });
+
+    dom.btnTempChat?.addEventListener("click", () => {
+      state.isTemporaryChat = !state.isTemporaryChat;
+      dom.btnTempChat.classList.toggle("active", state.isTemporaryChat);
+      dom.btnTempChat.setAttribute("aria-pressed", String(state.isTemporaryChat));
+      if (state.isTemporaryChat) {
+        startNewChat();
+        dom.pageBreadcrumb.textContent = "Geçici Sohbet";
+        showToast("Geçici sohbet modu açık — geçmişe kaydedilmez", "ok", 2200);
+      } else {
+        startNewChat();
+        showToast("Normal sohbet moduna dönüldü", "ok", 1800);
+      }
+    });
+
+    dom.btnTempPersonalize?.addEventListener("click", () => {
+      state.temporaryPersonalized = !state.temporaryPersonalized;
+      dom.btnTempPersonalize.classList.toggle("active", state.temporaryPersonalized);
+      dom.btnTempPersonalize.setAttribute("aria-pressed", String(state.temporaryPersonalized));
+      showToast(state.temporaryPersonalized ? "Geçici sohbette kalıcı hafıza aktif" : "Geçici sohbette hafıza kapalı", "ok", 1800);
+    });
+
+    dom.btnChatOutputs?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (!dom.chatOutputsPopover) return;
+      const willOpen = dom.chatOutputsPopover.hidden;
+      closeAllPopovers();
+      dom.chatOutputsPopover.hidden = !willOpen;
+      if (willOpen) renderSessionFiles();
+    });
+    dom.btnChatOutputsClose?.addEventListener("click", () => {
+      if (dom.chatOutputsPopover) dom.chatOutputsPopover.hidden = true;
+    });
+
+    dom.btnCtxCompactNow?.addEventListener("click", runManualCompact);
+    dom.ctxMeterPill?.addEventListener("click", () => {
+      if (state.messages.length >= 4) runManualCompact();
+      else showToast("Sohbet bağlamı şu an oldukça ferah", "ok", 1800);
+    });
+
+    dom.btnSourcesModalClose?.addEventListener("click", () => { if (dom.sourcesModal) dom.sourcesModal.hidden = true; });
+    dom.sourcesModal?.addEventListener("click", (e) => { if (e.target === dom.sourcesModal) dom.sourcesModal.hidden = true; });
+
+    dom.btnActorChip?.addEventListener("click", () => {
+      if (!dom.pinLockOverlay) return;
+      dom.pinLockOverlay.hidden = false;
+      if (dom.btnLoginClose) dom.btnLoginClose.hidden = false;
+      setTimeout(() => dom.inpLoginUsername?.focus(), 60);
+    });
+    dom.btnLoginClose?.addEventListener("click", () => {
+      if (dom.pinLockOverlay) dom.pinLockOverlay.hidden = true;
+    });
+    dom.btnGuestContinue?.addEventListener("click", () => {
+      if (dom.pinLockOverlay) dom.pinLockOverlay.hidden = true;
     });
 
     dom.btnComposerPicker.addEventListener("click", (e) => {
@@ -4871,13 +5354,13 @@
           dom.composerPopover.classList.add("open");
           updateEffortPill(state.thinkingEffort, false);
         });
-      } else closeAllPopovers();
+      } else {
+        closeAllPopovers();
+        stopCosmicParticles();
+      }
     });
     dom.composerPopover.addEventListener("click", (e) => e.stopPropagation());
-    dom.effortSegBar.addEventListener("click", (e) => {
-      const btn = e.target.closest(".seg-opt");
-      if (btn) updateEffortPill(btn.dataset.effort, true);
-    });
+    initThinkingSlider();
     dom.composerModelList.addEventListener("click", (e) => {
       const cancelBtn = e.target.closest('[data-dl-action="cancel"]');
       if (cancelBtn) {
@@ -5698,11 +6181,103 @@
         return;
       }
 
+      const choiceOpt = e.target.closest(".yc-choice-opt");
+      if (choiceOpt) {
+        const card = choiceOpt.closest(".yc-choice-card");
+        if (card) {
+          const isMulti = card.dataset.multi === "1";
+          if (!isMulti) {
+            $$(".yc-choice-opt", card).forEach((o) => { if (o !== choiceOpt) o.classList.remove("selected"); });
+          }
+          choiceOpt.classList.toggle("selected");
+          const anySel = $$(".yc-choice-opt.selected", card).length > 0;
+          const subBtn = $(".yc-choice-submit", card);
+          if (subBtn) subBtn.disabled = !anySel;
+        }
+        return;
+      }
+
+      const choiceSubmit = e.target.closest(".yc-choice-submit");
+      if (choiceSubmit) {
+        const card = choiceSubmit.closest(".yc-choice-card");
+        if (card && !state.isGenerating) {
+          const chosen = $$(".yc-choice-opt.selected", card).map((o) => o.dataset.choiceVal || o.textContent.trim()).filter(Boolean);
+          if (chosen.length) {
+            choiceSubmit.disabled = true;
+            sendMessage(`Seçimim: ${chosen.join(", ")}`);
+          }
+        }
+        return;
+      }
+
+      const clChk = e.target.closest(".yc-cl-item input[type='checkbox']");
+      if (clChk) {
+        const item = clChk.closest(".yc-cl-item");
+        const card = clChk.closest(".yc-checklist-card");
+        if (item) item.classList.toggle("is-done", clChk.checked);
+        if (card) {
+          const all = $$(".yc-cl-item input[type='checkbox']", card);
+          const done = all.filter((c) => c.checked).length;
+          const pct = all.length ? Math.round((done / all.length) * 100) : 0;
+          const fill = $(".yc-cl-fill", card);
+          const pctEl = $(".yc-cl-pct", card);
+          if (fill) fill.style.width = `${pct}%`;
+          if (pctEl) pctEl.textContent = `%${pct}`;
+        }
+        return;
+      }
+
       const row = e.target.closest(".msg-row");
       if (!row) return;
       const msgIdx = Number(row.dataset.msgIdx);
       const msg = state.messages[msgIdx];
       if (!msg) return;
+
+      const srcBtn = e.target.closest(".btn-open-sources");
+      if (srcBtn) {
+        if (msg.web_search?.sources?.length) openSourcesModal(msg.web_search.sources);
+        return;
+      }
+
+      const shareBtn = e.target.closest(".btn-msg-share");
+      if (shareBtn) {
+        const txt = msg.content || "";
+        if (navigator.share) {
+          navigator.share({ title: "SEN.AI Yanıtı", text: txt }).catch(() => {});
+        } else {
+          await navigator.clipboard.writeText(txt);
+          showToast("Yanıt paylaşım için panoya kopyalandı", "ok", 2000);
+        }
+        return;
+      }
+
+      const moreBtn = e.target.closest(".btn-msg-more");
+      if (moreBtn && dom.msgMoreMenu) {
+        e.stopPropagation();
+        const isSameOpen = !dom.msgMoreMenu.hidden && state.activeMoreMenuMsgIdx === msgIdx;
+        if (isSameOpen) {
+          dom.msgMoreMenu.hidden = true;
+          state.activeMoreMenuMsgIdx = null;
+          return;
+        }
+        state.activeMoreMenuMsgIdx = msgIdx;
+        const dtStr = msg.created_at ? new Date(msg.created_at).toLocaleString("tr-TR", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "short" }) : "";
+        const spdStr = msg.stats ? `${msg.stats.tps} tok/sn · ${msg.stats.tokens} token` : "";
+        if (dom.msgMoreMeta) {
+          dom.msgMoreMeta.textContent = [dtStr, spdStr].filter(Boolean).join(" · ") || "SEN.AI Yanıtı";
+        }
+        const srcItem = $('[data-mm-act="sources"]', dom.msgMoreMenu);
+        if (srcItem) srcItem.hidden = !(msg.web_search?.sources?.length > 0);
+        const r = moreBtn.getBoundingClientRect();
+        dom.msgMoreMenu.hidden = false;
+        const mw = dom.msgMoreMenu.offsetWidth || 248;
+        const mh = dom.msgMoreMenu.offsetHeight || 180;
+        const left = Math.min(window.innerWidth - mw - 12, Math.max(12, r.left));
+        const top = r.bottom + mh + 12 > window.innerHeight ? Math.max(12, r.top - mh - 6) : r.bottom + 6;
+        dom.msgMoreMenu.style.left = `${left}px`;
+        dom.msgMoreMenu.style.top = `${top}px`;
+        return;
+      }
 
       const branchBtn = e.target.closest(".msg-branch-btn");
       if (branchBtn) return switchMessageVariant(msgIdx, Number(branchBtn.dataset.branchDir || 0));
@@ -5738,6 +6313,7 @@
       if (likeBtn) {
         const idx = Number(row.dataset.msgIdx);
         const prevUser = state.messages.slice(0, idx).reverse().find((m) => m.role === "user");
+        const nextRating = msg.rating === "like" ? "none" : "like";
         try {
           await apiJson("/api/dataset/rate", {
             method: "POST",
@@ -5745,18 +6321,18 @@
             body: JSON.stringify({
               user_text: prevUser?.content || "",
               assistant_text: msg.content || "",
-              rating: "like",
+              rating: nextRating,
               model_id: msg.model_id || state.selectedModelId,
               thinking_effort: msg.thinking_effort || state.thinkingEffort,
               system_prompt: dom.txtSystemPrompt?.value || "",
             }),
           });
-          msg.rating = "like";
-          likeBtn.classList.add("active");
-          $(".btn-msg-dislike", row)?.classList.remove("active");
+          msg.rating = nextRating === "none" ? null : "like";
+          likeBtn.classList.toggle("active", msg.rating === "like");
+          $(".btn-msg-dislike", row)?.classList.remove("active", "active-down");
           await loadDataset();
           await saveCurrentSession();
-          showToast("👍 Beğenildi ve SFT eğitim setine eklendi", "ok", 2200);
+          showToast(msg.rating === "like" ? "👍 Beğenildi ve eğitim setine eklendi" : "Beğeni kaldırıldı", "ok", 2000);
         } catch (err) {
           showToast(`Kaydedilemedi: ${err.message}`, "err");
         }
@@ -5767,12 +6343,54 @@
       if (dislikeBtn) {
         const idx = Number(row.dataset.msgIdx);
         const prevUser = state.messages.slice(0, idx).reverse().find((m) => m.role === "user");
+        if (msg.rating === "dislike") {
+          try {
+            await apiJson("/api/dataset/rate", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                user_text: prevUser?.content || "",
+                assistant_text: msg.content || "",
+                rating: "none",
+                model_id: msg.model_id || state.selectedModelId,
+                thinking_effort: msg.thinking_effort || state.thinkingEffort,
+                system_prompt: dom.txtSystemPrompt?.value || "",
+              }),
+            });
+            msg.rating = null;
+            dislikeBtn.classList.remove("active", "active-down");
+            await loadDataset();
+            await saveCurrentSession();
+            showToast("Geri bildirim kaldırıldı", "ok", 1800);
+          } catch (err) {
+            showToast(`Kaydedilemedi: ${err.message}`, "err");
+          }
+          return;
+        }
         state.pendingDislike = { idx, row, msg, userText: prevUser?.content || "", reason: "" };
         $$(".dislike-reason-chip", dom.dislikeReasons || document).forEach((c) => c.classList.remove("active"));
         if (dom.inpDislikeCorrection) dom.inpDislikeCorrection.value = "";
         if (dom.dislikeModal) dom.dislikeModal.hidden = false;
         return;
       }
+    });
+
+    // Floating ••• Message More Menu Actions
+    dom.msgMoreMenu?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const btn = e.target.closest("[data-mm-act]");
+      if (!btn) return;
+      const act = btn.dataset.mmAct;
+      const idx = state.activeMoreMenuMsgIdx;
+      dom.msgMoreMenu.hidden = true;
+      state.activeMoreMenuMsgIdx = null;
+      if (idx == null) return;
+      const msg = state.messages[idx];
+      if (!msg) return;
+      if (act === "regen") regenerateAssistantAt(idx);
+      else if (act === "fork") forkChatAt(idx);
+      else if (act === "sources" && msg.web_search?.sources?.length) openSourcesModal(msg.web_search.sources);
+      else if (act === "docx") exportMessageDocument(msg, Boolean(e.shiftKey));
     });
 
     // Dislike Feedback & DPO Correction Modal Listeners
@@ -5856,23 +6474,39 @@
 
   async function checkAuthState() {
     try {
-      const auth = await apiJson("/api/auth/state");
-      applyPinUiState(auth);
-      return Boolean(auth.unlocked);
+      const me = await apiJson("/api/auth/me");
+      state.actor = me;
+      window.YerelSettings?.setAdminVisible?.(Boolean(me.is_admin));
+      if (dom.btnActorChip && dom.actorChipLabel) {
+        const showChip = !me.is_local || !me.is_admin;
+        dom.btnActorChip.hidden = !showChip;
+        dom.btnActorChip.classList.toggle("is-guest", me.role === "guest");
+        dom.actorChipLabel.textContent = me.role === "guest" ? "Misafir · Giriş" : (me.display_name || me.actor_id || "Hesap");
+      }
+      if (dom.btnGuestContinue) dom.btnGuestContinue.hidden = !me.allow_guest;
+      applyPinUiState({ pin_enabled: me.pin_enabled, local_bypass: me.local_bypass, unlocked: me.unlocked });
+      return Boolean(me.unlocked);
     } catch (_) {
-      return true;
+      try {
+        const auth = await apiJson("/api/auth/state");
+        applyPinUiState(auth);
+        return Boolean(auth.unlocked);
+      } catch (_) {
+        return true;
+      }
     }
   }
 
   async function unlockWithPin() {
+    const username = (dom.inpLoginUsername?.value || "").trim();
     const pin = (dom.inpPinUnlock?.value || "").trim();
     if (!pin) return;
     if (dom.pinLockErr) dom.pinLockErr.hidden = true;
     try {
-      const res = await fetch("/api/auth/verify", {
+      const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pin }),
+        body: JSON.stringify({ username, pin }),
       });
       if (!res.ok) {
         if (dom.pinLockErr) dom.pinLockErr.hidden = false;
@@ -5881,7 +6515,8 @@
       }
       if (dom.inpPinUnlock) dom.inpPinUnlock.value = "";
       if (dom.pinLockOverlay) dom.pinLockOverlay.hidden = true;
-      showToast("Kilit açıldı", "ok", 1800);
+      showToast("Giriş başarılı", "ok", 1800);
+      await checkAuthState();
       await loadStudioBootstrap();
     } catch (err) {
       showToast(`Doğrulama hatası: ${err.message}`, "err");
