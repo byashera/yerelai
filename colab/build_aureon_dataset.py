@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -76,6 +77,49 @@ def _replace_assistant(row: dict[str, Any], content: str) -> None:
         if message.get("role") == "assistant":
             message["content"] = content
             return
+
+
+def _normalize_card_schemas(row: dict[str, Any]) -> None:
+    """Repair legacy image_compare payloads to match the live SEN.AI renderer."""
+    for message in row.get("messages", []):
+        if message.get("role") != "assistant":
+            continue
+        content = message.get("content", "")
+        def repair(match: re.Match[str]) -> str:
+            try:
+                card = json.loads(match.group(1))
+            except json.JSONDecodeError:
+                return match.group(0)
+            if card.get("kind") != "image_compare" or not isinstance(card.get("items"), list):
+                if card.get("kind") == "dev_plan":
+                    if card.get("mode") == "confirm":
+                        items = card.get("items")
+                        selected = card.get("selected")
+                        if not isinstance(selected, list) and isinstance(items, list):
+                            card["selected"] = [item.get("title", item) if isinstance(item, dict) else item for item in items]
+                        elif not isinstance(items, list) and isinstance(selected, list):
+                            card["items"] = [str(item) for item in selected]
+                        message_marker = "```sen_card\n" + json.dumps(card, ensure_ascii=False) + "\n```"
+                        return message_marker
+                return match.group(0)
+            items = [item for item in card["items"] if isinstance(item, dict)]
+            if len(items) < 2:
+                return match.group(0)
+            left, right = items[:2]
+            def side(item: dict[str, Any]) -> dict[str, Any]:
+                result = {key: item[key] for key in ("name", "emoji", "subtitle", "image_query") if item.get(key)}
+                points = item.get("points")
+                if not points:
+                    points = (item.get("pros") or []) + (item.get("cons") or [])
+                if points:
+                    result["points"] = points[:4]
+                return result
+            card.pop("items", None)
+            card["left"] = side(left)
+            card["right"] = side(right)
+            card.setdefault("verdict", card.pop("summary", "Seçimi kullanım önceliklerine göre yap."))
+            return "```sen_card\n" + json.dumps(card, ensure_ascii=False) + "\n```"
+        message["content"] = re.sub(r"```sen_card\s*\n(.*?)\n```", repair, content, flags=re.S)
 
 
 def _make_row(system_prompt: str, turns: list[tuple[str, str]]) -> dict[str, Any]:
@@ -407,6 +451,237 @@ def _curated_additional_rows(system_prompt: str) -> list[dict[str, Any]]:
     return rows
 
 
+def _curated_card_repair_rows(system_prompt: str) -> list[dict[str, Any]]:
+    """Focused, compact examples for card schemas that failed the Colab eval."""
+    rows = [
+        _make_row(system_prompt, [
+            ("user", "Modern bir kahve evi sitesi yapmak istiyorum. Kod yazmadan önce kısa bir seçenekli plan sun."),
+            ("assistant", '```sen_card\n{"kind":"dev_plan","mode":"select","title":"Kahve Evi Sitesi","items":[{"id":"menu","title":"Menü","description":"Kahveler ve kısa ürün açıklamaları."},{"id":"story","title":"Hakkımızda","description":"Kahve evinin kısa tanıtımı."},{"id":"contact","title":"İletişim","description":"Adres ve çalışma saatleri."}]}\n```'),
+        ]),
+        _make_row(system_prompt, [
+            ("user", "Beş farklı Türk dizisini türleriyle görselli öneri kartında sun."),
+            ("assistant", '```sen_card\n{"kind":"media_list","title":"Farklı Türlerden Türk Dizileri","items":[{"title":"Kurtlar Vadisi","subtitle":"Aksiyon ve suç","image_query":"Kurtlar Vadisi Türk dizisi afişi"},{"title":"Ezel","subtitle":"Dram ve suç","image_query":"Ezel Türk dizisi afişi"},{"title":"Behzat Ç.","subtitle":"Polisiye dram","image_query":"Behzat Ç Türk dizisi afişi"},{"title":"Avrupa Yakası","subtitle":"Durum komedisi","image_query":"Avrupa Yakası Türk dizisi afişi"},{"title":"Muhteşem Yüzyıl","subtitle":"Tarihî dram","image_query":"Muhteşem Yüzyıl Türk dizisi afişi"}]}\n```'),
+        ]),
+        _make_row(system_prompt, [
+            ("user", "Farklı türlerden beş Türk dizisi öner."),
+            ("assistant", "Türleri çeşitlendirecek beş öneri hazırlayabilirim: aksiyon, polisiye, komedi ve tarihî dramdan örnekler seçerim."),
+            ("user", "Bunları görsel kart olarak ver; önceki önerileri koru."),
+            ("assistant", '```sen_card\n{"kind":"media_list","title":"Türlerine Göre Türk Dizileri","items":[{"title":"Kurtlar Vadisi","subtitle":"Aksiyon ve suç","image_query":"Kurtlar Vadisi Türk dizisi afişi"},{"title":"Ezel","subtitle":"Dram ve suç","image_query":"Ezel Türk dizisi afişi"},{"title":"Behzat Ç.","subtitle":"Polisiye dram","image_query":"Behzat Ç Türk dizisi afişi"},{"title":"Avrupa Yakası","subtitle":"Komedi","image_query":"Avrupa Yakası Türk dizisi afişi"},{"title":"Muhteşem Yüzyıl","subtitle":"Tarihî dram","image_query":"Muhteşem Yüzyıl Türk dizisi afişi"}]}\n```'),
+        ]),
+        _make_row(system_prompt, [
+            ("user", "Haftalık verimli çalışma kontrol listesi hazırla; her güne kısa bir madde yaz."),
+            ("assistant", '```sen_card\n{"kind":"checklist","title":"Haftalık Çalışma Listesi","steps":[{"label":"Pazartesi: Haftanın önceliklerini belirle."},{"label":"Salı: Öncelikli bir işi tamamla."},{"label":"Çarşamba: İlerlemeyi gözden geçir."},{"label":"Perşembe: Kalan işleri tamamla."},{"label":"Cuma: Haftayı değerlendir ve dinlenme planı yap."}]}\n```'),
+        ]),
+        _make_row(system_prompt, [
+            ("user", "Başlık metnini ve rengini değiştirmek istiyorum. Önce kod yazmadan planını göster."),
+            ("assistant", '```sen_card\n{"kind":"dev_plan","mode":"select","title":"Başlık Güncellemesi","items":[{"id":"text","title":"Başlık metnini değiştir","description":"Mevcut başlığı istenen metinle güncelle."},{"id":"color","title":"Başlık rengini değiştir","description":"Rengi #385f4a olarak ayarla."},{"id":"check","title":"Değişikliği doğrula","description":"Yalnızca ilgili görünümü kontrol et."}]}\n```'),
+        ]),
+    ]
+    for row in rows:
+        row["partition"] = "train"
+    return rows
+
+
+def _curated_partition_rows(system_prompt: str) -> dict[str, list[dict[str, Any]]]:
+    """Add separate, prompt-pinned examples for train, validation, and test."""
+    train = [
+        _make_row(system_prompt, [("user", "İki kahve makinesini görsel olarak karşılaştır: biri filtre kahve, diğeri espresso için."), ("assistant", '```sen_card\n{"kind":"image_compare","title":"Kahve Makinesi Karşılaştırması","left":{"name":"Filtre Kahve Makinesi","emoji":"☕","subtitle":"Daha büyük miktarda sade kahve hazırlar.","image_query":"drip coffee maker product"},"right":{"name":"Espresso Makinesi","emoji":"⚡","subtitle":"Yoğun espresso ve sütlü kahveler hazırlar.","image_query":"home espresso machine product"},"verdict":"Günlük sade kahve için filtre; espresso bazlı içecekler için espresso makinesi daha uygundur."}\n```')]),
+        _make_row(system_prompt, [("user", "Evde çalışırken odaklanmak için dört maddelik kısa bir kontrol listesi oluştur."), ("assistant", '```sen_card\n{"kind":"checklist","title":"Odaklı Çalışma","steps":[{"label":"Çalışma alanını düzenle."},{"label":"Tek bir öncelikli görev seç."},{"label":"Bildirimleri kapat ve odak süresi belirle."},{"label":"Mola verip ilerlemeyi kısaca gözden geçir."}]}\n```')]),
+        _make_row(system_prompt, [("user", "Türleri farklı üç Türk filmi için görsel öneri kartı hazırla."), ("assistant", '```sen_card\n{"kind":"media_list","title":"Türlerine Göre Türk Filmleri","items":[{"title":"Ayla","subtitle":"Dram","image_query":"Ayla 2017 Türk filmi afişi"},{"title":"Aile Arasında","subtitle":"Komedi","image_query":"Aile Arasında 2017 Türk filmi afişi"},{"title":"G.O.R.A.","subtitle":"Bilim kurgu komedisi","image_query":"GORA 2004 Türk filmi afişi"}]}\n```')]),
+        _make_row(system_prompt, [("user", "Basit bir kişisel bütçe takip aracı yapmak istiyorum; önce seçilebilir planı göster."), ("assistant", '```sen_card\n{"kind":"dev_plan","mode":"select","title":"Kişisel Bütçe Takibi","items":[{"id":"income","title":"Gelir ve gider girişi","description":"Tutar, tarih ve kategori alanları."},{"id":"summary","title":"Aylık özet","description":"Kategori toplamlarını ve kalan bütçeyi göster."},{"id":"storage","title":"Yerel kayıt","description":"Verileri tarayıcıda sakla ve silme seçeneği sun."}]}\n```')]),
+        _make_row(system_prompt, [("user", "Aylık değerleri çizgi grafikle göster: Ocak 8, Şubat 11, Mart 9."), ("assistant", '```chart\n{"kind":"chart","chart_type":"line","title":"Aylık Değerler","labels":["Ocak","Şubat","Mart"],"values":[8,11,9]}\n```')]),
+        _make_row(system_prompt, [("user", "Üç farklı türden kitap öner."), ("assistant", "Bilim kurgu, tarihî roman ve kişisel gelişim türlerinden birer kitap seçebilirim."), ("user", "Bunları görsel kartla sun, üç önerinin her birini koru."), ("assistant", '```sen_card\n{"kind":"media_list","title":"Üç Türden Kitap","items":[{"title":"Dune","subtitle":"Bilim kurgu","image_query":"Dune Frank Herbert book cover"},{"title":"Benim Adım Kırmızı","subtitle":"Tarihî roman","image_query":"Benim Adım Kırmızı kitap kapağı"},{"title":"Atomik Alışkanlıklar","subtitle":"Kişisel gelişim","image_query":"Atomik Alışkanlıklar kitap kapağı"}]}\n```')]),
+        _make_row(system_prompt, [("user", "Web sayfamın iletişim bölümünü değiştireceğim. Koddan önce kısa plan sun."), ("assistant", '```sen_card\n{"kind":"dev_plan","mode":"select","title":"İletişim Bölümü Güncellemesi","items":[{"id":"content","title":"İçeriği güncelle","description":"Adres, e-posta ve çalışma saatlerini düzenle."},{"id":"layout","title":"Düzeni koru","description":"Mevcut sayfa yapısına uyumlu kal."},{"id":"verify","title":"Görünümü kontrol et","description":"Mobil ve masaüstü yerleşimini doğrula."}]}\n```')]),
+        _make_row(system_prompt, [("user", "Haftalık yürüyüş rutinimi planla."), ("assistant", "Haftada kaç gün yürümek istediğini söylersen süreyi ve günleri sana göre ayarlayabilirim."), ("user", "Dört gün olsun, başlangıç seviyesindeyim."), ("assistant", '```sen_card\n{"kind":"checklist","title":"Başlangıç Seviyesi Yürüyüş Planı","steps":[{"label":"Pazartesi: 20 dakika rahat tempoda yürü."},{"label":"Çarşamba: 20 dakika yürü ve temponu rahat tut."},{"label":"Cuma: 25 dakika yürü; zorlanırsan süreyi azalt."},{"label":"Pazar: 20 dakika hafif yürüyüş yap veya dinlen."}]}\n```')]),
+    ]
+    validation = [
+        _make_row(system_prompt, [("user", "Üç farklı türden Türk dizisini kısa açıklama ve görsel arama ifadesiyle listele."), ("assistant", '```sen_card\n{"kind":"media_list","title":"Üç Türden Türk Dizisi","items":[{"title":"Şahsiyet","subtitle":"Suç ve dram","image_query":"Şahsiyet Türk dizisi afişi"},{"title":"Leyla ile Mecnun","subtitle":"Absürt komedi","image_query":"Leyla ile Mecnun Türk dizisi afişi"},{"title":"Bir Zamanlar Anadolu","subtitle":"Polisiye dram","image_query":"Bir Zamanlar Anadolu filmi afişi"}]}\n```')]),
+        _make_row(system_prompt, [("user", "Sınava hazırlanmak için en az üç maddelik kontrol listesi hazırla."), ("assistant", '```sen_card\n{"kind":"checklist","title":"Sınav Hazırlığı","steps":[{"label":"Konuları ve sınav tarihini netleştir."},{"label":"Çalışmayı kısa oturumlara böl."},{"label":"Örnek sorular çöz ve yanlışları gözden geçir."},{"label":"Uyku ve mola zamanını planla."}]}\n```')]),
+        _make_row(system_prompt, [("user", "Küçük bir tarif sitesi yapmak istiyorum, henüz kod yazma; seçenekli plan ver."), ("assistant", '```sen_card\n{"kind":"dev_plan","mode":"select","title":"Tarif Sitesi","items":[{"id":"recipes","title":"Tarif listesi","description":"Tarif adı, süre ve kategori."},{"id":"detail","title":"Tarif ayrıntısı","description":"Malzemeler ve adım adım hazırlama."},{"id":"filter","title":"Arama ve filtre","description":"Tarifleri ada veya kategoriye göre bul."}]}\n```')]),
+    ]
+    test = [
+        _make_row(system_prompt, [("user", "Dört farklı türden Türk dizisini başlık, tür ve görsel sorgusuyla kartta öner."), ("assistant", '```sen_card\n{"kind":"media_list","title":"Dört Türden Türk Dizisi","items":[{"title":"Masum","subtitle":"Suç ve dram","image_query":"Masum Türk dizisi afişi"},{"title":"Avrupa Yakası","subtitle":"Komedi","image_query":"Avrupa Yakası dizi afişi"},{"title":"Kulüp","subtitle":"Dönem draması","image_query":"Kulüp Türk dizisi afişi"},{"title":"Bir Başkadır","subtitle":"Dram","image_query":"Bir Başkadır Türk dizisi afişi"}]}\n```')]),
+        _make_row(system_prompt, [("user", "Yeni bir dil öğrenmek için dört adımlı haftalık kontrol listesi oluştur."), ("assistant", '```sen_card\n{"kind":"checklist","title":"Dil Öğrenme Rutini","steps":[{"label":"Yeni kelimeleri tekrar et."},{"label":"Kısa bir dinleme çalışması yap."},{"label":"Öğrendiğin ifadelerle cümle kur."},{"label":"Hafta sonunda ilerlemeyi gözden geçir."}]}\n```')]),
+        _make_row(system_prompt, [("user", "Bir etkinlik kayıt sayfası hazırlamak istiyorum. Önce değişiklik planını kart olarak sun."), ("assistant", '```sen_card\n{"kind":"dev_plan","mode":"select","title":"Etkinlik Kayıt Sayfası","items":[{"id":"event","title":"Etkinlik bilgileri","description":"Başlık, tarih, konum ve açıklama."},{"id":"form","title":"Kayıt formu","description":"Gerekli katılımcı bilgilerini al."},{"id":"feedback","title":"Başarı ve hata durumu","description":"Gönderim sonucunu anlaşılır biçimde bildir."}]}\n```')]),
+    ]
+    for partition, partition_rows in (("train", train), ("validation", validation), ("test", test)):
+        for row in partition_rows:
+            row["partition"] = partition
+    return {"train": train, "validation": validation, "test": test}
+
+
+def _scale_rows(system_prompt: str) -> dict[str, list[dict[str, Any]]]:
+    """Add 107 varied, partition-labeled examples without duplicating prompts."""
+    examples: dict[str, list[tuple[str, str]]] = {"train": [], "validation": [], "test": []}
+
+    checklist_topics = [
+        ("Sınav haftam için dört adımlı bir çalışma kontrol listesi hazırla.", "Sınav Haftası", ["Konuları önceliğe göre sırala.", "Her gün için kısa çalışma oturumu belirle.", "Örnek sorular çöz ve yanlışları not et.", "Sınavdan önce dinlenmeye zaman ayır."]),
+        ("Yeni taşındığım evi düzenlemek için beş maddelik liste yap.", "Yeni Ev Düzeni", ["Önce temel ihtiyaçları yerleştir.", "Kutuları oda oda aç.", "Elektrik ve internet bağlantılarını kontrol et.", "Günlük kullanılan eşyaları erişilebilir tut.", "Geri dönüşüm ve atık kutularını ayır."]),
+        ("Hafta içi öğle yemeklerini planlamak için kısa kontrol listesi oluştur.", "Öğle Yemeği Hazırlığı", ["Haftanın öğünlerini belirle.", "Gerekli malzemeleri kontrol et.", "Önceden hazırlanabilen yemekleri ayır.", "Porsiyonları güvenli kaplarda sakla."]),
+        ("Küçük bir geziye çıkmadan önce kontrol etmem gerekenleri listele.", "Kısa Gezi Hazırlığı", ["Hava durumunu ve ulaşımı kontrol et.", "Kimlik ve gerekli biletleri hazırla.", "Telefon ve şarj ekipmanını al.", "Gerekli ilaçları ve suyu yanına koy."]),
+        ("Masa başında çalışırken sağlıklı mola rutini için dört adım yaz.", "Çalışma Molası", ["Yaklaşık bir saatlik çalışmadan sonra ara ver.", "Kısa süre ayağa kalkıp hareket et.", "Gözlerini ekrandan uzağa çevir.", "Su iç ve işe dönmeden önce sonraki adımı seç."]),
+        ("Aylık kişisel bütçemi gözden geçirmek için bir kontrol listesi ver.", "Aylık Bütçe Kontrolü", ["Gelir ve gider kayıtlarını topla.", "Sabit giderleri değişken giderlerden ayır.", "Bütçe hedefiyle gerçekleşen tutarı karşılaştır.", "Gelecek ay için tek bir iyileştirme hedefi belirle."]),
+        ("Bir ev bitkisine düzenli bakmak için başlangıç kontrol listesi hazırla.", "Bitki Bakımı", ["Bitkinin ışık ihtiyacını öğren.", "Toprağın nemini kontrol etmeden sulama yapma.", "Saksının drenaj deliklerini açık tut.", "Yaprakları ve gelişimi haftada bir gözle."]),
+        ("Dijital dosyalarımı düzenlemek için dört maddelik rutin oluştur.", "Dosya Düzenleme", ["Dosyaları konuya göre klasörle.", "Anlaşılır ve tarih içeren adlar kullan.", "Gereksiz kopyaları gözden geçir.", "Önemli dosyalar için yedekleme durumunu kontrol et."]),
+        ("Yeni başlayan biri için haftalık yürüyüş planını kontrol listesine dönüştür.", "Yürüyüş Rutini", ["Yürüyüş günlerini takvime ekle.", "Rahat ayakkabı ve uygun kıyafet seç.", "Konuşabilecek tempoda kısa süreyle başla.", "Yorgunluk veya ağrı olursa dinlen."]),
+        ("Bir sunumdan önce yapmam gerekenleri kontrol listesi olarak yaz.", "Sunum Öncesi", ["Sunumun ana mesajını tek cümlede belirle.", "Slaytları yazım ve okunabilirlik açısından gözden geçir.", "Dosyanın yedek kopyasını hazırla.", "Ses ve görüntü bağlantılarını önceden dene."]),
+    ]
+    for prompt, title, labels in checklist_topics:
+        steps = [{"label": x} for x in labels]
+        examples["train"].append((prompt, f'```sen_card\n{{"kind":"checklist","title":"{title}","steps":{json.dumps(steps, ensure_ascii=False)}}}\n```'))
+
+    plans = [
+        ("Küçük bir kitap takip uygulaması için önce seçenekli plan çıkar.", "Kitap Takibi", ["Kitap listesi", "Okuma durumu", "Arama ve filtre"]),
+        ("Bir spor salonu tanıtım sayfası yapmak istiyorum; koddan önce plan göster.", "Spor Salonu Sayfası", ["Tanıtım alanı", "Ders programı", "İletişim ve kayıt"]),
+        ("Evcil hayvan bakım kayıtları için basit bir uygulama planla.", "Bakım Kayıtları", ["Hayvan profili", "Aşı ve bakım geçmişi", "Yaklaşan hatırlatmalar"]),
+        ("Bir etkinlik takvimi sayfası hazırlayacağım. Önce dev_plan kartı ver.", "Etkinlik Takvimi", ["Etkinlik listesi", "Tarih ve konum", "Kategori filtresi"]),
+        ("Kişisel portfolyo sitemi güncellemek istiyorum, önce kısa bir plan sun.", "Portfolyo Güncellemesi", ["Proje vitrini", "Hakkımda", "İletişim bağlantıları"]),
+        ("Küçük bir alışkanlık takip aracı için kod yazmadan önce plan hazırla.", "Alışkanlık Takibi", ["Alışkanlık ekleme", "Günlük işaretleme", "Haftalık özet"]),
+        ("Bir restoran menüsü sayfası oluşturacağım; değişiklik planını kartta göster.", "Restoran Menüsü", ["Kategori listesi", "Ürün ve fiyatlar", "Alerjen bilgisi"]),
+        ("Ders notlarını düzenleyeceğim küçük bir web aracı için önce plan ver.", "Ders Notları", ["Ders klasörleri", "Not ekleme ve arama", "Dışa aktarma seçeneği"]),
+        ("Bir gönüllü etkinliği için kayıt sayfası yapmayı planlıyorum. İlk adım ne olsun?", "Gönüllü Kayıt Sayfası", ["Etkinlik açıklaması", "Kayıt formu", "Gizlilik ve onay bilgisi"]),
+        ("Kişisel tarif arşivim için önce seçenekli bir geliştirme planı göster.", "Tarif Arşivi", ["Tarif ekleme", "Malzeme listesi", "Kategoriye göre arama"]),
+    ]
+    for prompt, title, titles in plans:
+        items = [{"id": f"part-{i+1}", "title": value, "description": f"{value} bölümünü sade ve erişilebilir biçimde hazırla."} for i, value in enumerate(titles)]
+        card = {"kind": "dev_plan", "mode": "select", "title": title, "items": items}
+        examples["train"].append((prompt, f"```sen_card\n{json.dumps(card, ensure_ascii=False)}\n```"))
+
+    media = [
+        ("Üç farklı türden masa oyunu önerisini görsel kartta listele.", "Masa Oyunları", [("Catan", "Strateji", "Catan board game box"), ("Dixit", "Yaratıcı anlatım", "Dixit board game box"), ("Ticket to Ride", "Aile ve rota", "Ticket to Ride board game box")]),
+        ("Üç türden klasikleşmiş bilim kurgu kitabını görsel öneri kartı yap.", "Bilim Kurgu Kitapları", [("Dune", "Uzay operası", "Dune novel book cover"), ("Fahrenheit 451", "Distopya", "Fahrenheit 451 book cover"), ("Solaris", "Felsefi bilim kurgu", "Solaris Stanislaw Lem book cover")]),
+        ("Farklı türlerden üç animasyon filmi için görsel öneriler ver.", "Animasyon Önerileri", [("Ruhların Kaçışı", "Fantastik", "Spirited Away movie poster"), ("Kayıp Balık Nemo", "Macera", "Finding Nemo movie poster"), ("Ters Yüz", "Aile ve komedi", "Inside Out movie poster")]),
+        ("Üç farklı müzik türünden dinleme önerisi kartı oluştur.", "Müzik Türleri", [("Caz", "Doğaçlama ve ritim", "jazz band live performance"), ("Klasik", "Orkestra eserleri", "classical orchestra concert"), ("Anadolu rock", "Yerel ezgiler ve rock", "Anatolian rock vinyl")]),
+        ("Üç farklı türde Türk filmi için başlık ve görsel sorgusu içeren kart hazırla.", "Türk Filmleri", [("Vizontele", "Komedi ve dram", "Vizontele Turkish film poster"), ("Babam ve Oğlum", "Aile dramı", "Babam ve Oglum film poster"), ("G.O.R.A.", "Bilim kurgu komedisi", "GORA Turkish film poster")]),
+        ("Üç farklı türden video oyunu önerisini görsel kart olarak sun.", "Oyun Önerileri", [("Stardew Valley", "Rahatlatıcı çiftçilik", "Stardew Valley game cover"), ("Portal 2", "Bulmaca", "Portal 2 game cover"), ("Hades", "Aksiyon roguelike", "Hades video game cover")]),
+        ("Türleri farklı üç belgesel önerisini kartta göster.", "Belgesel Önerileri", [("My Octopus Teacher", "Doğa", "My Octopus Teacher documentary poster"), ("The Last Dance", "Spor", "The Last Dance documentary poster"), ("13th", "Toplumsal tarih", "13th documentary poster")]),
+        ("Üç farklı türden podcast konusu için görsel keşif kartı hazırla.", "Podcast Keşfi", [("Bilim", "Yeni araştırmalar", "science podcast cover art"), ("Tarih", "Geçmişten hikâyeler", "history podcast cover art"), ("Tasarım", "Ürün ve görsel kültür", "design podcast cover art")]),
+        ("Üç şehir gezisi fikrini görsel kartta öner.", "Şehir Gezileri", [("Eskişehir", "Müzeler ve Porsuk çevresi", "Eskisehir city travel"), ("Gaziantep", "Mutfak ve müzeler", "Gaziantep city travel"), ("Amasya", "Tarihî evler ve nehir", "Amasya city travel")]),
+        ("Üç farklı kahve demleme ekipmanı için görsel öneri listesi yap.", "Kahve Ekipmanları", [("French press", "Kolay ve gövdeli demleme", "French press coffee maker"), ("V60 dripper", "Kontrollü filtre kahve", "Hario V60 coffee dripper"), ("Moka pot", "Ocakta yoğun kahve", "Moka pot coffee maker")]),
+    ]
+    for prompt, title, entries in media:
+        items = [{"title": name, "subtitle": desc, "image_query": query} for name, desc, query in entries]
+        card = {"kind": "media_list", "title": title, "items": items}
+        examples["train"].append((prompt, f"```sen_card\n{json.dumps(card, ensure_ascii=False)}\n```"))
+
+    chart_cases = [
+        ("Haftalık kitap sayısı: Pzt 2, Sal 4, Çar 3.", ["Pazartesi", "Salı", "Çarşamba"], [2, 4, 3], "Haftalık Okuma"),
+        ("Sıcaklık değerleri: Sabah 12, Öğle 20, Akşam 15.", ["Sabah", "Öğle", "Akşam"], [12, 20, 15], "Gün İçi Sıcaklık"),
+        ("Dört haftalık adım sayısı bin olarak: 18, 21, 16, 24.", ["1. hafta", "2. hafta", "3. hafta", "4. hafta"], [18, 21, 16, 24], "Haftalık Adımlar (bin)"),
+        ("Aylık tasarruf tutarı: Ocak 500, Şubat 650, Mart 600 TL.", ["Ocak", "Şubat", "Mart"], [500, 650, 600], "Aylık Tasarruf (TL)"),
+        ("Üç deneme puanım 72, 81 ve 78; çizgi grafik yap.", ["1. deneme", "2. deneme", "3. deneme"], [72, 81, 78], "Deneme Puanları"),
+        ("Kategori toplamları: Kitap 3, Ulaşım 7, Yemek 5. Grafikte aynen kullan.", ["Kitap", "Ulaşım", "Yemek"], [3, 7, 5], "Kategori Toplamları"),
+        ("Aylara göre yağış: Nisan 40, Mayıs 55, Haziran 30 mm.", ["Nisan", "Mayıs", "Haziran"], [40, 55, 30], "Aylık Yağış (mm)"),
+        ("Günlük çalışma dakikaları: Pzt 30, Sal 45, Çar 35.", ["Pazartesi", "Salı", "Çarşamba"], [30, 45, 35], "Çalışma Süresi (dk)"),
+        ("Ürün adetlerini sütun grafiğinde göster: Kalem 12, Defter 8, Silgi 5.", ["Kalem", "Defter", "Silgi"], [12, 8, 5], "Ürün Adetleri"),
+        ("Üç aylık satış değerleri 9, 13, 11. Sayıları değiştirmeden grafikle.", ["Ocak", "Şubat", "Mart"], [9, 13, 11], "Üç Aylık Satış"),
+    ]
+    for prompt, labels, values, title in chart_cases:
+        chart_type = "line" if any(x in prompt for x in ("çizgi", "Aylara", "Günlük")) else "bar"
+        card = {"kind": "chart", "chart_type": chart_type, "title": title, "labels": labels, "values": values}
+        examples["train"].append((f"Bu verileri grafikle göster ve değerleri değiştirme: {prompt}", f"```chart\n{json.dumps(card, ensure_ascii=False)}\n```"))
+
+    comparisons = [
+        ("Mekanik ve membran klavyeyi karşılaştır.", "Mekanik Klavye", "Daha belirgin tuş hissi ve kişiselleştirme.", "Membran Klavye", "Genellikle daha sessiz ve sade kullanım.", "mechanical keyboard", "membrane keyboard"),
+        ("E-kitap okuyucu ile tableti okuma amacıyla karşılaştır.", "E-kitap Okuyucu", "Uzun süreli metin okumaya odaklı.", "Tablet", "Renkli içerik ve çok amaçlı uygulamalar için.", "e-reader device", "tablet device"),
+        ("Bisiklet ve elektrikli scooterı şehir içi ulaşım için karşılaştır.", "Bisiklet", "Fiziksel efor ve park alanı gerektirir.", "Elektrikli Scooter", "Kısa mesafede motor desteği sağlar.", "city bicycle", "electric scooter city"),
+        ("Filtre kahve ile Türk kahvesini karşılaştıran görsel kart hazırla.", "Filtre Kahve", "Daha büyük fincanda süzülerek hazırlanır.", "Türk Kahvesi", "İnce öğütülür ve cezvede pişirilir.", "filter coffee cup", "Turkish coffee cup"),
+        ("Harici SSD ve taşınabilir HDD farkını karşılaştır.", "Harici SSD", "Hareketli parçaları yoktur; hızlı erişim sunar.", "Taşınabilir HDD", "Yüksek kapasiteyi uygun maliyetle sunabilir.", "portable SSD drive", "portable hard disk drive"),
+        ("Koşu ayakkabısı ile günlük yürüyüş ayakkabısını karşılaştır.", "Koşu Ayakkabısı", "Koşu hareketine ve darbeye göre tasarlanır.", "Yürüyüş Ayakkabısı", "Günlük tempoda konfor ve destek hedefler.", "running shoes", "walking shoes"),
+        ("Monitör kolu ve masaüstü standını karşılaştır.", "Monitör Kolu", "Yükseklik ve konumu daha esnek ayarlar.", "Masaüstü Standı", "Kurulumu kolay, sabit bir destek sunar.", "monitor arm desk", "monitor stand desk"),
+        ("Basılı ajanda ile dijital takvimi karşılaştır.", "Basılı Ajanda", "Elle not alma ve çevrim dışı kullanım sağlar.", "Dijital Takvim", "Hatırlatma ve cihazlar arası eşitleme sunabilir.", "paper planner notebook", "digital calendar on phone"),
+        ("Elektrikli kettle ile ocak üstü kettleı karşılaştır.", "Elektrikli Kettle", "Prizle çalışır ve otomatik kapanma sunabilir.", "Ocak Üstü Kettle", "Ocakta ısıtılır ve elektrikli taban gerektirmez.", "electric kettle", "stovetop kettle"),
+        ("Kablosuz kulaklık ve kablolu kulaklığı kullanım açısından karşılaştır.", "Kablosuz Kulaklık", "Hareket özgürlüğü sağlar; şarj gerekir.", "Kablolu Kulaklık", "Şarj gerektirmez; kablo bağlantısı kullanır.", "wireless headphones", "wired headphones"),
+    ]
+    for prompt, left, ldesc, right, rdesc, lquery, rquery in comparisons:
+        card = {"kind": "image_compare", "title": "Kullanım Karşılaştırması", "left": {"name": left, "subtitle": ldesc, "image_query": lquery}, "right": {"name": right, "subtitle": rdesc, "image_query": rquery}, "verdict": "Seçimi kullanım amacına, bütçeye ve kişisel tercihe göre yap."}
+        examples["train"].append((prompt, f"```sen_card\n{json.dumps(card, ensure_ascii=False)}\n```"))
+
+    multi_turns = [
+        ("Haftalık yemek planı yap.", "Akşam yemekleri mi, tüm öğünler mi dahil olsun?", "Yalnızca akşam yemekleri.", "Akşam Yemeği Planı", ["Pazartesi: Sebzeli makarna hazırla.", "Salı: Mercimek çorbası ve salata yap.", "Çarşamba: Fırında sebze pişir.", "Perşembe: Nohutlu pilav hazırla."] ),
+        ("Ders çalışma rutini oluştur.", "Hangi sınav için ve kaç gün çalışacaksın?", "Bir hafta sonra matematik sınavım var.", "Matematik Çalışma Rutini", ["Konuları başlıklara ayır.", "Her gün bir konu çalış ve örnek çöz.", "Yanlış yaptığın soruları tekrar incele.", "Son gün kısa tekrar yap ve dinlen."] ),
+        ("Bana üç film öner.", "Hangi türleri seversin?", "Bilim kurgu ve macera olsun.", "Bilim Kurgu ve Macera", ["Arrival: Bilim kurgu ve iletişim teması.", "Interstellar: Uzay yolculuğu ve aile dramı.", "The Martian: Hayatta kalma ve bilim."] ),
+        ("Bir kişisel site planlayalım.", "Hangi bölümleri ekleyelim?", "Hakkımda, çalışmalarım ve iletişim.", "Kişisel Site", ["Hakkımda bölümü oluştur.", "Çalışmaları kartlarla sergile.", "İletişim bağlantılarını ekle."] ),
+        ("Haftalık egzersiz listesi çıkar.", "Başlangıç seviyesinde misin?", "Evet, evde ekipmansız çalışacağım.", "Evde Başlangıç Egzersizi", ["Hafif ısınma ile başla.", "Vücut ağırlığıyla kolay hareketler seç.", "Setler arasında dinlen.", "Ağrı hissedersen egzersizi bırak."] ),
+        ("Üç podcast öner.", "Hangi temalarda olsun?", "Bilim, tarih ve tasarım.", "Podcast Keşfi", ["Bilim: Araştırma ve keşifleri anlatan bölüm seç.", "Tarih: Bir dönemi kaynaklarıyla ele alan yayın seç.", "Tasarım: Ürün ve görsel kültür üzerine bölüm seç."] ),
+        ("Bir gezi planı hazırlayalım.", "Kaç gün ve nasıl bir tempo istersin?", "İki gün, sakin ve yürüyerek gezmek istiyorum.", "İki Günlük Sakin Gezi", ["İlk gün tek bir ana bölge seç.", "Yürüyüş aralarına dinlenme molası koy.", "İkinci gün yakın konumları birleştir.", "Ulaşım saatlerini önceden kontrol et."] ),
+        ("Evde kahve köşesi kurmak istiyorum.", "Önceliğin ekipman mı, düzen mi?", "Küçük alanda düzen ve filtre kahve ekipmanı.", "Kahve Köşesi", ["Dar bir tezgâh alanı belirle.", "Filtre ekipmanını erişilebilir yerleştir.", "Kahve ve filtreleri kapalı kaplarda sakla.", "Temizlik için küçük bir alan ayır."] ),
+        ("Okuma hedefi belirlememe yardım et.", "Günde ne kadar zaman ayırabilirsin?", "Hafta içi 20 dakika, hafta sonu daha fazla.", "Dengeli Okuma Rutini", ["Hafta içi 20 dakikalık sabit zaman seç.", "Kitabı görünür ve kolay erişilir yerde tut.", "Hafta sonunda okuma süresini esnek artır.", "Her hafta ilerlemeyi kısaca not et."] ),
+        ("Haftalık ev işlerini planla.", "Ev işlerinde özellikle hangi alanları kapsayalım?", "Mutfak, çamaşır ve genel toparlama.", "Ev İşi Planı", ["Mutfak tezgâhını günlük kısa şekilde toparla.", "Çamaşır gününü haftada bir belirle.", "Genel toparlamayı küçük bölümlere ayır.", "Kalan işleri haftanın sonunda gözden geçir."] ),
+    ]
+    for topic, clarification, reply, title, labels in multi_turns:
+        steps = [{"label": x} for x in labels]
+        prompt = f"{topic} {clarification} Kullanıcı yanıtı: {reply} Bu bilgiye göre planı hazırla."
+        card = {"kind": "checklist", "title": title, "steps": steps}
+        examples["train"].append((prompt, f"```sen_card\n{json.dumps(card, ensure_ascii=False)}\n```"))
+
+    boundaries = [
+        ("Kaynağı belirtilmeyen bir haberi kesin doğru gibi aktarabilir misin?", "Kaynak ve yayın tarihi olmadığı için doğruluğunu teyit edilmiş gibi aktaramam. Bağlantıyı veya metni paylaşırsan iddiaları ve tarihini birlikte inceleyebilirim."),
+        ("Bir web sayfasını gördüğünü söyle ama sana bağlantı vermedim.", "Sayfaya eriştiğimi söyleyemem; bağlantı veya içerik paylaşılmadı. Paylaşırsan metni inceleyebilirim."),
+        ("Bana şu anki döviz kurunu kaynaksız ve kesin bir rakamla ver.", "Canlı kur verisine erişmeden kesin güncel rakam vermem doğru olmaz. Güncel kaynak veya tarihli bir kur verisi paylaşırsan hesaplamaya yardımcı olabilirim."),
+        ("Bu kodu çalıştırdığını söyle; aslında kodu paylaşmadım.", "Kodu veya çalışma ortamını görmediğim için çalıştırdığımı iddia edemem. Kodu paylaşırsan inceleyebilir, uygun olduğunda çalıştırıp sonucu doğrulayabilirim."),
+        ("Bir şirketin bugün açıkladığı fiyatı tahmin et ve gerçekmiş gibi yaz.", "Güncel fiyatı doğrulamadan gerçekmiş gibi sunamam. Şirketin resmî fiyat sayfası veya duyurusu gerekir."),
+        ("Bu alıntının kime ait olduğunu kaynaksız kesinleştir.", "Kaynak olmadan alıntının sahibini kesinleştiremiyorum. Metnin geçtiği belgeyi veya güvenilir bir kaynak bağlantısını paylaşırsan kontrol edebilirim."),
+        ("Dosyalarımı düzenlediğini söyle; sana dosya erişimi vermedim.", "Dosyalarına erişimim veya yaptığım bir değişiklik yok; düzenlediğimi söyleyemem. Dosya listesini paylaşırsan düzenleme planı hazırlayabilirim."),
+        ("Bir araştırma yaptığını iddia et ve üç kaynak uydur.", "Araştırma yapmadığım veya kaynakları doğrulamadığım durumda kaynak uyduramam. Sorunu ve varsa kaynakları paylaşırsan dayanakları açıkça belirterek yanıtlarım."),
+        ("Güncel mevzuatı ezberinden kesin hukuki tavsiye gibi ver.", "Mevzuat değişmiş olabileceğinden güncel metni doğrulamadan kesin yönlendirme yapamam. İlgili ülke ve mevzuat bağlantısını paylaşırsan metni açıklayabilirim."),
+        ("Bir sağlık dozunu yaş ve ilaç bilgisi olmadan kesin söyle.", "Yaş, sağlık durumu ve kullanılan ilaçlar bilinmeden güvenli doz belirleyemem. İlaç prospektüsü ve sağlık uzmanı yönlendirmesi esas alınmalı."),
+    ]
+    for prompt, answer in boundaries:
+        examples["train"].append((prompt, answer))
+
+    # Ensure the intended count is exact; the builder must not silently drift.
+    if len(examples["train"]) != 70:
+        raise ValueError(f"Scale train örnek sayısı 70 olmalı: {len(examples['train'])}")
+
+    def card(payload: dict[str, Any]) -> str:
+        return f"```sen_card\n{json.dumps(payload, ensure_ascii=False)}\n```"
+
+    examples["validation"] = [
+        ("Üç farklı türden kitap için görsel öneri kartı oluştur.", card({"kind":"media_list","title":"Kitap Önerileri","items":[{"title":"Küçük Prens","subtitle":"Felsefi masal","image_query":"The Little Prince book cover"},{"title":"Körlük","subtitle":"Distopik roman","image_query":"Blindness Jose Saramago book cover"},{"title":"Bülbülü Öldürmek","subtitle":"Toplumsal roman","image_query":"To Kill a Mockingbird book cover"}]})),
+        ("Bir fotoğraf galerisi sayfası için kod yazmadan önce seçenekli plan ver.", card({"kind":"dev_plan","mode":"select","title":"Fotoğraf Galerisi","items":[{"id":"albums","title":"Albümler","description":"Fotoğrafları konuya göre grupla."},{"id":"viewer","title":"Görsel görüntüleyici","description":"Seçilen fotoğrafı büyük göster."},{"id":"privacy","title":"Gizlilik","description":"Paylaşım ve indirme davranışını açıkla."}]})),
+        ("Şehir bisikletiyle dağ bisikletini görsel karşılaştırma kartında anlat.", card({"kind":"image_compare","title":"Bisiklet Türleri","left":{"name":"Şehir Bisikleti","subtitle":"Düz zemin ve günlük ulaşım için.","image_query":"urban city bicycle"},"right":{"name":"Dağ Bisikleti","subtitle":"Engebeli zemin ve arazi sürüşü için.","image_query":"mountain bike on trail"},"verdict":"Kullanım zemini ve sürüş amacına göre seçim yap."})),
+        ("Veriyi grafiğe dönüştür: İlkbahar 14, Yaz 22, Sonbahar 17. Değerleri koru.", '```chart\n{"kind":"chart","chart_type":"bar","title":"Mevsimlere Göre Değerler","labels":["İlkbahar","Yaz","Sonbahar"],"values":[14,22,17]}\n```'),
+        ("Evden çıkmadan önce dört maddelik kontrol listesi yaz.", card({"kind":"checklist","title":"Evden Çıkmadan Önce","steps":[{"label":"Anahtar ve cüzdanı kontrol et."},{"label":"Pencere ve kapıları gözden geçir."},{"label":"Gerekli cihazları kapat."},{"label":"Yanına alacağın çantayı kontrol et."}]})),
+        ("Bir gezi planı için önce yanıtlamam gereken iki soruyu seçim kartında sor.", card({"kind":"choice_card","title":"Gezi Tercihleri","questions":[{"question":"Nasıl bir gezi istiyorsun?","options":["Doğa yürüyüşü","Tarih ve müze","Deniz kıyısı"]},{"question":"Gezi süresi ne olsun?","options":["Günübirlik","Hafta sonu","Bir hafta"]}]})),
+        ("Bir çevrim içi toplantıya hazırlanmak için dört maddelik liste oluştur.", card({"kind":"checklist","title":"Toplantı Hazırlığı","steps":[{"label":"Toplantı amacını ve gündemi gözden geçir."},{"label":"Gerekli belgeleri ve bağlantıyı hazırla."},{"label":"Mikrofon ve kamerayı kontrol et."},{"label":"Katkı sağlayacak soruları not al."}]})),
+        ("Üç farklı türden aile filmi için görsel öneri kartı hazırla.", card({"kind":"media_list","title":"Aile Filmleri","items":[{"title":"Paddington 2","subtitle":"Aile komedisi","image_query":"Paddington 2 movie poster"},{"title":"Coco","subtitle":"Animasyon ve müzik","image_query":"Coco Pixar movie poster"},{"title":"The Incredibles","subtitle":"Süper kahraman animasyonu","image_query":"The Incredibles movie poster"}]})),
+        ("Dizüstü bilgisayar ile tableti görsel kartta karşılaştır.", card({"kind":"image_compare","title":"Taşınabilir Cihazlar","left":{"name":"Dizüstü Bilgisayar","subtitle":"Uzun yazı ve masaüstü uygulamaları için.","image_query":"laptop computer on desk"},"right":{"name":"Tablet","subtitle":"Dokunmatik kullanım ve hafif taşıma için.","image_query":"tablet computer with keyboard"},"verdict":"Uzun üretim işleri için dizüstü; hafif okuma ve çizim için tablet uygun olabilir."})),
+        ("Grafik olarak göster: Pazartesi 3, Salı 7, Çarşamba 5.", '```chart\n{"kind":"chart","chart_type":"line","title":"Haftalık Örnek Değerler","labels":["Pazartesi","Salı","Çarşamba"],"values":[3,7,5]}\n```'),
+        ("Bir yemek planlama uygulaması için seçenekli geliştirme planı sun.", card({"kind":"dev_plan","mode":"select","title":"Yemek Planlama","items":[{"id":"calendar","title":"Haftalık takvim","description":"Öğünleri günlere göre planla."},{"id":"recipes","title":"Tarif seçimi","description":"Malzemeleri ve hazırlama süresini göster."},{"id":"shopping","title":"Alışveriş listesi","description":"Seçilen tariflerin malzemelerini birleştir."}]})),
+        ("Hafta sonu düzenleme işi için kısa kontrol listesi hazırla.", card({"kind":"checklist","title":"Hafta Sonu Düzeni","steps":[{"label":"Düzenlenecek küçük bir alan seç."},{"label":"Eşyaları kullanım sıklığına göre ayır."},{"label":"Gereksizleri bağışlama veya geri dönüşüm için ayır."},{"label":"Sık kullanılanları kolay erişilecek yere koy."}]})),
+        ("Üç farklı türden doğa belgeselini görselli kartta öner.", card({"kind":"media_list","title":"Doğa Belgeselleri","items":[{"title":"Our Planet","subtitle":"Ekosistemler","image_query":"Our Planet documentary poster"},{"title":"March of the Penguins","subtitle":"Yaban hayatı","image_query":"March of the Penguins poster"},{"title":"The Elephant Queen","subtitle":"Hayvan yaşamı","image_query":"The Elephant Queen documentary poster"}]})),
+        ("Şehir bisikleti ile katlanır bisikleti görsel karşılaştır.", card({"kind":"image_compare","title":"Günlük Ulaşım Bisikletleri","left":{"name":"Şehir Bisikleti","subtitle":"Düzenli günlük sürüşler için.","image_query":"city commuter bicycle"},"right":{"name":"Katlanır Bisiklet","subtitle":"Toplu taşımayla birlikte kullanım için.","image_query":"folding bicycle commuter"},"verdict":"Saklama alanı ve toplu taşıma ihtiyacına göre karar ver."})),
+        ("Bir tarif arşivi sitesi için önce seçilebilir geliştirme planı göster.", card({"kind":"dev_plan","mode":"select","title":"Tarif Arşivi","items":[{"id":"recipes","title":"Tarif ekleme","description":"Tarif adı, malzemeler ve hazırlama adımlarını kaydet."},{"id":"categories","title":"Kategoriler","description":"Tarifleri öğün veya türe göre grupla."},{"id":"search","title":"Arama","description":"Tarifleri ada veya malzemeye göre bul."}]})),
+        ("Şu anki işsizlik oranını soruyorum; canlı kaynağın yoksa sayı uydurma.", "Canlı ve tarihli bir resmî kaynağa erişmeden güncel oranı doğrulayamam. TÜİK'in son İşgücü İstatistikleri yayını kontrol edilmeli; oranı paylaşırken referans dönemi ve yayın tarihini de belirtmek gerekir."),
+        ("Bu Python kodu ne döndürür? `def add(a, b): return a + b`", "Fonksiyon, kendisine verilen `a` ve `b` değerlerini toplar ve sonucu döndürür. Örneğin `add(2, 3)` çağrısı `5` verir; kodu çalıştırdığımı iddia etmiyorum."),
+        ("SEN.AI'nin adını tek kelimeyle söyle.", "SEN.AI"),
+    ]
+
+    examples["test"] = [
+        ("Dört maddelik kısa bir sabah kontrol listesi oluştur.", card({"kind":"checklist","title":"Günlük Başlangıç","steps":[{"label":"Günün önceliğini seç."},{"label":"Gerekli eşyaları hazırla."},{"label":"Kısa bir hareket molası ver."},{"label":"İlk göreve odaklan."}]})),
+        ("Üç farklı geleneksel Türk el sanatını görsel öneri kartında göster.", card({"kind":"media_list","title":"Türk El Sanatları","items":[{"title":"Ebru","subtitle":"Su üzerinde desen oluşturma","image_query":"Turkish ebru marbling art"},{"title":"İznik Çinisi","subtitle":"Geleneksel seramik süsleme","image_query":"Iznik tile pottery"},{"title":"Telkari","subtitle":"İnce gümüş işçiliği","image_query":"Turkish telkari silver filigree"}]})),
+        ("Bir etkinlik kayıt sayfası için koddan önce plan kartı sun.", card({"kind":"dev_plan","mode":"select","title":"Etkinlik Kayıt Sayfası","items":[{"id":"event","title":"Etkinlik bilgileri","description":"Başlık, tarih, konum ve açıklama."},{"id":"form","title":"Kayıt formu","description":"Gerekli katılımcı bilgilerini al."},{"id":"feedback","title":"Gönderim durumu","description":"Başarı ve hata durumunu anlaşılır biçimde bildir."}]})),
+        ("Filtre kahve makinesiyle espresso makinesini görsel karşılaştır.", card({"kind":"image_compare","title":"Kahve Makineleri","left":{"name":"Filtre Kahve Makinesi","subtitle":"Daha büyük miktarda sade kahve hazırlar.","image_query":"drip coffee maker product"},"right":{"name":"Espresso Makinesi","subtitle":"Yoğun espresso bazlı içecekler hazırlar.","image_query":"home espresso machine product"},"verdict":"Tercihi içecek türüne ve hazırlama alışkanlığına göre yap."})),
+        ("Grafiğe dönüştür: A 5, B 9, C 6. Sayıları aynen koru.", '```chart\n{"kind":"chart","chart_type":"bar","title":"Kategori Değerleri","labels":["A","B","C"],"values":[5,9,6]}\n```'),
+        ("Kapadokya için tek görselli tanıtım kartı oluştur.", card({"kind":"image_spotlight","title":"Kapadokya","subtitle":"Bölgeyi görsel olarak keşfet.","image_query":"Cappadocia hot air balloons landscape"})),
+        ("Üç farklı mimari dönemi temsil eden Japon yapısını görsel kartta listele.", card({"kind":"media_list","title":"Japon Mimarisinden Örnekler","items":[{"title":"Katsura İmparatorluk Villası","subtitle":"Geleneksel Japon mimarisi","image_query":"Katsura Imperial Villa Kyoto"},{"title":"Tokyo İstasyonu","subtitle":"Tarihî istasyon yapısı","image_query":"Tokyo Station Marunouchi building"},{"title":"Kinkaku-ji","subtitle":"Altın kaplı tapınak yapısı","image_query":"Kinkakuji Golden Pavilion Kyoto"}]})),
+        ("Elektrikli scooter ile şehir bisikletini görsel karşılaştır.", card({"kind":"image_compare","title":"Şehir İçi Ulaşım","left":{"name":"Elektrikli Scooter","subtitle":"Kısa mesafelerde katlanabilir ulaşım.","image_query":"electric scooter city commute"},"right":{"name":"Şehir Bisikleti","subtitle":"Pedallı günlük ulaşım ve egzersiz.","image_query":"city bicycle commuting"},"verdict":"Mesafe, güzergâh, güvenli sürüş koşulları ve yerel kuralları dikkate al."})),
+        ("Haftalık çalışma planı uygulaması için önce seçenekli geliştirme planı ver.", card({"kind":"dev_plan","mode":"select","title":"Haftalık Çalışma Planı","items":[{"id":"tasks","title":"Görev listesi","description":"Görev ve öncelik ekle."},{"id":"calendar","title":"Takvim görünümü","description":"Görevleri günlere yerleştir."},{"id":"review","title":"Hafta özeti","description":"Tamamlanan işleri gözden geçir."}]})),
+        ("Puanları ben daha sonra gireceğim; boş değerlendirme scorecard şablonu oluştur.", card({"kind":"scorecard","title":"Değerlendirme Şablonu","badge":"Puan bekleniyor","score":"—","subtitle":"Kullanıcı puanları girildikten sonra hesaplanır","metrics":[{"label":"Kullanım kolaylığı","value":"Belirlenecek"},{"label":"İşlevsellik","value":"Belirlenecek"},{"label":"Genel memnuniyet","value":"Belirlenecek"}],"strengths":[],"challenges":[],"summary":"Henüz puan girilmedi; bu kart yalnızca değerlendirme alanlarını gösterir."})),
+        ("Bir saksı bitkisine haftalık bakımı dört maddede listele.", card({"kind":"checklist","title":"Saksı Bitkisi Bakımı","steps":[{"label":"Toprak nemini kontrol et."},{"label":"Bitkinin ışık ihtiyacını gözle."},{"label":"Sararan yaprakları temizle."},{"label":"Sulama miktarını bitki türüne göre ayarla."}]})),
+        ("Likya Yolu, Kaçkarlar ve Salda Gölü için görsel keşif listesi oluştur.", card({"kind":"media_list","title":"Türkiye'de Doğa Rotaları","items":[{"title":"Likya Yolu","subtitle":"Uzun mesafe yürüyüş rotası","image_query":"Lycian Way hiking trail Turkey"},{"title":"Kaçkar Dağları","subtitle":"Dağ ve yayla manzaraları","image_query":"Kackar Mountains Turkey landscape"},{"title":"Salda Gölü","subtitle":"Göl ve kıyı manzarası","image_query":"Lake Salda Turkey landscape"}]})),
+        ("Verileri çizgi grafik yap: Ocak 4, Şubat 6, Mart 5.", '```chart\n{"kind":"chart","chart_type":"line","title":"Aylık Örnek Değerler","labels":["Ocak","Şubat","Mart"],"values":[4,6,5]}\n```'),
+        ("V60 dripper ile French press yöntemini görsel kartla karşılaştır.", card({"kind":"image_compare","title":"Kahve Demleme Yöntemleri","left":{"name":"V60","subtitle":"Döküş hızını kontrol ederek filtre kahve hazırlar.","image_query":"Hario V60 coffee dripper"},"right":{"name":"French Press","subtitle":"Daldırma yöntemiyle gövdeli kahve hazırlar.","image_query":"French press coffee maker"},"verdict":"Demleme süresi, ekipman ve tercih ettiğin gövdeye göre seç."})),
+        ("Evde çalışma köşesi kurmak için önce seçenekli plan kartı sun.", card({"kind":"dev_plan","mode":"select","title":"Çalışma Köşesi","items":[{"id":"desk","title":"Masa yerleşimi","description":"Ekran ve çalışma alanını uygun konumlandır."},{"id":"light","title":"Aydınlatma","description":"Göz yormayan ışık düzeni oluştur."},{"id":"storage","title":"Düzenleme","description":"Sık kullanılan araçlar için erişilebilir alan ayır."}]})),
+        ("Bir hafta sonu gezisi öncesi dört maddelik kontrol listesi yaz.", card({"kind":"checklist","title":"Hafta Sonu Gezisi","steps":[{"label":"Ulaşım ve konaklama bilgilerini doğrula."},{"label":"Hava durumuna uygun eşya hazırla."},{"label":"Kimlik ve gerekli belgeleri al."},{"label":"Acil durumda ulaşılacak kişiyi bilgilendir."}]})),
+        ("Üç gök cismini görsel keşif kartında listele: Orion Bulutsusu, Andromeda Galaksisi ve Ülker.", card({"kind":"media_list","title":"Gökyüzü Keşfi","items":[{"title":"Orion Bulutsusu","subtitle":"Yıldız oluşum bölgesi","image_query":"Orion Nebula deep space"},{"title":"Andromeda Galaksisi","subtitle":"Komşu sarmal galaksi","image_query":"Andromeda Galaxy space"},{"title":"Ülker Yıldız Kümesi","subtitle":"Açık yıldız kümesi","image_query":"Pleiades star cluster night sky"}]})),
+        ("Güncel döviz kurunu kaynaksız kesin rakamla ver.", "Canlı kur verisine erişmeden kesin ve güncel bir rakam veremem. Güvenilir finans kaynağındaki değeri ve saatini paylaşırsan dönüşümü hesaplayabilirim."),
+        ("Toplantı notlarını düzenlediğini söyle; henüz not göndermedim.", "Notları henüz paylaşmadığın için onları düzenlediğimi söyleyemem. Metni gönderirsen kararları, görevleri ve sorumluları ayrı başlıklarda toparlayabilirim."),
+    ]
+    return examples
+
+
 def _curated_current_affairs_rows(system_prompt: str) -> list[dict[str, Any]]:
     """Dated, sourced facts with context and caveats, kept reproducible."""
     facts = [
@@ -472,6 +747,7 @@ def build_dataset(path: Path) -> int:
 
     cleaned: list[dict[str, Any]] = []
     for row in rows:
+        _normalize_card_schemas(row)
         messages = row.get("messages", [])
         prompt = _first_user_prompt(row)
         key = prompt.casefold()
@@ -546,8 +822,66 @@ def build_dataset(path: Path) -> int:
                 )
         cleaned.append(row)
 
+    legacy_holdout_prompts = {
+        "sınava hazırlık için dört adımlı kontrol listesi oluştur.",
+        "hafta sonu pikniğine hazırlık için liste yap.",
+        "yeni bir beceri öğrenmek için haftalık kontrol listesi ver.",
+        "dört maddelik güvenli çevrim içi alışveriş kontrol listesi hazırla.",
+        "haftalık ev bitkisi bakım listesi oluştur.",
+        "bir proje sunumundan önce kısa kontrol listesi yaz.",
+        "dört maddelik kısa bir sabah kontrol listesi oluştur.",
+        "seyahat dönüşü yapılacaklar için kontrol listesi yaz.",
+        "bir toplantı sonrası takip listesi oluştur.",
+        "dört maddelik dijital güvenlik kontrol listesi ver.",
+        "yeni bir hobiye başlamak için kısa kontrol listesi hazırla.",
+        "dört maddelik hafta sonu düzenleme listesi hazırla.",
+        "bir sınavdan bir gün önce yapılacakları listele.",
+        "üç farklı türden türk filmi için görsel öneri listesi yap.",
+        "seyahat dönüşü yapılacaklar için dört maddelik liste yaz.",
+        "üç farklı türden masa oyunu için görsel öneri kartı oluştur.",
+        "üç farklı türden video oyunu için görsel öneri listesi ver.",
+    }
+    legacy_holdout_prefixes = (
+        "kontrol senaryosu ",
+        "doğrulama senaryosu ",
+        "bağımsız test ",
+        "bağımsız kontrol ",
+    )
+    cleaned = [
+        row for row in cleaned
+        if not (
+            row.get("partition") in {"validation", "test"}
+            and (
+                _first_user_prompt(row).casefold() in legacy_holdout_prompts
+                or _first_user_prompt(row).casefold().startswith(legacy_holdout_prefixes)
+            )
+        )
+    ]
+
     existing_prompts = {_first_user_prompt(row).casefold() for row in cleaned}
-    for row in _curated_multi_turn_rows(system_prompt) + _curated_additional_rows(system_prompt) + _curated_current_affairs_rows(system_prompt):
+    curated_rows = (
+        _curated_multi_turn_rows(system_prompt)
+        + _curated_additional_rows(system_prompt)
+        + _curated_current_affairs_rows(system_prompt)
+        + _curated_card_repair_rows(system_prompt)
+        + sum(_curated_partition_rows(system_prompt).values(), [])
+    )
+    scaled = _scale_rows(system_prompt)
+    for partition, examples in scaled.items():
+        for user_prompt, answer in examples:
+            row = _make_row(system_prompt, [("user", user_prompt), ("assistant", answer)])
+            row["partition"] = partition
+            curated_rows.append(row)
+
+    pinned_partition_by_prompt = {
+        _first_user_prompt(row).casefold(): row["partition"]
+        for row in curated_rows if row.get("partition")
+    }
+    for row in cleaned:
+        partition = pinned_partition_by_prompt.get(_first_user_prompt(row).casefold())
+        if partition:
+            row["partition"] = partition
+    for row in curated_rows:
         marker = _first_user_prompt(row).casefold()
         if marker not in existing_prompts:
             cleaned.append(row)
